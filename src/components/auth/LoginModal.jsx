@@ -1,19 +1,18 @@
 import { useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
-import Field from "../ui/Field"; // Still used for non-password fields
+import Field from "../ui/Field";
 import Button from "../ui/Button";
-import { FaEye, FaEyeSlash } from "react-icons/fa"; // Imported eye icons
+// 1. Swapped back to 'fi' (Feather Icons) for the thin, outlined look
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // State for password visibility
+  const [showPassword, setShowPassword] = useState(false);
 
-  // 1. Make this function async to await result
   const submit = async () => {
-    // 2. Await the result from your useAuth hook
     const success = await login(email, pw);
 
     if (success) {
@@ -26,48 +25,60 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
 
   return (
     <Modal open={open} onClose={onClose} title="Sign in to Small Mart">
-      {/* 3. The Email field uses your standard Field component */}
       <Field label="Email" value={email} onChange={setEmail} type="email" />
 
-      {/* 4. The FIXED Password Field - Styling matches other inputs, icon is absolute */}
-      <div className="mb-4">
+      {/* 2. Cleaned Password Field to perfectly match your Register modal */}
+      <div style={{ marginBottom: "16px" }}>
         <label
-          className="block mb-2 text-sm font-medium text-gray-700"
-          style={{ fontSize: "14px" }}
+          style={{
+            display: "block",
+            marginBottom: "8px",
+            fontSize: "14px",
+            fontWeight: "500",
+            color: "#374151",
+          }}
         >
           Password
         </label>
 
-        {/* Relative container anchors the absolute eye button */}
-        <div className="relative">
+        <div style={{ position: "relative" }}>
           <input
-            // 5. Toggle the 'type' based on state
             type={showPassword ? "text" : "password"}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            // 6. TAILWIND STYLING:
-            // pr-10 adds extra padding on the right so the text doesn't hide behind the icon.
-            // border, rounded, and focus styles match your other fields.
-            className="w-full border border-gray-300 rounded-lg p-2.5 pr-10 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             style={{
-              padding: "10px",
+              width: "100%",
+              padding: "10px 12px",
               paddingRight: "40px",
+              borderRadius: "8px",
+              border: "1px solid #d1d5db",
               boxSizing: "border-box",
+              fontSize: "14px",
+              outline: "none",
             }}
+            onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+            onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
           />
 
-          {/* 7. ABSOLUTE ICON BUTTON: Pins the icon inside the right edge */}
           <button
             type="button"
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
             onClick={() => setShowPassword(!showPassword)}
             style={{
+              position: "absolute",
+              right: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
               background: "transparent",
               border: "none",
               cursor: "pointer",
+              color: "#9ca3af",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
             }}
           >
-            {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+            {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
           </button>
         </div>
       </div>

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { supabase } from "../../services/supabase";
-import { FaEye, FaEyeSlash } from "react-icons/fa"; // 1. Imported the icons
+// 1. Switched to Feather Icons for the clean, thin look
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // 2. Added the toggle state
+  const [showPassword, setShowPassword] = useState(false);
 
   // Function to handle Sign Up
   const handleSignUp = async (e) => {
@@ -53,27 +54,59 @@ export default function Login() {
       style={{
         maxWidth: "400px",
         margin: "50px auto",
-        padding: "20px",
-        border: "1px solid #ccc",
-        borderRadius: "8px",
+        padding: "30px",
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        backgroundColor: "#ffffff",
+        boxShadow:
+          "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)", // Added a subtle shadow to make the admin card pop
       }}
     >
-      <h2>Admin Login</h2>
+      <h2 style={{ marginBottom: "20px", color: "#111827" }}>Admin Login</h2>
       <form>
-        <div style={{ marginBottom: "15px" }}>
-          <label style={{ display: "block", marginBottom: "5px" }}>Email</label>
+        {/* Updated Email Field Styling */}
+        <div style={{ marginBottom: "16px" }}>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+            }}
+          >
+            Email
+          </label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid #d1d5db",
+              boxSizing: "border-box",
+              fontSize: "14px",
+              outline: "none",
+            }}
+            onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+            onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
             required
           />
         </div>
 
-        {/* 3. Updated Password Field with Eye Icon */}
-        <div style={{ marginBottom: "15px" }}>
-          <label style={{ display: "block", marginBottom: "5px" }}>
+        {/* Updated Password Field Styling with Thin Icon */}
+        <div style={{ marginBottom: "20px" }}>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+            }}
+          >
             Password
           </label>
           <div style={{ position: "relative" }}>
@@ -83,10 +116,16 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               style={{
                 width: "100%",
-                padding: "8px",
-                paddingRight: "40px", // Extra space so text doesn't hide behind the icon
+                padding: "10px 12px",
+                paddingRight: "40px",
+                borderRadius: "8px",
+                border: "1px solid #d1d5db",
                 boxSizing: "border-box",
+                fontSize: "14px",
+                outline: "none",
               }}
+              onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+              onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
               required
             />
             <button
@@ -94,31 +133,34 @@ export default function Login() {
               onClick={() => setShowPassword(!showPassword)}
               style={{
                 position: "absolute",
-                right: "10px",
+                right: "12px",
                 top: "50%",
                 transform: "translateY(-50%)",
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
-                color: "#6b7280",
+                color: "#9ca3af",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
               }}
             >
-              {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+              {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Updated logic: Only shows green if the message contains "successfully" or "Welcome" */}
         {message && (
           <p
             style={{
               color:
                 message.includes("successfully") || message.includes("Welcome")
-                  ? "green"
-                  : "red",
-              fontWeight: "bold",
+                  ? "#10b981" // A nicer, softer green
+                  : "#ef4444", // A nicer, softer red
+              fontWeight: "500",
+              fontSize: "14px",
+              marginBottom: "16px",
             }}
           >
             {message}
@@ -131,11 +173,13 @@ export default function Login() {
             disabled={loading}
             style={{
               padding: "10px 15px",
-              backgroundColor: "#0052FF",
+              backgroundColor: "#2563eb", // Updated to a modern Tailwind blue
               color: "white",
               border: "none",
-              borderRadius: "4px",
+              borderRadius: "8px",
               cursor: "pointer",
+              fontWeight: "500",
+              flex: 1, // Makes buttons take up even space
             }}
           >
             {loading ? "Loading..." : "Sign In"}
@@ -147,10 +191,12 @@ export default function Login() {
             style={{
               padding: "10px 15px",
               backgroundColor: "transparent",
-              color: "#0052FF",
-              border: "1px solid #0052FF",
-              borderRadius: "4px",
+              color: "#2563eb",
+              border: "1px solid #2563eb",
+              borderRadius: "8px",
               cursor: "pointer",
+              fontWeight: "500",
+              flex: 1,
             }}
           >
             {loading ? "Loading..." : "Create Account"}
