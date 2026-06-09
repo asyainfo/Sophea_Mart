@@ -1,0 +1,14 @@
+/* 1. Imports MUST go first */
+@import url("https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@100..700&family=Poppins:wght@100..900&display=swap");
+
+/* 2. Then your Tailwind directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3. Then your custom styles */
+*,
+html,
+body {
+  font-family: "Poppins", "Kantumruy Pro", sans-serif !important;
+}
