@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { supabase } from "../../services/supabase";
+import { FaEye, FaEyeSlash } from "react-icons/fa"; // 1. Imported the icons
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // 2. Added the toggle state
 
   // Function to handle Sign Up
   const handleSignUp = async (e) => {
@@ -64,21 +66,48 @@ export default function Login() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ width: "100%", padding: "8px" }}
+            style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
             required
           />
         </div>
+
+        {/* 3. Updated Password Field with Eye Icon */}
         <div style={{ marginBottom: "15px" }}>
           <label style={{ display: "block", marginBottom: "5px" }}>
             Password
           </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: "100%", padding: "8px" }}
-            required
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px",
+                paddingRight: "40px", // Extra space so text doesn't hide behind the icon
+                boxSizing: "border-box",
+              }}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "#6b7280",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+            </button>
+          </div>
         </div>
 
         {/* Updated logic: Only shows green if the message contains "successfully" or "Welcome" */}
