@@ -13,8 +13,6 @@ import { fmt, fmtKHR } from "../../utils/currency";
 import Modal from "../ui/Modal";
 import Row from "../ui/Row";
 import Button from "../ui/Button";
-
-// IMPORTANT: We must import supabase so we can save the order to the database!
 import { supabase } from "../../services/supabase";
 
 export default function CheckoutModal({ open, onClose, toast }) {
@@ -22,12 +20,9 @@ export default function CheckoutModal({ open, onClose, toast }) {
   const { user } = useAuth();
 
   const [confirmed, setConfirmed] = useState(false);
-
-  // NEW STATE: For the receipt image and loading status
   const [receiptFile, setReceiptFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Handle file selection
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setReceiptFile(e.target.files[0]);
@@ -41,13 +36,12 @@ export default function CheckoutModal({ open, onClose, toast }) {
       return;
     }
 
-    // REQUIRE the receipt to be uploaded before continuing
     if (!receiptFile) {
       toast("Please upload your payment receipt.", "error");
       return;
     }
 
-    setIsProcessing(true); // Start loading spinner
+    setIsProcessing(true);
 
     try {
       const orderId = `ORD-${String(Date.now()).slice(-4)}`;
@@ -55,7 +49,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
 
       // 1. Upload the image to the 'receipts' bucket
       const fileExt = receiptFile.name.split(".").pop();
-      const fileName = `${orderId}-${Math.random()}.${fileExt}`; // Give it a unique name
+      const fileName = `${orderId}-${Math.random()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("receipts")
@@ -63,14 +57,14 @@ export default function CheckoutModal({ open, onClose, toast }) {
 
       if (uploadError) throw uploadError;
 
-      // 2. Get the public URL of the image we just uploaded
+      // 2. Get the public URL of the image
       const { data: publicUrlData } = supabase.storage
         .from("receipts")
         .getPublicUrl(fileName);
 
       receiptUrl = publicUrlData.publicUrl;
 
-      // 3. Format the order WITH the new receipt_url
+      // 3. Format the order
       const newOrder = {
         id: orderId,
         user_id: user.id,
@@ -78,7 +72,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
         total_khr: total * 4000,
         total_items: items.reduce((sum, item) => sum + item.qty, 0),
         status: "pending",
-        receipt_url: receiptUrl, // <--- SAVING THE IMAGE URL HERE
+        receipt_url: receiptUrl,
       };
 
       // 4. Save to Orders table
@@ -100,13 +94,35 @@ export default function CheckoutModal({ open, onClose, toast }) {
         .insert(orderItemsToSave);
       if (itemsError) throw itemsError;
 
-      // 6. Success!
+      // --- NEW FIX: 6. Update Product Stock ---
+      for (const item of items) {
+        // Fetch the absolute newest stock number directly from database
+        const { data: currentProduct, error: fetchError } = await supabase
+          .from("products")
+          .select("stock")
+          .eq("id", item.id)
+          .single();
+
+        if (currentProduct && !fetchError) {
+          // Subtract the amount bought from the current stock
+          const newStock = currentProduct.stock - item.qty;
+
+          // Update the products table with the new stock number
+          await supabase
+            .from("products")
+            .update({ stock: newStock })
+            .eq("id", item.id);
+        }
+      }
+      // --- END NEW FIX ---
+
+      // 7. Success!
       setConfirmed(true);
     } catch (error) {
       console.error("Error during checkout:", error.message);
       toast("Checkout failed. Please try again.", "error");
     } finally {
-      setIsProcessing(false); // Stop loading spinner
+      setIsProcessing(false);
     }
   };
 
@@ -115,7 +131,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
       dispatch({ type: "CLEAR" });
     }
     setConfirmed(false);
-    setReceiptFile(null); // Clear the file when closed
+    setReceiptFile(null);
     onClose();
   };
 
@@ -253,7 +269,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
               </p>
             </div>
 
-            {/* NEW: Upload Receipt Box */}
+            {/* Upload Receipt Box */}
             <div style={{ marginBottom: 16 }}>
               <label
                 style={{
