@@ -41,7 +41,7 @@ export default function Hero({
       icon: <FaBaby size={16} />,
     },
     {
-      name: "Home Decor",
+      name: "គ្រឿងសំណង់",
       icon: <FiHome size={16} />,
     },
   ];
