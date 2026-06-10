@@ -149,13 +149,34 @@ export default function Hero({
           />
         </div>
 
-        {/* Categories */}
+        {/* 1. Add standard CSS to hide the webkit scrollbar in a <style> block.
+          This targets only the container we want using a specific class. 
+        */}
+        <style>
+          {`
+            .hide-scroll::-webkit-scrollbar {
+              display: none;
+            }
+          `}
+        </style>
+
+        {/* Categories Container */}
         <div
+          className="hide-scroll"
           style={{
             display: "flex",
-            justifyContent: "center",
             gap: 12,
-            flexWrap: "wrap",
+            // 2. Change flexWrap to 'nowrap' so they stay on one line
+            flexWrap: "nowrap",
+            // 3. Allow horizontal scrolling
+            overflowX: "auto",
+            // 4. Hide scrollbar for Firefox/IE
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+            // 5. Add a little padding to the sides so the first/last items aren't cut off on mobile
+            padding: "4px 4px 16px 4px",
+            // 6. Ensure it aligns nicely when there's plenty of space
+            justifyContent: "flex-start",
           }}
         >
           {categories.map((cat) => {
@@ -166,6 +187,8 @@ export default function Hero({
                 key={cat.name}
                 onClick={() => setCategory(active ? "All" : cat.name)}
                 style={{
+                  // 7. Add flexShrink: 0 so the buttons don't squish!
+                  flexShrink: 0,
                   background: active ? "#2563EB" : "#FFFFFF",
                   color: active ? "#FFFFFF" : "#374151",
                   border: `1px solid ${active ? "#2563EB" : "#E5E7EB"}`,
