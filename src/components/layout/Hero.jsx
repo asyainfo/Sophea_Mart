@@ -6,6 +6,7 @@ import {
   FiPackage,
   FiShoppingBag,
   FiGrid,
+  FiHome,
 } from "react-icons/fi";
 import { FaBaby } from "react-icons/fa";
 
@@ -41,7 +42,7 @@ export default function Hero({
     },
     {
       name: "Home Decor",
-      icon: <FaBaby size={16} />,
+      icon: <FiHome size={16} />,
     },
   ];
 
