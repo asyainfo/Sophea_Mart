@@ -175,6 +175,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               <option value="Drinks">Drinks</option>
               <option value="Ingredients">Ingredients</option>
               <option value="Baby Needs">Baby Needs</option>
+              <option value="គ្រឿងសំណង់">គ្រឿងសំណង់</option>
             </select>
           </div>
           <div>
