@@ -79,6 +79,13 @@ export default function HomePage() {
       return;
     }
 
+    // --- NEW FIX: Check stock before allowing the add to cart ---
+    if (product.stock <= 0) {
+      toast("Sorry, this item is currently out of stock!", "error");
+      return;
+    }
+    // ------------------------------------------------------------
+
     dispatch({
       type: "ADD",
       product,

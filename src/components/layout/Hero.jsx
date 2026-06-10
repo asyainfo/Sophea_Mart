@@ -39,6 +39,10 @@ export default function Hero({
       name: "Baby Needs",
       icon: <FaBaby size={16} />,
     },
+    {
+      name: "Home Decor",
+      icon: <FaBaby size={16} />,
+    },
   ];
 
   return (
