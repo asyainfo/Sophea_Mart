@@ -5,8 +5,15 @@ import Field from "../ui/Field";
 import Button from "../ui/Button";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
-export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
-  const { login, sendPasswordReset } = useAuth();
+// Added onSwitchForgot to the modal's props
+export default function LoginModal({
+  open,
+  onClose,
+  onSwitchRegister,
+  onSwitchForgot,
+  toast,
+}) {
+  const { login } = useAuth(); // Cleaned up unused sendPasswordReset
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,20 +26,6 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
       onClose();
     } else {
       toast("Invalid email or password.", "error");
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    if (!email) {
-      toast("Please enter your email address first.", "error");
-      return;
-    }
-
-    const success = await sendPasswordReset(email);
-    if (success) {
-      toast("Check your email for the reset link!");
-    } else {
-      toast("Error sending reset link.", "error");
     }
   };
 
@@ -107,7 +100,7 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
         }}
       >
         <span
-          onClick={handleForgotPassword}
+          onClick={onSwitchForgot} // Updated to switch to the Forgot Password Modal
           style={{
             fontSize: "13px",
             color: "#0066FF",
