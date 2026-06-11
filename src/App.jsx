@@ -5,8 +5,6 @@ import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 import { useAuth } from "./hooks/useAuth";
 
-import HeroBanner from "./components/ui/HeroBanner";
-
 import HomePage from "./pages/HomePage";
 import AdminDashboard from "./pages/AdminDashboard";
 import Cart from "./pages/Cart";
@@ -32,9 +30,6 @@ function MainApp() {
   // Check if the current URL starts with "/admin"
   const isAdminPage = location.pathname.startsWith("/admin");
 
-  // Check if the user is exactly on the main homepage "/"
-  const isHomePage = location.pathname === "/";
-
   return (
     <>
       {/* 1. The Navbar shows everywhere EXCEPT on the Admin Dashboard */}
@@ -46,21 +41,18 @@ function MainApp() {
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 pt-6">
-        {/* 2. Hero Banner safely placed here, only showing on the homepage */}
-        {isHomePage && <HeroBanner />}
-
+      <main className="max-w-7xl mx-auto">
         <Routes>
           <Route path="/order-history" element={<OrderHistory />} />
 
-          {/* 3. Public Routes */}
+          {/* 2. Public Routes */}
           <Route path="/" element={<HomePage />} />
           <Route
             path="/cart"
             element={<Cart onCheckout={() => setCheckoutOpen(true)} />}
           />
 
-          {/* 4. Admin Route */}
+          {/* 3. Admin Route - FIXED: Registered globally to resolve route resolution issues */}
           <Route path="/admin/*" element={<AdminDashboard />} />
         </Routes>
       </main>
@@ -79,6 +71,7 @@ function MainApp() {
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
         toast={toast}
+        /* ADDED THIS SWITCH */
         onSwitchRegister={() => {
           setLoginOpen(false);
           setRegisterOpen(true);
@@ -89,6 +82,7 @@ function MainApp() {
         open={registerOpen}
         onClose={() => setRegisterOpen(false)}
         toast={toast}
+        /* ADDED THIS SWITCH */
         onSwitchLogin={() => {
           setRegisterOpen(false);
           setLoginOpen(true);
