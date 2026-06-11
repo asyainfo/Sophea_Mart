@@ -9,7 +9,6 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = async (userId) => {
     try {
-      // Changed .single() to .maybeSingle() to fix the coercion error
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -17,8 +16,6 @@ export function AuthProvider({ children }) {
         .maybeSingle();
 
       if (error) throw error;
-
-      // If data is null, it just means no profile exists yet for this user
       setProfile(data);
     } catch (err) {
       console.error("Error fetching profile:", err.message);
@@ -27,7 +24,6 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -35,7 +31,6 @@ export function AuthProvider({ children }) {
       }
     });
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -74,8 +69,39 @@ export function AuthProvider({ children }) {
     setProfile(null);
   };
 
+  // Forget Password
+  const sendPasswordReset = async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
+    if (error) {
+      console.error("Error sending reset email:", error.message);
+      return false;
+    }
+    return true;
+  };
+
+  const updatePassword = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      console.error("Error updating password:", error.message);
+      return false;
+    }
+    return true;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, login, logout, register }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        login,
+        logout,
+        register,
+        sendPasswordReset,
+        updatePassword,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

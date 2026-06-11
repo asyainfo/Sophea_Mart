@@ -3,11 +3,10 @@ import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import Field from "../ui/Field";
 import Button from "../ui/Button";
-// 1. Swapped back to 'fi' (Feather Icons) for the thin, outlined look
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
-  const { login } = useAuth();
+  const { login, sendPasswordReset } = useAuth();
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -23,12 +22,28 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast("Please enter your email address first.", "error");
+      return;
+    }
+
+    const success = await sendPasswordReset(email);
+    if (success) {
+      toast("Check your email for the reset link!");
+    } else {
+      toast("Error sending reset link.", "error");
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Sign in to Small Mart">
-      <Field label="Email" value={email} onChange={setEmail} type="email" />
-
-      {/* 2. Cleaned Password Field to perfectly match your Register modal */}
       <div style={{ marginBottom: "16px" }}>
+        <Field label="Email" value={email} onChange={setEmail} type="email" />
+      </div>
+
+      {/* Password Field */}
+      <div style={{ marginBottom: "8px" }}>
         <label
           style={{
             display: "block",
@@ -82,6 +97,26 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
             {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
           </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: "20px",
+        }}
+      >
+        <span
+          onClick={handleForgotPassword}
+          style={{
+            fontSize: "13px",
+            color: "#0066FF",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          Forgot Password?
+        </span>
       </div>
 
       <Button onClick={submit} full>
