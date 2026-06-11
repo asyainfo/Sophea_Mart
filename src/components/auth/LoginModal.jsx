@@ -22,7 +22,7 @@ export default function LoginModal({
     const success = await login(email, pw);
 
     if (success) {
-      toast("Welcome back! 👋");
+      toast("Welcome back!");
       onClose();
     } else {
       toast("Invalid email or password.", "error");

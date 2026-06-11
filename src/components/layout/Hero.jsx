@@ -1,14 +1,21 @@
 import { useState } from "react";
-// 1. Added FiGrid to the imports for the "All" icon
 import {
   FiSearch,
-  FiCoffee,
   FiPackage,
   FiShoppingBag,
   FiGrid,
-  FiHome,
+  FiScissors,
+  FiLayers,
 } from "react-icons/fi";
-import { FaBaby } from "react-icons/fa";
+import {
+  FaBaby,
+  FaDollyFlatbed,
+  FaGulp,
+  FaShower,
+  FaAirFreshener,
+  FaTools,
+} from "react-icons/fa";
+import { FaEyeDropper, FaMortarPestle } from "react-icons/fa6";
 
 export default function Hero({
   search,
@@ -19,30 +26,53 @@ export default function Hero({
   const [focused, setFocused] = useState(false);
 
   const categories = [
-    // 2. Added the "All" category object to the top of the list
     {
       name: "All",
       icon: <FiGrid size={16} />,
     },
     {
-      name: "Drinks",
-      icon: <FiCoffee size={16} />,
+      name: "ភេសជ្ជៈ",
+      icon: <FaGulp size={16} />,
     },
     {
-      name: "Ingredients",
-      icon: <FiPackage size={16} />,
+      name: "គ្រឿងផ្សំ",
+      icon: <FaMortarPestle size={16} />,
     },
     {
-      name: "Snacks",
+      name: "អាហារសម្រន់",
       icon: <FiShoppingBag size={16} />,
     },
     {
-      name: "Baby Needs",
+      name: "សម្ភារៈទារក",
       icon: <FaBaby size={16} />,
     },
     {
+      name: "សាប៊ូកក់សក់",
+      icon: <FaShower size={16} />,
+    },
+    {
+      name: "គ្រឿងសម្អាង",
+      icon: <FaAirFreshener size={16} />,
+    },
+    {
+      name: "ផលិតផលថែរក្សាស្បែក",
+      icon: <FaEyeDropper size={16} />,
+    },
+    {
+      name: "គ្រឿងតុបតែងសក់",
+      icon: <FiScissors size={16} />,
+    },
+    {
       name: "គ្រឿងសំណង់",
-      icon: <FiHome size={16} />,
+      icon: <FaTools ssize={16} />,
+    },
+    {
+      name: "ផលិតផលលក់ដុំ",
+      icon: <FiLayers size={16} />,
+    },
+    {
+      name: "សម្ភារៈទូទៅ",
+      icon: <FaDollyFlatbed size={16} />,
     },
   ];
 
