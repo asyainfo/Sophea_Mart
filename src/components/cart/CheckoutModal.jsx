@@ -237,9 +237,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
               >
                 ABA Bank
               </div>
-              <div style={{ fontSize: 13, color: "#6B7280" }}>
-                Small Mart Store
-              </div>
+              <div style={{ fontSize: 13, color: "#6B7280" }}>Sophea Mart</div>
             </div>
 
             <div
