@@ -52,12 +52,13 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
             type={showPassword ? "text" : "password"}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
+            placeholder="Password"
             style={{
               width: "100%",
               padding: "10px 12px",
-              paddingRight: "40px", // Leaves empty space so text doesn't type over the icon
-              borderRadius: "8px", // Gives the nice rounded corners
-              border: "1px solid #d1d5db", // Light gray border to match Email field
+              paddingRight: "40px",
+              borderRadius: "8px",
+              border: "1px solid #d1d5db",
               boxSizing: "border-box",
               fontSize: "14px",
               outline: "none",
@@ -72,13 +73,13 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
             onClick={() => setShowPassword(!showPassword)}
             style={{
               position: "absolute",
-              right: "12px", // Pinned inside the box on the right
+              right: "12px",
               top: "50%",
-              transform: "translateY(-50%)", // Perfectly centers it vertically
+              transform: "translateY(-50%)",
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              color: "#9ca3af", // Soft gray icon color
+              color: "#9ca3af",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

@@ -44,6 +44,7 @@ export default function LoginModal({ open, onClose, onSwitchRegister, toast }) {
         <div style={{ position: "relative" }}>
           <input
             type={showPassword ? "text" : "password"}
+            placeholder="Password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             style={{
