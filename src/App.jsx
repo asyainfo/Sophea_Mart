@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { FiShoppingCart } from "react-icons/fi"; // Added icon
 
 // Contexts
 import { AuthProvider } from "./context/AuthContext";
 import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 import { useAuth } from "./hooks/useAuth";
+import { useCart } from "./hooks/useCart"; // Added cart hook
 
 // Pages
 import HomePage from "./pages/HomePage";
@@ -28,6 +30,9 @@ function MainApp() {
   const { profile } = useAuth();
   const { toasts, show: toast } = useToast();
   const location = useLocation();
+
+  // Bring in the cart count
+  const { count = 0 } = useCart();
 
   // Modal States
   const [loginOpen, setLoginOpen] = useState(false);
@@ -61,6 +66,57 @@ function MainApp() {
           <Route path="/admin/*" element={<AdminDashboard />} />
         </Routes>
       </main>
+
+      {/* --- THE NEW STICKY CART --- */}
+      {!isAdminPage && count > 0 && (
+        <button
+          onClick={() => setCartOpen(true)}
+          style={{
+            position: "fixed",
+            bottom: "30px",
+            right: "30px",
+            zIndex: 99,
+            background: "#2563EB",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: "50px",
+            padding: "16px 24px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            fontSize: "16px",
+            fontWeight: "700",
+            cursor: "pointer",
+            boxShadow: "0 10px 25px rgba(37, 99, 235, 0.35)",
+            transition: "all 0.3s ease",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.transform = "scale(1.05) translateY(-5px)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.transform = "scale(1) translateY(0)")
+          }
+        >
+          <FiShoppingCart size={22} />
+          <span>Checkout</span>
+          <div
+            style={{
+              background: "#ffffff",
+              color: "#2563EB",
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "14px",
+              fontWeight: "600",
+            }}
+          >
+            {count}
+          </div>
+        </button>
+      )}
 
       <CartDrawer
         isOpen={cartOpen}

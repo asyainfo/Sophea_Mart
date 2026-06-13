@@ -16,7 +16,8 @@ const inputStyle = {
 
 export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Snacks");
+  // DEFAULT CATEGORY: Matches the first item in your Supabase ENUM list
+  const [category, setCategory] = useState("ភេសជ្ជៈ");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
   const [sizes, setSizes] = useState("");
@@ -28,7 +29,8 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   useEffect(() => {
     if (product) {
       setName(product.name || "");
-      setCategory(product.category || "Snacks");
+      // FALLBACK CATEGORY: Ensures edits don't crash if category is missing
+      setCategory(product.category || "ភេសជ្ជៈ");
       setPrice(product.price?.toString() || "");
       setStock(product.stock?.toString() || "");
       setSizes(product.sizes || "");
@@ -41,7 +43,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
       setImageFile(null);
     } else {
       setName("");
-      setCategory("Snacks");
+      setCategory("ភេសជ្ជៈ");
       setPrice("");
       setStock("");
       setSizes("");
@@ -62,20 +64,27 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsUploading(true);
+
     try {
       let finalImageUrl = product?.image || "";
+
       if (imageFile) {
         const fileExt = imageFile.name.split(".").pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
         const { error: uploadError } = await supabase.storage
           .from("product-images")
           .upload(fileName, imageFile);
+
         if (uploadError) throw uploadError;
+
         const { data } = supabase.storage
           .from("product-images")
           .getPublicUrl(fileName);
+
         finalImageUrl = data.publicUrl;
       }
+
       onSave({
         name,
         category,
@@ -152,6 +161,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             </div>
           </div>
         </div>
+
         <div>
           <label style={{ fontSize: 13, fontWeight: 600 }}>Product Name</label>
           <input
@@ -161,6 +171,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             onChange={(e) => setName(e.target.value)}
           />
         </div>
+
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
         >
@@ -171,11 +182,18 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              <option value="Snacks">Snacks</option>
-              <option value="Drinks">Drinks</option>
-              <option value="Ingredients">Ingredients</option>
-              <option value="Baby Needs">Baby Needs</option>
+              {/* MASTER CATEGORY LIST: Values strictly match Supabase ENUMs */}
+              <option value="ភេសជ្ជៈ">ភេសជ្ជៈ</option>
+              <option value="អាហារសម្រន់">អាហារសម្រន់</option>
+              <option value="សម្ភារៈទារក">សម្ភារៈទារក</option>
+              <option value="គ្រឿងផ្សំ">គ្រឿងផ្សំ</option>
               <option value="គ្រឿងសំណង់">គ្រឿងសំណង់</option>
+              <option value="សាប៊ូកក់សក់">សាប៊ូកក់សក់</option>
+              <option value="គ្រឿងសម្អាង">គ្រឿងសម្អាង</option>
+              <option value="ផលិតផលថែរក្សាស្បែក">ផលិតផលថែរក្សាស្បែក</option>
+              <option value="គ្រឿងតុបតែងសក់">គ្រឿងតុបតែងសក់</option>
+              <option value="ផលិតផលលក់ដុំ">ផលិតផលលក់ដុំ</option>
+              <option value="សម្ភារៈទូទៅ">សម្ភារៈទូទៅ</option>
             </select>
           </div>
           <div>
@@ -190,6 +208,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             />
           </div>
         </div>
+
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
         >
@@ -214,6 +233,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             />
           </div>
         </div>
+
         <div>
           <label style={{ fontSize: 13, fontWeight: 600 }}>Description</label>
           <textarea
@@ -222,6 +242,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
+
         <Button full type="submit" disabled={isUploading}>
           {isUploading
             ? "Uploading..."

@@ -141,26 +141,54 @@ export default function AdminDashboard() {
   // --- PRODUCT CRUD FUNCTIONS ---
   const handleAddProduct = async (productData) => {
     try {
-      const { error } = await supabase.from("products").insert([productData]);
+      // Step 1: Prevent NaN from crashing the database
+      const safeData = {
+        ...productData,
+        price: productData.price || 0,
+        stock: productData.stock || 0,
+      };
+
+      const { error } = await supabase.from("products").insert([safeData]);
+
       if (error) throw error;
+
       toast("Product added successfully");
       fetchProducts();
     } catch (error) {
-      toast("Failed to add product", "error");
+      // Step 2: Turn the alarm bells on
+      console.error("SUPABASE INSERT ERROR:", error);
+      toast(
+        `Failed to add product: ${error.message || "Check console"}`,
+        "error",
+      );
     }
   };
 
   const handleUpdateProduct = async (id, productData) => {
     try {
+      // Step 1: Prevent NaN from crashing the database
+      const safeData = {
+        ...productData,
+        price: productData.price || 0,
+        stock: productData.stock || 0,
+      };
+
       const { error } = await supabase
         .from("products")
-        .update(productData)
+        .update(safeData)
         .eq("id", id);
+
       if (error) throw error;
+
       toast("Product updated successfully");
       fetchProducts();
     } catch (error) {
-      toast("Failed to update product", "error");
+      // Step 2: Turn the alarm bells on
+      console.error("SUPABASE UPDATE ERROR:", error);
+      toast(
+        `Failed to update product: ${error.message || "Check console"}`,
+        "error",
+      );
     }
   };
 
@@ -173,9 +201,11 @@ export default function AdminDashboard() {
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
+
       toast(`${name} deleted`, "error");
       fetchProducts();
     } catch (error) {
+      console.error("SUPABASE DELETE ERROR:", error);
       toast("Failed to delete product", "error");
     }
   };
