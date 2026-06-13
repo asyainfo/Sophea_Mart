@@ -141,7 +141,7 @@ export default function AdminDashboard() {
   // --- PRODUCT CRUD FUNCTIONS ---
   const handleAddProduct = async (productData) => {
     try {
-      // Step 1: Prevent NaN from crashing the database
+      // Prevent NaN from crashing the database
       const safeData = {
         ...productData,
         price: productData.price || 0,
@@ -149,24 +149,19 @@ export default function AdminDashboard() {
       };
 
       const { error } = await supabase.from("products").insert([safeData]);
-
       if (error) throw error;
 
       toast("Product added successfully");
       fetchProducts();
     } catch (error) {
-      // Step 2: Turn the alarm bells on
       console.error("SUPABASE INSERT ERROR:", error);
-      toast(
-        `Failed to add product: ${error.message || "Check console"}`,
-        "error",
-      );
+      toast(`Failed to add product: ${error.message}`, "error");
     }
   };
 
   const handleUpdateProduct = async (id, productData) => {
     try {
-      // Step 1: Prevent NaN from crashing the database
+      // Prevent NaN from crashing the database
       const safeData = {
         ...productData,
         price: productData.price || 0,
@@ -177,18 +172,13 @@ export default function AdminDashboard() {
         .from("products")
         .update(safeData)
         .eq("id", id);
-
       if (error) throw error;
 
       toast("Product updated successfully");
       fetchProducts();
     } catch (error) {
-      // Step 2: Turn the alarm bells on
       console.error("SUPABASE UPDATE ERROR:", error);
-      toast(
-        `Failed to update product: ${error.message || "Check console"}`,
-        "error",
-      );
+      toast(`Failed to update product: ${error.message}`, "error");
     }
   };
 
@@ -439,8 +429,6 @@ export default function AdminDashboard() {
               >
                 <h3 style={{ margin: 0 }}>Recent Orders</h3>
               </div>
-
-              {/* FIXED: Mobile Scroll Wrapper for Recent Orders */}
               <div style={{ overflowX: "auto" }}>
                 <table
                   style={{
@@ -537,7 +525,7 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* Products Tab */}
+        {/* Products Tab (FULLY RESPONSIVE LAYOUT) */}
         {tab === "products" && (
           <>
             <div
@@ -558,7 +546,8 @@ export default function AdminDashboard() {
                 <FiPlus size={14} /> Add Product
               </Button>
             </div>
-            <div style={{ display: "grid", gap: 14 }}>
+
+            <div style={{ display: "grid", gap: 16 }}>
               {dbProducts.map((p) => (
                 <div
                   key={p.id}
@@ -566,86 +555,109 @@ export default function AdminDashboard() {
                     background: "#fff",
                     border: `1px solid ${COLORS.border}`,
                     borderRadius: 16,
-                    padding: 18,
+                    padding: 16,
                     display: "flex",
+                    flexWrap: "wrap",
                     alignItems: "center",
+                    justifyContent: "space-between",
                     gap: 16,
                   }}
                 >
+                  {/* Left Side: Image and Details Group */}
                   <div
                     style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 14,
-                      background: "#f3f4f6",
-                      overflow: "hidden",
-                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 16,
+                      flex: "1 1 250px",
+                      minWidth: 0,
                     }}
                   >
-                    <img
-                      src={
-                        p.image?.startsWith("http") ? p.image : `/${p.image}`
-                      }
-                      alt={p.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                      onError={(e) => {
-                        e.target.src = "/placeholder.png";
-                      }}
-                    />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
+                        width: 64,
+                        height: 64,
+                        borderRadius: 12,
+                        background: "#f3f4f6",
+                        overflow: "hidden",
+                        flexShrink: 0,
                       }}
                     >
-                      <h4
+                      <img
+                        src={
+                          p.image?.startsWith("http") ? p.image : `/${p.image}`
+                        }
+                        alt={p.name}
                         style={{
-                          margin: 0,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
                         }}
-                      >
-                        {p.name}
-                      </h4>
-                      <span
-                        style={{
-                          background: "#f3f4f6",
-                          padding: "4px 8px",
-                          borderRadius: 20,
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: COLORS.muted,
-                          whiteSpace: "nowrap",
+                        onError={(e) => {
+                          e.target.src = "/placeholder.png";
                         }}
-                      >
-                        {p.category}
-                      </span>
+                      />
                     </div>
-                    <p
-                      style={{
-                        margin: "6px 0 0",
-                        color: COLORS.muted,
-                        fontSize: 14,
-                      }}
-                    >
-                      Stock: {p.stock} • Price: {fmt(p.price)}
-                    </p>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <h4
+                          style={{
+                            margin: 0,
+                            fontSize: 16,
+                            color: COLORS.text,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {p.name}
+                        </h4>
+                        <span
+                          style={{
+                            background: "#f3f4f6",
+                            padding: "4px 10px",
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: COLORS.muted,
+                          }}
+                        >
+                          {p.category}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          margin: "6px 0 0",
+                          color: COLORS.muted,
+                          fontSize: 14,
+                        }}
+                      >
+                        Stock:{" "}
+                        <span style={{ fontWeight: 600, color: COLORS.text }}>
+                          {p.stock}
+                        </span>{" "}
+                        • Price:{" "}
+                        <span style={{ fontWeight: 600, color: COLORS.text }}>
+                          {fmt(p.price)}
+                        </span>
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Right Side: Action Buttons Group */}
                   <div
                     style={{
                       display: "flex",
                       gap: 8,
-                      flexWrap: "wrap",
-                      justifyContent: "flex-end",
+                      flex: "0 0 auto",
                     }}
                   >
                     <Button
@@ -690,8 +702,6 @@ export default function AdminDashboard() {
             >
               <h3 style={{ margin: 0 }}>All Orders ({dbOrders.length})</h3>
             </div>
-
-            {/* FIXED: Mobile Scroll Wrapper for All Orders */}
             <div style={{ overflowX: "auto" }}>
               <table
                 style={{
