@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FiPackage, FiShoppingBag, FiArrowLeft } from "react-icons/fi";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
@@ -15,6 +15,9 @@ export default function OrderHistory() {
 
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  // --- NEW: Audio Reference for Mobile ---
+  const audioRef = useRef(null);
 
   // --- DATA FETCHING ---
   const fetchMyOrders = async () => {
@@ -46,6 +49,33 @@ export default function OrderHistory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // --- MOBILE AUDIO UNLOCKER ---
+  // This plays and pauses the audio silently on the first screen tap so iOS/Android trusts it
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioRef.current) {
+        audioRef.current
+          .play()
+          .then(() => {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          })
+          .catch((err) => console.log("Unlock pending...", err));
+      }
+      // Remove listeners once unlocked so it only happens once
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+
+    document.addEventListener("touchstart", unlockAudio);
+    document.addEventListener("click", unlockAudio);
+
+    return () => {
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+  }, []);
+
   // --- SUPABASE REALTIME LISTENER ---
   useEffect(() => {
     if (!user) return;
@@ -70,20 +100,17 @@ export default function OrderHistory() {
               "success",
             );
 
-            try {
-              const audio = new Audio("/customer-alert.mp3");
-              audio.volume = 1.0;
-              const playPromise = audio.play();
-
-              if (playPromise !== undefined) {
-                playPromise.catch((error) => {
+            // Play the trusted mobile audio element!
+            if (audioRef.current) {
+              audioRef.current.currentTime = 0; // Reset to beginning
+              audioRef.current
+                .play()
+                .catch((e) =>
                   console.warn(
-                    "Autoplay blocked. Customer needs to have clicked the screen at least once.",
-                  );
-                });
-              }
-            } catch (err) {
-              console.error("Audio playback failed", err);
+                    "Mobile browser still blocked audio. Ensure you tap the screen first.",
+                    e,
+                  ),
+                );
             }
           }
 
@@ -294,6 +321,14 @@ export default function OrderHistory() {
       )}
 
       <Toast toasts={toasts} />
+
+      {/* Hidden Mobile Audio Player */}
+      <audio
+        ref={audioRef}
+        src="/customer-alert.mp3"
+        preload="auto"
+        style={{ display: "none" }}
+      />
     </div>
   );
 }

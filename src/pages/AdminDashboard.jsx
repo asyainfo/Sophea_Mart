@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   FiBox,
   FiDollarSign,
@@ -44,9 +44,38 @@ export default function AdminDashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // Order Modal State
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  // --- NEW: Audio Reference for Mobile ---
+  const audioRef = useRef(null);
+
+  // --- Mobile Audio Unlocker ---
+  // This plays and pauses the audio silently on the first screen tap so iOS/Android trusts it
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioRef.current) {
+        audioRef.current
+          .play()
+          .then(() => {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          })
+          .catch((err) => console.log("Unlock pending...", err));
+      }
+      // Remove listeners once unlocked so it only happens once
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+
+    document.addEventListener("touchstart", unlockAudio);
+    document.addEventListener("click", unlockAudio);
+
+    return () => {
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+  }, []);
 
   // --- THE BOUNCER: KICK OUT NON-ADMINS ---
   useEffect(() => {
@@ -117,11 +146,9 @@ export default function AdminDashboard() {
 
   // --- REALTIME LISTENER ---
   useEffect(() => {
-    // 1. Initial Load
     fetchDashboardData();
     fetchProducts();
 
-    // 2. Setup Supabase Realtime for instant order alerts
     const channel = supabase
       .channel("admin-order-listener")
       .on(
@@ -130,38 +157,30 @@ export default function AdminDashboard() {
         (payload) => {
           console.log("New Realtime Order Detected:", payload.new);
 
-          // Trigger the toast pop-up
           toast(`🚨 New Order Received! ID: ${payload.new.id}`, "success");
 
-          // Play Sound: Using try/catch and promise handling to beat browser block
-          try {
-            const audio = new Audio("/admin-alert.wav");
-            audio.volume = 1.0;
-
-            const playPromise = audio.play();
-
-            if (playPromise !== undefined) {
-              playPromise.catch((error) => {
-                console.warn(
-                  "Browser blocked auto-play. The admin needs to click anywhere on the dashboard first before sounds will work.",
-                );
-              });
-            }
-          } catch (err) {
-            console.error("Audio file not found or failed to load");
+          // Play the trusted mobile audio element!
+          if (audioRef.current) {
+            audioRef.current.currentTime = 0; // Reset to beginning
+            audioRef.current
+              .play()
+              .catch((e) =>
+                console.log(
+                  "Mobile browser still blocked audio. Ensure you tap the screen first.",
+                  e,
+                ),
+              );
           }
 
-          // Immediately update the tables with the new order
           fetchDashboardData();
         },
       )
       .subscribe();
 
-    // Cleanup listener when closing dashboard
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []); // Only runs once on mount
+  }, []);
 
   // --- ORDER UPDATE FUNCTION ---
   const toggleOrderStatus = async (orderId, currentStatus) => {
@@ -878,6 +897,14 @@ export default function AdminDashboard() {
       )}
 
       <Toast toasts={toasts} />
+
+      {/* Hidden Mobile Audio Player */}
+      <audio
+        ref={audioRef}
+        src="/admin-alert.wav"
+        preload="auto"
+        style={{ display: "none" }}
+      />
     </div>
   );
 }
