@@ -575,7 +575,7 @@ export default function CheckoutModal({ open, onClose, toast }) {
                           src={
                             selectedBank === "ABA"
                               ? "/aba-logo.png"
-                              : "/acleda-logo.png"
+                              : "/logo-acleda.jpg"
                           }
                           alt={`${selectedBank} Pay`}
                           style={{
@@ -717,8 +717,8 @@ export default function CheckoutModal({ open, onClose, toast }) {
                       <img
                         src={
                           selectedBank === "ABA"
-                            ? "/IMG_5533.jpg"
-                            : "/acleda-qr.jpg"
+                            ? "/aba-qr.png"
+                            : "/acleda-qr.JPG"
                         }
                         alt={`${selectedBank} QR Code`}
                         style={{
