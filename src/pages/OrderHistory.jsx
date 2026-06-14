@@ -5,28 +5,22 @@ import { useAuth } from "../hooks/useAuth";
 import { fmt, fmtKHR } from "../utils/currency";
 import OrderDetailsModal from "../components/order/OrderDetailsModal";
 import Button from "../components/ui/Button";
+import { Toast, useToast } from "../components/ui/Toast";
 
 export default function OrderHistory() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { toasts, show: toast } = useToast();
 
-  // Modal State
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchMyOrders();
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
-
+  // --- DATA FETCHING ---
   const fetchMyOrders = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      // The Magic Query: Fetch only orders where user_id matches the logged-in user!
       const { data, error } = await supabase
         .from("Orders")
         .select("*")
@@ -42,7 +36,70 @@ export default function OrderHistory() {
     }
   };
 
-  // If the user isn't logged in, show a friendly prompt
+  // 1. Initial Load
+  useEffect(() => {
+    if (user) {
+      fetchMyOrders();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // --- SUPABASE REALTIME LISTENER ---
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`customer-orders-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "Orders",
+          filter: `user_id=eq.${user.id}`, // Only listen to THIS user's orders
+        },
+        (payload) => {
+          console.log("Customer Order Updated Realtime:", payload.new);
+
+          // If Admin marked order as "completed"
+          if (payload.new.status === "completed") {
+            toast(
+              `🎉 Good news! Order ${payload.new.id} is ready for pick-up!`,
+              "success",
+            );
+
+            try {
+              const audio = new Audio("/customer-alert.mp3");
+              audio.volume = 1.0;
+              const playPromise = audio.play();
+
+              if (playPromise !== undefined) {
+                playPromise.catch((error) => {
+                  console.warn(
+                    "Autoplay blocked. Customer needs to have clicked the screen at least once.",
+                  );
+                });
+              }
+            } catch (err) {
+              console.error("Audio playback failed", err);
+            }
+          }
+
+          // Refresh orders to update UI badges
+          fetchMyOrders();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, toast]);
+
+  // --- RENDER: UN-AUTHENTICATED STATE ---
   if (!loading && !user) {
     return (
       <div style={{ textAlign: "center", padding: "100px 20px" }}>
@@ -62,6 +119,7 @@ export default function OrderHistory() {
     );
   }
 
+  // --- RENDER: AUTHENTICATED STATE ---
   return (
     <div
       style={{ minHeight: "100vh", background: "#f9fafb", paddingBottom: 60 }}
@@ -105,13 +163,14 @@ export default function OrderHistory() {
         </div>
       </div>
 
-      {/* Orders List */}
+      {/* Orders List Container */}
       <div style={{ maxWidth: 800, margin: "-20px auto 0", padding: "0 20px" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 40 }}>
             Loading your orders...
           </div>
         ) : orders.length === 0 ? (
+          /* Empty State */
           <div
             style={{
               background: "white",
@@ -135,6 +194,7 @@ export default function OrderHistory() {
             </Button>
           </div>
         ) : (
+          /* Populated List */
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {orders.map((order) => (
               <div
@@ -201,7 +261,6 @@ export default function OrderHistory() {
                     >
                       {fmt(order.total_usd)}
                     </div>
-                    {/* FIXED: Passed total_usd to fmtKHR to prevent double-multiplying */}
                     <div style={{ fontSize: 13, color: "#9CA3AF" }}>
                       {fmtKHR(order.total_usd)}
                     </div>
@@ -222,7 +281,7 @@ export default function OrderHistory() {
         )}
       </div>
 
-      {/* Conditionally render your exact same modal! */}
+      {/* --- MODALS & ALERTS --- */}
       {selectedOrderId && (
         <OrderDetailsModal
           open={showOrderModal}
@@ -233,6 +292,8 @@ export default function OrderHistory() {
           orderId={selectedOrderId}
         />
       )}
+
+      <Toast toasts={toasts} />
     </div>
   );
 }

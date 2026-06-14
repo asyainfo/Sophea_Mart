@@ -115,10 +115,53 @@ export default function AdminDashboard() {
     }
   };
 
+  // --- REALTIME LISTENER ---
   useEffect(() => {
+    // 1. Initial Load
     fetchDashboardData();
     fetchProducts();
-  }, []);
+
+    // 2. Setup Supabase Realtime for instant order alerts
+    const channel = supabase
+      .channel("admin-order-listener")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "Orders" },
+        (payload) => {
+          console.log("New Realtime Order Detected:", payload.new);
+
+          // Trigger the toast pop-up
+          toast(`🚨 New Order Received! ID: ${payload.new.id}`, "success");
+
+          // Play Sound: Using try/catch and promise handling to beat browser block
+          try {
+            const audio = new Audio("/admin-alert.wav");
+            audio.volume = 1.0;
+
+            const playPromise = audio.play();
+
+            if (playPromise !== undefined) {
+              playPromise.catch((error) => {
+                console.warn(
+                  "Browser blocked auto-play. The admin needs to click anywhere on the dashboard first before sounds will work.",
+                );
+              });
+            }
+          } catch (err) {
+            console.error("Audio file not found or failed to load");
+          }
+
+          // Immediately update the tables with the new order
+          fetchDashboardData();
+        },
+      )
+      .subscribe();
+
+    // Cleanup listener when closing dashboard
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []); // Only runs once on mount
 
   // --- ORDER UPDATE FUNCTION ---
   const toggleOrderStatus = async (orderId, currentStatus) => {
@@ -141,7 +184,6 @@ export default function AdminDashboard() {
   // --- PRODUCT CRUD FUNCTIONS ---
   const handleAddProduct = async (productData) => {
     try {
-      // Prevent NaN from crashing the database
       const safeData = {
         ...productData,
         price: productData.price || 0,
@@ -161,7 +203,6 @@ export default function AdminDashboard() {
 
   const handleUpdateProduct = async (id, productData) => {
     try {
-      // Prevent NaN from crashing the database
       const safeData = {
         ...productData,
         price: productData.price || 0,
