@@ -14,10 +14,37 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 
+// MASTER CATEGORY LIST: Matches your Supabase ENUM and Hero.jsx exactly
+const CATEGORIES = [
+  "ភេសជ្ជៈ",
+  "ជម្រើសល្អៗបំផុត",
+  "ការ៉េម",
+  "គ្រឿងផ្សំ",
+  "អាហារសម្រន់",
+  "សម្ភារៈទារក",
+  "ឱសថស្ថាន",
+  "ការថែទាំខ្លួនប្រាណ",
+  "ថែរក្សាសម្រស់",
+  "សាប៊ូកក់សក់",
+  "គ្រឿងសម្អាង",
+  "ផលិតផលថែរក្សាស្បែក",
+  "គ្រឿងតុបតែងសក់",
+  "អេឡិចត្រូនិក",
+  "គ្រឿងសំណង់",
+  "ផលិតផលលក់ដុំ",
+  "ម្សៅ",
+  "បរិក្ខារផ្ទះបាយ",
+  "កាហ្វេ និងតែ",
+  "ឧបករណ៍ចាំបាច់នានា",
+  "សម្លៀកបំពាក់",
+  "ទឹកដោះគោ",
+  "សម្ភារៈទូទៅ",
+];
+
 export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [name, setName] = useState("");
-  // DEFAULT CATEGORY: Matches the first item in your Supabase ENUM list
-  const [category, setCategory] = useState("ភេសជ្ជៈ");
+  // DEFAULT CATEGORY: Automatically sets to the first item ("ភេសជ្ជៈ")
+  const [category, setCategory] = useState(CATEGORIES[0]);
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
   const [sizes, setSizes] = useState("");
@@ -30,7 +57,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     if (product) {
       setName(product.name || "");
       // FALLBACK CATEGORY: Ensures edits don't crash if category is missing
-      setCategory(product.category || "ភេសជ្ជៈ");
+      setCategory(product.category || CATEGORIES[0]);
       setPrice(product.price?.toString() || "");
       setStock(product.stock?.toString() || "");
       setSizes(product.sizes || "");
@@ -43,7 +70,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
       setImageFile(null);
     } else {
       setName("");
-      setCategory("ភេសជ្ជៈ");
+      setCategory(CATEGORIES[0]);
       setPrice("");
       setStock("");
       setSizes("");
@@ -182,18 +209,12 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              {/* MASTER CATEGORY LIST: Values strictly match Supabase ENUMs */}
-              <option value="ភេសជ្ជៈ">ភេសជ្ជៈ</option>
-              <option value="អាហារសម្រន់">អាហារសម្រន់</option>
-              <option value="សម្ភារៈទារក">សម្ភារៈទារក</option>
-              <option value="គ្រឿងផ្សំ">គ្រឿងផ្សំ</option>
-              <option value="គ្រឿងសំណង់">គ្រឿងសំណង់</option>
-              <option value="សាប៊ូកក់សក់">សាប៊ូកក់សក់</option>
-              <option value="គ្រឿងសម្អាង">គ្រឿងសម្អាង</option>
-              <option value="ផលិតផលថែរក្សាស្បែក">ផលិតផលថែរក្សាស្បែក</option>
-              <option value="គ្រឿងតុបតែងសក់">គ្រឿងតុបតែងសក់</option>
-              <option value="ផលិតផលលក់ដុំ">ផលិតផលលក់ដុំ</option>
-              <option value="សម្ភារៈទូទៅ">សម្ភារៈទូទៅ</option>
+              {/* Dynamically generating the dropdown options from the CATEGORIES array */}
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
             </select>
           </div>
           <div>

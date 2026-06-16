@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   FiBox,
   FiDollarSign,
@@ -20,7 +20,7 @@ import { fmt, fmtKHR } from "../utils/currency";
 
 import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
-import { Toast, useToast } from "../components/ui/Toast";
+import { useToast } from "../components/ui/Toast";
 
 const COLORS = {
   primary: "#0066FF",
@@ -38,7 +38,7 @@ const tableCell = {
 export default function AdminDashboard() {
   const { logout, profile } = useAuth();
   const { count = 0 } = useCart();
-  const { toasts, show: toast } = useToast();
+  const { show: toast } = useToast(); // Kept the function to trigger toasts, but removed the local array
 
   const [tab, setTab] = useState("overview");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -46,36 +46,6 @@ export default function AdminDashboard() {
 
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
-
-  // --- NEW: Audio Reference for Mobile ---
-  const audioRef = useRef(null);
-
-  // --- Mobile Audio Unlocker ---
-  // This plays and pauses the audio silently on the first screen tap so iOS/Android trusts it
-  useEffect(() => {
-    const unlockAudio = () => {
-      if (audioRef.current) {
-        audioRef.current
-          .play()
-          .then(() => {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-          })
-          .catch((err) => console.log("Unlock pending...", err));
-      }
-      // Remove listeners once unlocked so it only happens once
-      document.removeEventListener("touchstart", unlockAudio);
-      document.removeEventListener("click", unlockAudio);
-    };
-
-    document.addEventListener("touchstart", unlockAudio);
-    document.addEventListener("click", unlockAudio);
-
-    return () => {
-      document.removeEventListener("touchstart", unlockAudio);
-      document.removeEventListener("click", unlockAudio);
-    };
-  }, []);
 
   // --- THE BOUNCER: KICK OUT NON-ADMINS ---
   useEffect(() => {
@@ -144,34 +114,19 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- REALTIME LISTENER ---
+  // --- SILENT REALTIME LISTENER FOR UI REFRESH ---
   useEffect(() => {
     fetchDashboardData();
     fetchProducts();
 
+    // This listener ONLY updates the tables/stats.
+    // The Audio and Toast alerts are now handled by GlobalAlertListener.jsx!
     const channel = supabase
-      .channel("admin-order-listener")
+      .channel("admin-dashboard-refresh")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "Orders" },
-        (payload) => {
-          console.log("New Realtime Order Detected:", payload.new);
-
-          toast(`🚨 New Order Received! ID: ${payload.new.id}`, "success");
-
-          // Play the trusted mobile audio element!
-          if (audioRef.current) {
-            audioRef.current.currentTime = 0; // Reset to beginning
-            audioRef.current
-              .play()
-              .catch((e) =>
-                console.log(
-                  "Mobile browser still blocked audio. Ensure you tap the screen first.",
-                  e,
-                ),
-              );
-          }
-
+        { event: "*", schema: "public", table: "Orders" },
+        () => {
           fetchDashboardData();
         },
       )
@@ -585,7 +540,7 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* Products Tab (FULLY RESPONSIVE LAYOUT) */}
+        {/* Products Tab */}
         {tab === "products" && (
           <>
             <div
@@ -895,16 +850,6 @@ export default function AdminDashboard() {
           orderId={selectedOrderId}
         />
       )}
-
-      <Toast toasts={toasts} />
-
-      {/* Hidden Mobile Audio Player */}
-      <audio
-        ref={audioRef}
-        src="/admin-alert.wav"
-        preload="auto"
-        style={{ display: "none" }}
-      />
     </div>
   );
 }

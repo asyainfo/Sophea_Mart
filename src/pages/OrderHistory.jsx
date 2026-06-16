@@ -1,23 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { FiPackage, FiShoppingBag, FiArrowLeft } from "react-icons/fi";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { fmt, fmtKHR } from "../utils/currency";
 import OrderDetailsModal from "../components/order/OrderDetailsModal";
 import Button from "../components/ui/Button";
-import { Toast, useToast } from "../components/ui/Toast";
 
 export default function OrderHistory() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { toasts, show: toast } = useToast();
 
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
-
-  // --- NEW: Audio Reference for Mobile ---
-  const audioRef = useRef(null);
 
   // --- DATA FETCHING ---
   const fetchMyOrders = async () => {
@@ -49,39 +44,14 @@ export default function OrderHistory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // --- MOBILE AUDIO UNLOCKER ---
-  // This plays and pauses the audio silently on the first screen tap so iOS/Android trusts it
-  useEffect(() => {
-    const unlockAudio = () => {
-      if (audioRef.current) {
-        audioRef.current
-          .play()
-          .then(() => {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-          })
-          .catch((err) => console.log("Unlock pending...", err));
-      }
-      // Remove listeners once unlocked so it only happens once
-      document.removeEventListener("touchstart", unlockAudio);
-      document.removeEventListener("click", unlockAudio);
-    };
-
-    document.addEventListener("touchstart", unlockAudio);
-    document.addEventListener("click", unlockAudio);
-
-    return () => {
-      document.removeEventListener("touchstart", unlockAudio);
-      document.removeEventListener("click", unlockAudio);
-    };
-  }, []);
-
-  // --- SUPABASE REALTIME LISTENER ---
+  // --- SILENT SUPABASE REALTIME LISTENER ---
+  // This just updates the UI list if an order changes.
+  // Sounds and Toasts are handled by GlobalAudioAlerts.jsx!
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel(`customer-orders-${user.id}`)
+      .channel(`customer-orders-refresh-${user.id}`)
       .on(
         "postgres_changes",
         {
@@ -90,31 +60,8 @@ export default function OrderHistory() {
           table: "Orders",
           filter: `user_id=eq.${user.id}`, // Only listen to THIS user's orders
         },
-        (payload) => {
-          console.log("Customer Order Updated Realtime:", payload.new);
-
-          // If Admin marked order as "completed"
-          if (payload.new.status === "completed") {
-            toast(
-              `🎉 Good news! Order ${payload.new.id} is ready for pick-up!`,
-              "success",
-            );
-
-            // Play the trusted mobile audio element!
-            if (audioRef.current) {
-              audioRef.current.currentTime = 0; // Reset to beginning
-              audioRef.current
-                .play()
-                .catch((e) =>
-                  console.warn(
-                    "Mobile browser still blocked audio. Ensure you tap the screen first.",
-                    e,
-                  ),
-                );
-            }
-          }
-
-          // Refresh orders to update UI badges
+        () => {
+          // Refresh orders to update UI badges automatically
           fetchMyOrders();
         },
       )
@@ -124,7 +71,7 @@ export default function OrderHistory() {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, toast]);
+  }, [user]);
 
   // --- RENDER: UN-AUTHENTICATED STATE ---
   if (!loading && !user) {
@@ -308,7 +255,7 @@ export default function OrderHistory() {
         )}
       </div>
 
-      {/* --- MODALS & ALERTS --- */}
+      {/* --- MODALS --- */}
       {selectedOrderId && (
         <OrderDetailsModal
           open={showOrderModal}
@@ -319,16 +266,6 @@ export default function OrderHistory() {
           orderId={selectedOrderId}
         />
       )}
-
-      <Toast toasts={toasts} />
-
-      {/* Hidden Mobile Audio Player */}
-      <audio
-        ref={audioRef}
-        src="/customer-alert.mp3"
-        preload="auto"
-        style={{ display: "none" }}
-      />
     </div>
   );
 }

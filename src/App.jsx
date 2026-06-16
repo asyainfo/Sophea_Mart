@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { FiShoppingCart } from "react-icons/fi"; // Added icon
+import { FiShoppingCart } from "react-icons/fi";
 
 // Contexts
 import { AuthProvider } from "./context/AuthContext";
 import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 import { useAuth } from "./hooks/useAuth";
-import { useCart } from "./hooks/useCart"; // Added cart hook
+import { useCart } from "./hooks/useCart";
+
+// Global Alerts (The Unstoppable Listener)
+import GlobalAudioAlerts from "./components/GlobalAudioAlerts";
 
 // Pages
 import HomePage from "./pages/HomePage";
@@ -46,6 +49,10 @@ function MainApp() {
 
   return (
     <>
+      {/* 1. THIS IS THE FIX: The Global Listener runs silently on every page */}
+      <GlobalAudioAlerts />
+
+      {/* Navbar hides on Admin pages */}
       {!isAdminPage && (
         <Navbar
           onLogin={() => setLoginOpen(true)}
@@ -54,6 +61,7 @@ function MainApp() {
         />
       )}
 
+      {/* Main Page Routing */}
       <main className="max-w-7xl mx-auto px-4 pt-6">
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -67,7 +75,7 @@ function MainApp() {
         </Routes>
       </main>
 
-      {/* --- THE NEW STICKY CART --- */}
+      {/* --- STICKY CART (Hides on Admin pages or if empty) --- */}
       {!isAdminPage && count > 0 && (
         <button
           onClick={() => setCartOpen(true)}
@@ -118,6 +126,7 @@ function MainApp() {
         </button>
       )}
 
+      {/* --- MODALS AND DRAWERS --- */}
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
@@ -167,6 +176,7 @@ function MainApp() {
         toast={toast}
       />
 
+      {/* Global Toast Notifications Container */}
       <Toast toasts={toasts} />
     </>
   );
