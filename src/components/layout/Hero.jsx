@@ -14,8 +14,24 @@ import {
   FaShower,
   FaAirFreshener,
   FaTools,
+  FaEyeDropper,
+  FaMortarPestle,
+  FaCalendarCheck,
 } from "react-icons/fa";
-import { FaEyeDropper, FaMortarPestle } from "react-icons/fa6";
+import {
+  BiSolidCoffeeBean,
+  BiHeart,
+  BiSolidBolt,
+  BiSolidBowlHot,
+  BiSolidFirstAid,
+  BiSolidPizza,
+  BiSolidSpa,
+  BiSolidMagicWand,
+} from "react-icons/bi";
+import { GiClothes } from "react-icons/gi";
+import { PiCowFill } from "react-icons/pi";
+import { GiFlour } from "react-icons/gi";
+import { FaIceCream, FaKitchenSet } from "react-icons/fa6";
 
 export default function Hero({
   search,
@@ -31,8 +47,16 @@ export default function Hero({
       icon: <FiGrid size={16} />,
     },
     {
+      name: "ជម្រើសល្អៗបំផុត",
+      icon: <BiHeart size={16} />,
+    },
+    {
       name: "ភេសជ្ជៈ",
       icon: <FaGulp size={16} />,
+    },
+    {
+      name: "ការ៉េម",
+      icon: <FaIceCream size={16} />,
     },
     {
       name: "គ្រឿងផ្សំ",
@@ -40,11 +64,23 @@ export default function Hero({
     },
     {
       name: "អាហារសម្រន់",
-      icon: <FiShoppingBag size={16} />,
+      icon: <BiSolidPizza size={16} />,
     },
     {
       name: "សម្ភារៈទារក",
       icon: <FaBaby size={16} />,
+    },
+    {
+      name: "ឱសថស្ថាន",
+      icon: <BiSolidFirstAid size={16} />,
+    },
+    {
+      name: "ការថែទាំខ្លួនប្រាណ",
+      icon: <BiSolidSpa size={16} />,
+    },
+    {
+      name: "ថែរក្សាសម្រស់",
+      icon: <BiSolidMagicWand size={16} />,
     },
     {
       name: "សាប៊ូកក់សក់",
@@ -63,12 +99,44 @@ export default function Hero({
       icon: <FiScissors size={16} />,
     },
     {
+      name: "អេឡិចត្រូនិក",
+      icon: <BiSolidBolt size={16} />,
+    },
+    {
       name: "គ្រឿងសំណង់",
       icon: <FaTools ssize={16} />,
     },
     {
       name: "ផលិតផលលក់ដុំ",
       icon: <FiLayers size={16} />,
+    },
+    {
+      name: "ម្សៅ",
+      icon: <GiFlour size={16} />,
+    },
+    {
+      name: "បរិក្ខារផ្ទះបាយ",
+      icon: <FaKitchenSet size={16} />,
+    },
+    {
+      name: "កាហ្វេ និងតែ",
+      icon: <BiSolidCoffeeBean size={16} />,
+    },
+    {
+      name: "អាហារកំប៉ុង",
+      icon: <BiSolidBowlHot size={16} />,
+    },
+    {
+      name: "ឧបករណ៍ចាំបាច់នានា",
+      icon: <FaCalendarCheck size={16} />,
+    },
+    {
+      name: "សម្លៀកបំពាក់",
+      icon: <GiClothes size={16} />,
+    },
+    {
+      name: "ទឹកដោះគោ",
+      icon: <PiCowFill size={16} />,
     },
     {
       name: "សម្ភារៈទូទៅ",
