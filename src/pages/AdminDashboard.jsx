@@ -5,11 +5,11 @@ import {
   FiUsers,
   FiShoppingCart,
   FiSettings,
-  FiEdit2,
-  FiTrash2,
   FiArrowLeft,
   FiLogOut,
   FiPlus,
+  FiImage,
+  FiX,
 } from "react-icons/fi";
 
 import { supabase } from "../services/supabase";
@@ -20,7 +20,7 @@ import { fmt, fmtKHR } from "../utils/currency";
 
 import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
-import { useToast } from "../components/ui/Toast";
+import ProductsTable from "../components/admin/ProductsTable";
 
 const COLORS = {
   primary: "#0066FF",
@@ -33,40 +33,47 @@ const COLORS = {
 const tableCell = {
   padding: "12px 16px",
   fontSize: 13,
+  verticalAlign: "middle",
+};
+
+// --- GLOBAL TOAST DISPATCHER ---
+const triggerGlobalToast = (message, type = "success") => {
+  window.dispatchEvent(
+    new CustomEvent("global-toast", { detail: { message, type } }),
+  );
 };
 
 export default function AdminDashboard() {
   const { logout, profile } = useAuth();
   const { count = 0 } = useCart();
-  const { show: toast } = useToast(); // Kept the function to trigger toasts, but removed the local array
 
   const [tab, setTab] = useState("overview");
+
+  // Modals State
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [receiptImage, setReceiptImage] = useState(null);
 
-  // --- THE BOUNCER: KICK OUT NON-ADMINS ---
-  useEffect(() => {
-    if (profile && profile.role !== "admin") {
-      toast("Access Denied: Admins only.", "error");
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
-    }
-  }, [profile, toast]);
-
-  // --- DATABASE STATE ---
+  // Database State
   const [dbOrders, setDbOrders] = useState([]);
   const [dbProducts, setDbProducts] = useState([]);
   const [dbRevenue, setDbRevenue] = useState(0);
   const [dbUsersCount, setDbUsersCount] = useState(0);
-  const [isLoadingDB, setIsLoadingDB] = useState(true);
 
-  // --- FETCH DATA FUNCTIONS ---
+  // Bouncer: Kick out non-admins
+  useEffect(() => {
+    if (profile && profile.role !== "admin") {
+      triggerGlobalToast("Access Denied: Admins only.", "error");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1500);
+    }
+  }, [profile]);
+
+  // --- DATA FETCHING ---
   const fetchDashboardData = async () => {
-    setIsLoadingDB(true);
     try {
       const { data: ordersData, error: ordersError } = await supabase
         .from("Orders")
@@ -93,9 +100,7 @@ export default function AdminDashboard() {
       setDbUsersCount(usersCount || 0);
     } catch (error) {
       console.error("Error fetching dashboard data:", error.message);
-      toast("Failed to load dashboard data", "error");
-    } finally {
-      setIsLoadingDB(false);
+      triggerGlobalToast("Failed to load dashboard data", "error");
     }
   };
 
@@ -110,25 +115,21 @@ export default function AdminDashboard() {
       setDbProducts(data || []);
     } catch (error) {
       console.error("Error fetching products:", error.message);
-      toast("Failed to load products", "error");
+      triggerGlobalToast("Failed to load products", "error");
     }
   };
 
-  // --- SILENT REALTIME LISTENER FOR UI REFRESH ---
+  // UI Refresh Listener
   useEffect(() => {
     fetchDashboardData();
     fetchProducts();
 
-    // This listener ONLY updates the tables/stats.
-    // The Audio and Toast alerts are now handled by GlobalAlertListener.jsx!
     const channel = supabase
       .channel("admin-dashboard-refresh")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "Orders" },
-        () => {
-          fetchDashboardData();
-        },
+        () => fetchDashboardData(),
       )
       .subscribe();
 
@@ -137,64 +138,102 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // --- ORDER UPDATE FUNCTION ---
-  const toggleOrderStatus = async (orderId, currentStatus) => {
+  // --- ACTIONS ---
+  // 🏆 1-CLICK BUTTON LOGIC + POINTS AWARD SYSTEM
+  const toggleOrderStatus = async (
+    orderId,
+    currentStatus,
+    orderUserId,
+    totalUsd,
+  ) => {
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
+
+    // Calculate points ($1.25 = 1 Point)
+    const pointsToAward = Math.floor((totalUsd || 0) / 1.25);
+
     try {
-      const { error } = await supabase
+      // 1. Update the order status in the database
+      const { error: orderError } = await supabase
         .from("Orders")
         .update({ status: newStatus })
         .eq("id", orderId);
 
-      if (error) throw error;
-      toast(`Order updated to ${newStatus}`);
+      if (orderError) throw orderError;
+
+      // 2. If marked completed, add points to the customer's profile
+      if (newStatus === "completed" && pointsToAward > 0) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("points")
+          .eq("id", orderUserId)
+          .single();
+
+        const currentPoints = profileData?.points || 0;
+        const newPointsTotal = currentPoints + pointsToAward;
+
+        await supabase
+          .from("profiles")
+          .update({ points: newPointsTotal })
+          .eq("id", orderUserId);
+
+        triggerGlobalToast(
+          `🎉 Order completed! ${pointsToAward} points added to customer.`,
+          "success",
+        );
+      }
+      // 3. If reverting back to pending, deduct the points
+      else if (newStatus === "pending" && pointsToAward > 0) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("points")
+          .eq("id", orderUserId)
+          .single();
+
+        const currentPoints = profileData?.points || 0;
+        const newPointsTotal = Math.max(0, currentPoints - pointsToAward); // Keep at least 0
+
+        await supabase
+          .from("profiles")
+          .update({ points: newPointsTotal })
+          .eq("id", orderUserId);
+
+        triggerGlobalToast(
+          `Order reverted to pending. Points deducted.`,
+          "info",
+        );
+      } else {
+        triggerGlobalToast(`Order updated to ${newStatus}`, "success");
+      }
+
       fetchDashboardData();
     } catch (error) {
-      console.error("Error updating status:", error.message);
-      toast("Failed to update status", "error");
+      console.error("Error updating status & points:", error.message);
+      triggerGlobalToast("Failed to update status", "error");
     }
   };
 
-  // --- PRODUCT CRUD FUNCTIONS ---
   const handleAddProduct = async (productData) => {
-    try {
-      const safeData = {
-        ...productData,
-        price: productData.price || 0,
-        stock: productData.stock || 0,
-      };
-
-      const { error } = await supabase.from("products").insert([safeData]);
-      if (error) throw error;
-
-      toast("Product added successfully");
-      fetchProducts();
-    } catch (error) {
-      console.error("SUPABASE INSERT ERROR:", error);
-      toast(`Failed to add product: ${error.message}`, "error");
+    const { error } = await supabase.from("products").insert([productData]);
+    if (error) {
+      triggerGlobalToast(`Failed to add product: ${error.message}`, "error");
+      throw error;
     }
+    triggerGlobalToast("Product added successfully!", "success");
+    fetchProducts();
   };
 
   const handleUpdateProduct = async (id, productData) => {
-    try {
-      const safeData = {
-        ...productData,
-        price: productData.price || 0,
-        stock: productData.stock || 0,
-      };
+    const { error } = await supabase
+      .from("products")
+      .update(productData)
+      .eq("id", id);
 
-      const { error } = await supabase
-        .from("products")
-        .update(safeData)
-        .eq("id", id);
-      if (error) throw error;
-
-      toast("Product updated successfully");
-      fetchProducts();
-    } catch (error) {
-      console.error("SUPABASE UPDATE ERROR:", error);
-      toast(`Failed to update product: ${error.message}`, "error");
+    if (error) {
+      triggerGlobalToast(`Failed to update product: ${error.message}`, "error");
+      throw error;
     }
+    triggerGlobalToast("Product updated successfully!", "success");
+    fetchProducts();
   };
 
   const handleDeleteProduct = async (id, name) => {
@@ -207,15 +246,15 @@ export default function AdminDashboard() {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
 
-      toast(`${name} deleted`, "error");
+      triggerGlobalToast(`${name} deleted!`, "success");
       fetchProducts();
     } catch (error) {
       console.error("SUPABASE DELETE ERROR:", error);
-      toast("Failed to delete product", "error");
+      triggerGlobalToast("Failed to delete product", "error");
     }
   };
 
-  // --- STATS ---
+  // --- COMPUTED STATS ---
   const stats = useMemo(
     () => [
       {
@@ -258,6 +297,7 @@ export default function AdminDashboard() {
         minHeight: "100vh",
         background: COLORS.background,
         fontFamily: "'Inter', sans-serif",
+        paddingBottom: 40,
       }}
     >
       {/* Navbar */}
@@ -388,7 +428,7 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
-        {/* Overview Tab */}
+        {/* --- OVERVIEW TAB --- */}
         {tab === "overview" && (
           <>
             <div
@@ -454,21 +494,26 @@ export default function AdminDashboard() {
                 >
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Order", "Date", "Items", "Total", "Status"].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            style={{
-                              ...tableCell,
-                              textAlign: "left",
-                              color: COLORS.muted,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ),
-                      )}
+                      {[
+                        "Order",
+                        "Date",
+                        "Payment",
+                        "Total",
+                        "Status",
+                        "Action",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            ...tableCell,
+                            textAlign: "left",
+                            color: COLORS.muted,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -490,20 +535,58 @@ export default function AdminDashboard() {
                           <td style={tableCell}>
                             {new Date(o.created_at).toISOString().split("T")[0]}
                           </td>
-                          <td style={tableCell}>{o.total_items} items</td>
+                          <td style={tableCell}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {o.payment_method || "cash"}
+                            </div>
+                            {o.payment_method === "bank" && o.receipt_url && (
+                              <button
+                                onClick={() => setReceiptImage(o.receipt_url)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  background: "none",
+                                  border: "none",
+                                  color: COLORS.primary,
+                                  padding: "2px 0",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <FiImage size={12} /> View Receipt
+                              </button>
+                            )}
+                          </td>
                           <td style={{ ...tableCell, fontWeight: 700 }}>
                             {fmt(o.total_usd)}
                           </td>
                           <td style={tableCell}>
+                            {/* 1-CLICK TOGGLE BUTTON */}
                             <button
-                              onClick={() => toggleOrderStatus(o.id, o.status)}
+                              onClick={() =>
+                                toggleOrderStatus(
+                                  o.id,
+                                  o.status,
+                                  o.user_id,
+                                  o.total_usd,
+                                )
+                              }
                               style={{
-                                padding: "4px 10px",
-                                borderRadius: 20,
-                                fontSize: 14,
+                                padding: "6px 12px",
+                                borderRadius: 10,
+                                fontSize: 12,
                                 fontWeight: 600,
                                 border: "none",
                                 cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                textTransform: "capitalize",
                                 background:
                                   o.status === "completed"
                                     ? "#d1fae5"
@@ -517,12 +600,31 @@ export default function AdminDashboard() {
                               {o.status}
                             </button>
                           </td>
+                          <td style={tableCell}>
+                            <button
+                              onClick={() => {
+                                setSelectedOrderId(o.id);
+                                setShowOrderModal(true);
+                              }}
+                              style={{
+                                background: "#F3F4F6",
+                                border: "none",
+                                padding: "4px 10px",
+                                borderRadius: 8,
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Items
+                            </button>
+                          </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           style={{
                             ...tableCell,
                             textAlign: "center",
@@ -540,7 +642,7 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* Products Tab */}
+        {/* --- PRODUCTS TAB --- */}
         {tab === "products" && (
           <>
             <div
@@ -562,144 +664,18 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
-            <div style={{ display: "grid", gap: 16 }}>
-              {dbProducts.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    background: "#fff",
-                    border: `1px solid ${COLORS.border}`,
-                    borderRadius: 16,
-                    padding: 16,
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 16,
-                  }}
-                >
-                  {/* Left Side: Image and Details Group */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 16,
-                      flex: "1 1 250px",
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 64,
-                        height: 64,
-                        borderRadius: 12,
-                        background: "#f3f4f6",
-                        overflow: "hidden",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <img
-                        src={
-                          p.image?.startsWith("http") ? p.image : `/${p.image}`
-                        }
-                        alt={p.name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                        onError={(e) => {
-                          e.target.src = "/placeholder.png";
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <h4
-                          style={{
-                            margin: 0,
-                            fontSize: 16,
-                            color: COLORS.text,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {p.name}
-                        </h4>
-                        <span
-                          style={{
-                            background: "#f3f4f6",
-                            padding: "4px 10px",
-                            borderRadius: 12,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: COLORS.muted,
-                          }}
-                        >
-                          {p.category}
-                        </span>
-                      </div>
-                      <p
-                        style={{
-                          margin: "6px 0 0",
-                          color: COLORS.muted,
-                          fontSize: 14,
-                        }}
-                      >
-                        Stock:{" "}
-                        <span style={{ fontWeight: 600, color: COLORS.text }}>
-                          {p.stock}
-                        </span>{" "}
-                        • Price:{" "}
-                        <span style={{ fontWeight: 600, color: COLORS.text }}>
-                          {fmt(p.price)}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right Side: Action Buttons Group */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <Button
-                      small
-                      variant="secondary"
-                      onClick={() => {
-                        setEditingProduct(p);
-                        setShowAddModal(true);
-                      }}
-                    >
-                      <FiEdit2 size={14} /> Edit
-                    </Button>
-                    <Button
-                      small
-                      variant="danger"
-                      onClick={() => handleDeleteProduct(p.id, p.name)}
-                    >
-                      <FiTrash2 size={14} /> Delete
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ProductsTable
+              products={dbProducts}
+              onEdit={(product) => {
+                setEditingProduct(product);
+                setShowAddModal(true);
+              }}
+              onDelete={handleDeleteProduct}
+            />
           </>
         )}
 
-        {/* Orders Tab */}
+        {/* --- ORDERS TAB --- */}
         {tab === "orders" && (
           <div
             style={{
@@ -727,21 +703,28 @@ export default function AdminDashboard() {
               >
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Order ID", "Date", "Items", "USD", "KHR", "Status"].map(
-                      (h) => (
-                        <th
-                          key={h}
-                          style={{
-                            ...tableCell,
-                            textAlign: "left",
-                            color: COLORS.muted,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ),
-                    )}
+                    {[
+                      "Order ID",
+                      "Date",
+                      "Payment",
+                      "Items",
+                      "USD",
+                      "KHR",
+                      "Status",
+                      "Details",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          ...tableCell,
+                          textAlign: "left",
+                          color: COLORS.muted,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -762,55 +745,89 @@ export default function AdminDashboard() {
                       <td style={tableCell}>
                         {new Date(o.created_at).toISOString().split("T")[0]}
                       </td>
-                      <td style={tableCell}>{o.total_items}</td>
+                      <td style={tableCell}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {o.payment_method || "cash"}
+                        </div>
+                        {o.payment_method === "bank" && o.receipt_url && (
+                          <button
+                            onClick={() => setReceiptImage(o.receipt_url)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: "none",
+                              border: "none",
+                              color: COLORS.primary,
+                              padding: "2px 0",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <FiImage size={12} /> View Receipt
+                          </button>
+                        )}
+                      </td>
+                      <td style={tableCell}>{o.total_items} items</td>
                       <td style={{ ...tableCell, fontWeight: 700 }}>
                         {fmt(o.total_usd)}
                       </td>
                       <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
                       <td style={tableCell}>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            onClick={() => {
-                              setSelectedOrderId(o.id);
-                              setShowOrderModal(true);
-                            }}
-                            style={{
-                              background: "#DBEAFE",
-                              color: "#1D4ED8",
-                              border: "none",
-                              padding: "6px 12px",
-                              borderRadius: 10,
-                              cursor: "pointer",
-                              fontSize: 12,
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            View Details
-                          </button>
-                          <button
-                            onClick={() => toggleOrderStatus(o.id, o.status)}
-                            style={{
-                              padding: "6px 12px",
-                              borderRadius: 10,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              border: "none",
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                              background:
-                                o.status === "completed"
-                                  ? "#d1fae5"
-                                  : "#fef9c3",
-                              color:
-                                o.status === "completed"
-                                  ? "#065f46"
-                                  : "#713f12",
-                            }}
-                          >
-                            {o.status}
-                          </button>
-                        </div>
+                        {/* 1-CLICK TOGGLE BUTTON */}
+                        <button
+                          onClick={() =>
+                            toggleOrderStatus(
+                              o.id,
+                              o.status,
+                              o.user_id,
+                              o.total_usd,
+                            )
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 10,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            border: "none",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            textTransform: "capitalize",
+                            background:
+                              o.status === "completed" ? "#d1fae5" : "#fef9c3",
+                            color:
+                              o.status === "completed" ? "#065f46" : "#713f12",
+                          }}
+                        >
+                          {o.status}
+                        </button>
+                      </td>
+                      <td style={tableCell}>
+                        <button
+                          onClick={() => {
+                            setSelectedOrderId(o.id);
+                            setShowOrderModal(true);
+                          }}
+                          style={{
+                            background: "#DBEAFE",
+                            color: "#1D4ED8",
+                            border: "none",
+                            padding: "6px 12px",
+                            borderRadius: 10,
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          View Items
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -829,17 +846,22 @@ export default function AdminDashboard() {
           setEditingProduct(null);
         }}
         product={editingProduct}
-        onSave={(data) => {
-          if (editingProduct) {
-            handleUpdateProduct(editingProduct.id, data);
-          } else {
-            handleAddProduct(data);
+        onSave={async (data) => {
+          try {
+            if (editingProduct) {
+              await handleUpdateProduct(editingProduct.id, data);
+            } else {
+              await handleAddProduct(data);
+            }
+            setShowAddModal(false);
+            setEditingProduct(null);
+          } catch (error) {
+            // Managed by functions above
           }
-          setShowAddModal(false);
-          setEditingProduct(null);
         }}
       />
 
+      {/* --- CONNECTED MODAL WITH SECURITY FLAG --- */}
       {selectedOrderId && (
         <OrderDetailsModal
           open={showOrderModal}
@@ -848,7 +870,65 @@ export default function AdminDashboard() {
             setSelectedOrderId(null);
           }}
           orderId={selectedOrderId}
+          isAdmin={true}
         />
+      )}
+
+      {/* --- QUICK VIEW RECEIPT LIGHTBOX MODAL --- */}
+      {receiptImage && (
+        <div
+          onClick={() => setReceiptImage(null)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.75)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            style={{ position: "relative", maxWidth: "90%", maxHeight: "90%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setReceiptImage(null)}
+              style={{
+                position: "absolute",
+                top: -40,
+                right: 0,
+                background: "none",
+                border: "none",
+                color: "white",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 16,
+              }}
+            >
+              <FiX size={24} /> Close
+            </button>
+            <img
+              src={receiptImage}
+              alt="Uploaded Payment Receipt Verification"
+              style={{
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                borderRadius: 12,
+                boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
+                border: "3px solid #FFF",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

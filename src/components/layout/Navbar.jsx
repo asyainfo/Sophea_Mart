@@ -8,7 +8,9 @@ import {
   FiLogOut,
   FiLoader,
   FiSettings,
-  FiPackage, // <-- Added this icon for the orders!
+  FiPackage,
+  FiHeart,
+  FiAward, // <-- Icon for the new Rewards button
 } from "react-icons/fi";
 
 import { useAuth } from "../../hooks/useAuth";
@@ -61,92 +63,39 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
     onRegister();
   };
 
+  const handleNavigation = (path) => {
+    navigate(path);
+    setProfileOpen(false);
+  };
+
   return (
     <>
-      {/* CSS injected to handle mobile responsiveness gracefully */}
       <style>{`
         @media (max-width: 640px) {
-          .hide-on-mobile {
-            display: none !important;
-          }
-          .btn-mobile {
-            padding: 0 12px !important;
-            gap: 4px !important;
-          }
-          .nav-container-mobile {
-            padding: 0 12px !important;
-          }
-          .logo-text-mobile {
-            font-size: 16px !important;
-          }
-          .action-gap-mobile {
-            gap: 8px !important;
-          }
+          .hide-on-mobile { display: none !important; }
+          .btn-mobile { padding: 0 12px !important; gap: 4px !important; }
+          .nav-container-mobile { padding: 0 12px !important; }
+          .logo-text-mobile { font-size: 16px !important; }
+          .action-gap-mobile { gap: 8px !important; }
         }
       `}</style>
 
-      <nav
-        className="nav-container-mobile"
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 300,
-          background: "#FFFFFF",
-          borderBottom: "1px solid #E5E7EB",
-          boxShadow: "0 1px 8px rgba(161, 161, 161, 0.04)",
-          backdropFilter: "blur(8px)",
-          padding: "0 24px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            height: 70,
-          }}
-        >
-          {/* Logo - Navigates to Home */}
-          <div
-            onClick={() => navigate("/")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              cursor: "pointer",
-            }}
-          >
+      <nav className="nav-container-mobile" style={styles.navBar}>
+        <div style={styles.innerContainer}>
+          {/* Logo Section */}
+          <div onClick={() => navigate("/")} style={styles.logoWrapper}>
             <img
               src="/Sophea Mart no1.png"
               alt="Sophea Mart Logo"
-              style={{
-                width: 44, // Slightly smaller to save space
-                height: 44,
-                borderRadius: 12,
-                objectFit: "cover",
-              }}
+              style={styles.logoImage}
             />
-
-            <span
-              className="logo-text-mobile"
-              style={{
-                fontWeight: 700,
-                fontSize: 20,
-                color: "#111827",
-                whiteSpace: "nowrap",
-              }}
-            >
+            <span className="logo-text-mobile" style={styles.logoText}>
               SOPHEA <span style={{ color: "#0066FF" }}>MART</span>
             </span>
           </div>
 
-          {/* Actions */}
-          <div
-            className="action-gap-mobile"
-            style={{ display: "flex", alignItems: "center", gap: 12 }}
-          >
+          {/* Actions Section */}
+          <div className="action-gap-mobile" style={styles.actionsWrapper}>
             {!user ? (
               <>
                 <Button onClick={onLogin} variant="ghost" small>
@@ -158,27 +107,12 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
               </>
             ) : (
               <>
-                {/* THE NEW ADMIN DOOR */}
+                {/* Admin Button */}
                 {profile?.role === "admin" && (
                   <button
                     className="btn-mobile"
                     onClick={() => navigate("/admin")}
-                    style={{
-                      background: "#2563EB",
-                      color: "white",
-                      border: "none",
-                      padding: "0 16px",
-                      borderRadius: "9999px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      height: 44,
-                      whiteSpace: "nowrap",
-                      transition: "background 0.2s ease",
-                    }}
+                    style={styles.adminButton}
                     onMouseOver={(e) =>
                       (e.currentTarget.style.background = "#1D4ED8")
                     }
@@ -187,31 +121,16 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                     }
                   >
                     <FiSettings size={18} />
-                    {/* Text hidden on small screens */}
                     <span className="hide-on-mobile">Admin Panel</span>
                   </button>
                 )}
 
+                {/* Profile Dropdown Toggle */}
                 <div style={{ position: "relative" }} ref={dropdownRef}>
                   <button
                     className="btn-mobile"
                     onClick={() => setProfileOpen((prev) => !prev)}
-                    style={{
-                      background: "#EFF6FF",
-                      border: "1px solid #BFDBFE",
-                      borderRadius: "9999px",
-                      padding: "0 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
-                      color: "#2563EB",
-                      fontWeight: 600,
-                      fontSize: 14,
-                      height: 44,
-                      whiteSpace: "nowrap",
-                      transition: "background 0.2s ease",
-                    }}
+                    style={styles.profileButton}
                     onMouseOver={(e) =>
                       (e.currentTarget.style.background = "#DBEAFE")
                     }
@@ -220,12 +139,11 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                     }
                   >
                     <FiUser size={18} />
-                    {/* Text hidden on small screens */}
                     <span className="hide-on-mobile">{firstName}</span>
                     <div
                       style={{
                         display: "flex",
-                        transition: "transform 0.3s ease",
+                        transition: "transform 0.3s",
                         transform: profileOpen
                           ? "rotate(180deg)"
                           : "rotate(0deg)",
@@ -235,21 +153,10 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                     </div>
                   </button>
 
-                  {/* Profile Dropdown */}
+                  {/* Dropdown Menu Box */}
                   <div
                     style={{
-                      position: "absolute",
-                      top: "100%",
-                      right: 0,
-                      marginTop: 8,
-                      width: 160,
-                      background: "#FFFFFF",
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 12,
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      overflow: "hidden",
-                      zIndex: 400,
-                      transition: "all 0.2s ease-in-out",
+                      ...styles.dropdownBox,
                       opacity: profileOpen ? 1 : 0,
                       visibility: profileOpen ? "visible" : "hidden",
                       transform: profileOpen
@@ -258,91 +165,75 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                       pointerEvents: profileOpen ? "auto" : "none",
                     }}
                   >
-                    {/* --- NEW MY ORDERS BUTTON --- */}
                     <button
-                      onClick={() => {
-                        navigate("/order-history");
-                        setProfileOpen(false);
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "12px 16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: "1px solid #E5E7EB",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color: "#374151",
-                        textAlign: "left",
-                        transition: "background 0.2s",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = "#F3F4F6";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                      }}
+                      onClick={() => handleNavigation("/order-history")}
+                      style={styles.dropdownItem}
+                      onMouseOver={(e) =>
+                        (e.currentTarget.style.background = "#F3F4F6")
+                      }
+                      onMouseOut={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
                     >
-                      <FiPackage size={16} />
-                      My Orders
+                      <FiPackage size={16} /> My Orders
+                    </button>
+
+                    <button
+                      onClick={() => handleNavigation("/favorites")}
+                      style={styles.dropdownItem}
+                      onMouseOver={(e) =>
+                        (e.currentTarget.style.background = "#F3F4F6")
+                      }
+                      onMouseOut={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <FiHeart size={16} /> Saved Items
+                    </button>
+
+                    {/* --- 🎁 NEW: Rewards & Points Link --- */}
+                    <button
+                      onClick={() => handleNavigation("/redeem")}
+                      style={{
+                        ...styles.dropdownItem,
+                        color: "#0066FF",
+                        fontWeight: 600,
+                      }}
+                      onMouseOver={(e) =>
+                        (e.currentTarget.style.background = "#f2f7feff")
+                      }
+                      onMouseOut={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <FiAward size={16} /> Rewards & Points
                     </button>
 
                     <button
                       onClick={handleAddAccount}
-                      style={{
-                        width: "100%",
-                        padding: "12px 16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: "1px solid #E5E7EB",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color: "#374151",
-                        textAlign: "left",
-                        transition: "background 0.2s",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = "#F3F4F6";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                      }}
+                      style={styles.dropdownItem}
+                      onMouseOver={(e) =>
+                        (e.currentTarget.style.background = "#F3F4F6")
+                      }
+                      onMouseOut={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
                     >
-                      <FiPlus size={16} />
-                      Add Account
+                      <FiPlus size={16} /> Add Account
                     </button>
 
                     <button
                       onClick={handleLogout}
                       disabled={isLoggingOut}
                       style={{
-                        width: "100%",
-                        padding: "12px 16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        background: "transparent",
-                        border: "none",
-                        cursor: isLoggingOut ? "not-allowed" : "pointer",
-                        fontSize: 14,
-                        fontWeight: 500,
+                        ...styles.dropdownItem,
                         color: "#DC2626",
-                        textAlign: "left",
+                        cursor: isLoggingOut ? "not-allowed" : "pointer",
                         opacity: isLoggingOut ? 0.7 : 1,
-                        transition: "background 0.2s",
                       }}
                       onMouseOver={(e) => {
-                        if (!isLoggingOut) {
+                        if (!isLoggingOut)
                           e.currentTarget.style.background = "#FEF2F2";
-                        }
                       }}
                       onMouseOut={(e) => {
                         e.currentTarget.style.background = "transparent";
@@ -360,43 +251,11 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
               </>
             )}
 
-            {/* Cart Icon - OPENS THE DRAWER NOW! */}
-            <button
-              onClick={onCartOpen}
-              style={{
-                position: "relative",
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: "#EFF6FF",
-                border: "1px solid #BFDBFE",
-                color: "#2563EB",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0, // Prevents cart from ever squishing
-              }}
-            >
+            {/* Cart Icon */}
+            <button onClick={onCartOpen} style={styles.cartButton}>
               <FiShoppingCart size={20} />
               {count > 0 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: -6,
-                    right: -6,
-                    minWidth: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: "#0066FF",
-                    color: "#FFFFFF",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <span style={styles.cartBadge}>
                   {count > 99 ? "99+" : count}
                 </span>
               )}
@@ -407,3 +266,139 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
     </>
   );
 }
+
+// --- EXTRACTED STYLES FOR CLEANLINESS ---
+const styles = {
+  navBar: {
+    position: "sticky",
+    top: 0,
+    zIndex: 300,
+    background: "#FFFFFF",
+    borderBottom: "1px solid #E5E7EB",
+    boxShadow: "0 1px 8px rgba(161, 161, 161, 0.04)",
+    backdropFilter: "blur(8px)",
+    padding: "0 24px",
+  },
+  innerContainer: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: 70,
+  },
+  logoWrapper: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    cursor: "pointer",
+  },
+  logoImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    objectFit: "cover",
+  },
+  logoText: {
+    fontWeight: 700,
+    fontSize: 20,
+    color: "#111827",
+    whiteSpace: "nowrap",
+  },
+  actionsWrapper: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+  adminButton: {
+    background: "#2563EB",
+    color: "white",
+    border: "none",
+    padding: "0 16px",
+    borderRadius: "9999px",
+    fontWeight: 600,
+    cursor: "pointer",
+    fontSize: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    height: 44,
+    whiteSpace: "nowrap",
+    transition: "background 0.2s ease",
+  },
+  profileButton: {
+    background: "#EFF6FF",
+    border: "1px solid #BFDBFE",
+    borderRadius: "9999px",
+    padding: "0 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    cursor: "pointer",
+    color: "#2563EB",
+    fontWeight: 600,
+    fontSize: 14,
+    height: 44,
+    whiteSpace: "nowrap",
+    transition: "background 0.2s ease",
+  },
+  dropdownBox: {
+    position: "absolute",
+    top: "100%",
+    right: 0,
+    marginTop: 8,
+    width: 200, // <-- Made wider to fit the new text perfectly
+    background: "#FFFFFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: 12,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    overflow: "hidden",
+    zIndex: 400,
+    transition: "all 0.2s ease-in-out",
+  },
+  dropdownItem: {
+    width: "100%",
+    padding: "12px 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    background: "transparent",
+    border: "none",
+    borderBottom: "1px solid #E5E7EB",
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 500,
+    color: "#374151",
+    textAlign: "left",
+    transition: "background 0.2s",
+  },
+  cartButton: {
+    position: "relative",
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    background: "#EFF6FF",
+    border: "1px solid #BFDBFE",
+    color: "#2563EB",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  cartBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: "50%",
+    background: "#0066FF",
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+};

@@ -1,76 +1,101 @@
 import { useEffect } from "react";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
-import { useToast } from "./ui/Toast";
 
-// --- THE MAGIC FIX: Create sounds OUTSIDE React ---
-// Because these are outside the function, React Router can NEVER destroy them
-// when you navigate between pages. They stay alive in the background permanently.
 const adminSound = new Audio("/admin-alert.wav");
 const customerSound = new Audio("/customer-alert.mp3");
-let isUnlocked = false;
+let isAudioUnlocked = false;
 
-export default function GlobalAlertListener() {
+// We trigger a global browser event instead of relying on React state props!
+const triggerGlobalToast = (message, type) => {
+  window.dispatchEvent(
+    new CustomEvent("global-toast", { detail: { message, type } }),
+  );
+};
+
+export default function GlobalAudioAlerts() {
   const { user, profile } = useAuth();
-  const { show: toast } = useToast();
 
-  // 1. Global Audio Unlocker (Beats Browser Autoplay Blockers)
+  // Safe Audio Unlocker
   useEffect(() => {
     const unlockAudio = () => {
-      if (isUnlocked) return;
+      if (isAudioUnlocked) return;
 
-      // Play and immediately pause to trick the browser into unlocking the audio
+      adminSound.volume = 0;
+      customerSound.volume = 0;
+
       adminSound
         .play()
-        .then(() => adminSound.pause())
-        .catch(() => {});
+        .then(() => {
+          adminSound.pause();
+          adminSound.currentTime = 0;
+          adminSound.volume = 1;
+        })
+        .catch(() => {
+          adminSound.volume = 1;
+        });
+
       customerSound
         .play()
-        .then(() => customerSound.pause())
-        .catch(() => {});
+        .then(() => {
+          customerSound.pause();
+          customerSound.currentTime = 0;
+          customerSound.volume = 1;
+        })
+        .catch(() => {
+          customerSound.volume = 1;
+        });
 
-      isUnlocked = true;
-      document.removeEventListener("click", unlockAudio);
-      document.removeEventListener("touchstart", unlockAudio);
+      isAudioUnlocked = true;
     };
 
-    // The very first click ANYWHERE on the website unlocks the sounds
-    document.addEventListener("click", unlockAudio);
-    document.addEventListener("touchstart", unlockAudio);
-
-    return () => {
-      document.removeEventListener("click", unlockAudio);
-      document.removeEventListener("touchstart", unlockAudio);
-    };
+    const events = ["click", "touchstart"];
+    events.forEach((e) =>
+      document.addEventListener(e, unlockAudio, { once: true }),
+    );
+    return () =>
+      events.forEach((e) => document.removeEventListener(e, unlockAudio));
   }, []);
 
-  // 2. The Unstoppable Realtime Listener
+  // Supabase Realtime Subscriptions
   useEffect(() => {
     if (!user) return;
+    let activeChannel;
 
-    let channel;
+    const handleAdminAlert = (payload) => {
+      triggerGlobalToast(
+        `🚨 New Order Received! ID: ${payload.new.id}`,
+        "success",
+      );
+      adminSound.currentTime = 0;
+      adminSound.play().catch((e) => console.warn("Admin audio blocked", e));
+    };
 
-    // A. ADMIN LISTENER (Fires everywhere)
+    const handleCustomerAlert = (payload) => {
+      if (payload.new?.status === "completed") {
+        triggerGlobalToast(
+          `🎉 Good news! Order ${payload.new.id} is ready for pick-up!`,
+          "success",
+        );
+        customerSound.currentTime = 0;
+        customerSound
+          .play()
+          .catch((e) => console.warn("Customer audio blocked", e));
+      }
+    };
+
     if (profile?.role === "admin") {
-      channel = supabase
-        .channel("unstoppable-admin")
+      activeChannel = supabase
+        .channel("global-admin-listener")
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "Orders" },
-          (payload) => {
-            toast(`🚨 New Order! ID: ${payload.new.id}`, "success");
-            adminSound.currentTime = 0;
-            adminSound
-              .play()
-              .catch((e) => console.warn("Admin sound blocked", e));
-          },
+          handleAdminAlert,
         )
         .subscribe();
-    }
-    // B. CUSTOMER LISTENER (Fires everywhere)
-    else {
-      channel = supabase
-        .channel(`unstoppable-cust-${user.id}`)
+    } else {
+      activeChannel = supabase
+        .channel(`global-customer-${user.id}`)
         .on(
           "postgres_changes",
           {
@@ -79,24 +104,15 @@ export default function GlobalAlertListener() {
             table: "Orders",
             filter: `user_id=eq.${user.id}`,
           },
-          (payload) => {
-            if (payload.new.status === "completed") {
-              toast(`🎉 Order ${payload.new.id} is ready!`, "success");
-              customerSound.currentTime = 0;
-              customerSound
-                .play()
-                .catch((e) => console.warn("Customer sound blocked", e));
-            }
-          },
+          handleCustomerAlert,
         )
         .subscribe();
     }
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      if (activeChannel) supabase.removeChannel(activeChannel);
     };
-  }, [user, profile, toast]);
+  }, [user, profile]);
 
-  // This component doesn't render any HTML! It just works in the shadows.
   return null;
 }

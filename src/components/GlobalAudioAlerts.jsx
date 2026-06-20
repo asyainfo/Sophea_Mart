@@ -1,47 +1,59 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
-import { useToast } from "./ui/Toast";
 
-// Audio instances kept outside the component lifecycle to prevent unmounting interruptions
 const adminSound = new Audio("/admin-alert.wav");
 const customerSound = new Audio("/customer-alert.mp3");
 let isAudioUnlocked = false;
 
+// --- THE FIX: Send a custom event to App.jsx to trigger the visual Toast! ---
+const triggerGlobalToast = (message, type) => {
+  window.dispatchEvent(
+    new CustomEvent("global-toast", { detail: { message, type } }),
+  );
+};
+
 export default function GlobalAudioAlerts() {
   const { user, profile } = useAuth();
-  const { show: toast } = useToast();
-  const toastRef = useRef(toast);
 
-  // Keep toast ref updated without triggering effect re-runs
-  useEffect(() => {
-    toastRef.current = toast;
-  }, [toast]);
-
-  // Handle mobile browser audio unlock policies
+  // Safe Audio Unlocker
   useEffect(() => {
     const unlockAudio = () => {
       if (isAudioUnlocked) return;
 
-      // Play and immediately pause to trick the browser into unlocking the audio
+      adminSound.volume = 0;
+      customerSound.volume = 0;
+
       adminSound
         .play()
-        .then(() => adminSound.pause())
-        .catch(() => {});
+        .then(() => {
+          adminSound.pause();
+          adminSound.currentTime = 0;
+          adminSound.volume = 1;
+        })
+        .catch(() => {
+          adminSound.volume = 1;
+        });
+
       customerSound
         .play()
-        .then(() => customerSound.pause())
-        .catch(() => {});
+        .then(() => {
+          customerSound.pause();
+          customerSound.currentTime = 0;
+          customerSound.volume = 1;
+        })
+        .catch(() => {
+          customerSound.volume = 1;
+        });
+
       isAudioUnlocked = true;
     };
 
-    // Attach listeners with { once: true } so they automatically clean themselves up
     const events = ["click", "touchstart"];
-    events.forEach((event) => {
-      document.addEventListener(event, unlockAudio, { once: true });
-    });
+    events.forEach((event) =>
+      document.addEventListener(event, unlockAudio, { once: true }),
+    );
 
-    // Fallback cleanup when component completely unmounts
     return () => {
       events.forEach((event) =>
         document.removeEventListener(event, unlockAudio),
@@ -49,15 +61,13 @@ export default function GlobalAudioAlerts() {
     };
   }, []);
 
-  // Manage Supabase Realtime Subscriptions
+  // Supabase Realtime Subscriptions
   useEffect(() => {
-    if (!user || !profile) return;
-
+    if (!user) return;
     let activeChannel;
 
-    // --- Handlers ---
     const handleAdminAlert = (payload) => {
-      toastRef.current(
+      triggerGlobalToast(
         `🚨 New Order Received! ID: ${payload.new.id}`,
         "success",
       );
@@ -66,8 +76,10 @@ export default function GlobalAudioAlerts() {
     };
 
     const handleCustomerAlert = (payload) => {
-      if (payload.new.status === "completed") {
-        toastRef.current(
+      console.log("Realtime packet captured for customer:", payload.new);
+
+      if (payload.new?.status === "completed") {
+        triggerGlobalToast(
           `🎉 Good news! Order ${payload.new.id} is ready for pick-up!`,
           "success",
         );
@@ -78,8 +90,8 @@ export default function GlobalAudioAlerts() {
       }
     };
 
-    // --- Subscriptions ---
-    if (profile.role === "admin") {
+    if (profile?.role === "admin") {
+      console.log("Initializing Global Admin Broadcast Channel...");
       activeChannel = supabase
         .channel("global-admin-listener")
         .on(
@@ -89,6 +101,9 @@ export default function GlobalAudioAlerts() {
         )
         .subscribe();
     } else {
+      console.log(
+        `Initializing Global Customer Stream for User UID: ${user.id}`,
+      );
       activeChannel = supabase
         .channel(`global-customer-${user.id}`)
         .on(
@@ -104,9 +119,11 @@ export default function GlobalAudioAlerts() {
         .subscribe();
     }
 
-    // Cleanup
     return () => {
-      if (activeChannel) supabase.removeChannel(activeChannel);
+      if (activeChannel) {
+        console.log("De-allocating active real-time channels.");
+        supabase.removeChannel(activeChannel);
+      }
     };
   }, [user, profile]);
 

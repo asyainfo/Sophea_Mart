@@ -2,12 +2,18 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
 import { fmt } from "../../utils/currency";
-import { FiImage } from "react-icons/fi";
+import { FiImage, FiCheckCircle } from "react-icons/fi";
 
-export default function OrderDetailsModal({ open, onClose, orderId }) {
+export default function OrderDetailsModal({
+  open,
+  onClose,
+  orderId,
+  isAdmin = false,
+}) {
   const [items, setItems] = useState([]);
   const [orderRecord, setOrderRecord] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isApproving, setIsApproving] = useState(false);
 
   useEffect(() => {
     if (open && orderId) {
@@ -28,7 +34,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
       if (itemsError) throw itemsError;
       setItems(itemsData || []);
 
-      // 2. Fetch the main order record to get the receipt_url
+      // 2. Fetch the main order record
       const { data: orderData, error: orderError } = await supabase
         .from("Orders")
         .select("*")
@@ -41,6 +47,38 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
       console.error("Supabase Error:", error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // --- APPROVE LOGIC ---
+  const handleApproveOrder = async () => {
+    setIsApproving(true);
+    try {
+      const { error } = await supabase
+        .from("Orders")
+        .update({ status: "completed" })
+        .eq("id", orderId);
+
+      if (error) throw error;
+
+      // Trigger the global success toast
+      window.dispatchEvent(
+        new CustomEvent("global-toast", {
+          detail: { message: `Order #${orderId} Approved!`, type: "success" },
+        }),
+      );
+
+      // Close the modal (the Dashboard will auto-update via realtime listener)
+      onClose();
+    } catch (error) {
+      console.error("Error approving order:", error.message);
+      window.dispatchEvent(
+        new CustomEvent("global-toast", {
+          detail: { message: "Failed to approve order", type: "error" },
+        }),
+      );
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -150,6 +188,65 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
               </div>
             </div>
           )}
+
+          {/* ACTION FOOTER */}
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 20,
+              borderTop: "1px solid #E5E7EB",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 12,
+            }}
+          >
+            <button
+              onClick={onClose}
+              style={{
+                padding: "10px 16px",
+                background: "#F3F4F6",
+                color: "#4B5563",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#E5E7EB")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#F3F4F6")
+              }
+            >
+              Close
+            </button>
+
+            {/* SECURITY FIX: Only show "Approve" if the user is an Admin AND the order is pending */}
+            {isAdmin && orderRecord?.status !== "completed" && (
+              <button
+                onClick={handleApproveOrder}
+                disabled={isApproving}
+                style={{
+                  padding: "10px 20px",
+                  background: "#10B981",
+                  color: "#FFF",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  cursor: isApproving ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  opacity: isApproving ? 0.7 : 1,
+                  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
+                }}
+              >
+                <FiCheckCircle size={18} />
+                {isApproving ? "Approving..." : "Approve Order"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </Modal>

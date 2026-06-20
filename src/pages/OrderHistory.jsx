@@ -45,8 +45,7 @@ export default function OrderHistory() {
   }, [user]);
 
   // --- SILENT SUPABASE REALTIME LISTENER ---
-  // This just updates the UI list if an order changes.
-  // Sounds and Toasts are handled by GlobalAudioAlerts.jsx!
+  // This updates the UI list immediately if an order status shifts on the server side.
   useEffect(() => {
     if (!user) return;
 
@@ -58,10 +57,9 @@ export default function OrderHistory() {
           event: "UPDATE",
           schema: "public",
           table: "Orders",
-          filter: `user_id=eq.${user.id}`, // Only listen to THIS user's orders
+          filter: `user_id=eq.${user.id}`, // Scope exclusively to this customer
         },
         () => {
-          // Refresh orders to update UI badges automatically
           fetchMyOrders();
         },
       )
@@ -264,6 +262,7 @@ export default function OrderHistory() {
             setSelectedOrderId(null);
           }}
           orderId={selectedOrderId}
+          isAdmin={false} // Explicitly false for customer accounts
         />
       )}
     </div>

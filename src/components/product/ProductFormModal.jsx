@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FiUploadCloud, FiLoader } from "react-icons/fi";
+import { FiUploadCloud } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
@@ -43,7 +43,6 @@ const CATEGORIES = [
 
 export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [name, setName] = useState("");
-  // DEFAULT CATEGORY: Automatically sets to the first item ("ភេសជ្ជៈ")
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -53,10 +52,11 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
+  // Sync state when modal opens or product changes
   useEffect(() => {
-    if (product) {
+    // Safely check if product exists AND has keys (is not an empty object)
+    if (product && Object.keys(product).length > 0) {
       setName(product.name || "");
-      // FALLBACK CATEGORY: Ensures edits don't crash if category is missing
       setCategory(product.category || CATEGORIES[0]);
       setPrice(product.price?.toString() || "");
       setStock(product.stock?.toString() || "");
@@ -90,11 +90,20 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 1. Safe React Validation: Check if it's missing an ID to confirm it's a new product
+    const isNewProduct = !product?.id;
+    if (isNewProduct && !imageFile) {
+      alert("Please choose a product image before saving!");
+      return;
+    }
+
     setIsUploading(true);
 
     try {
       let finalImageUrl = product?.image || "";
 
+      // 2. Upload Image to Supabase
       if (imageFile) {
         const fileExt = imageFile.name.split(".").pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -112,17 +121,20 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         finalImageUrl = data.publicUrl;
       }
 
-      onSave({
-        name,
+      // 3. Send sanitized data to the parent component
+      // Using parseFloat(...) || 0 prevents Supabase 'NaN' crashes
+      await onSave({
+        ...(product || {}), // Preserve the ID if editing
+        name: name.trim(),
         category,
-        price: parseFloat(price),
-        stock: parseInt(stock, 10),
-        sizes,
-        description,
+        price: parseFloat(price) || 0,
+        stock: parseInt(stock, 10) || 0,
+        sizes: sizes.trim(),
+        description: description.trim(),
         image: finalImageUrl,
       });
     } catch (error) {
-      console.error("Error:", error.message);
+      console.error("Save Error:", error.message);
       alert("Failed to save product: " + error.message);
     } finally {
       setIsUploading(false);
@@ -133,9 +145,10 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     <Modal
       open={open}
       onClose={onClose}
-      title={product ? "Edit Product" : "Add New Product"}
+      title={product?.id ? "Edit Product" : "Add New Product"}
     >
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
+        {/* --- Image Upload Area --- */}
         <div>
           <label style={{ fontSize: 13, fontWeight: 600 }}>Product Image</label>
           <div
@@ -189,6 +202,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
           </div>
         </div>
 
+        {/* --- Inputs --- */}
         <div>
           <label style={{ fontSize: 13, fontWeight: 600 }}>Product Name</label>
           <input
@@ -209,7 +223,6 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              {/* Dynamically generating the dropdown options from the CATEGORIES array */}
               {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
@@ -223,6 +236,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               required
               type="number"
               step="0.01"
+              min="0"
               style={inputStyle}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
@@ -240,13 +254,16 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             <input
               required
               type="number"
+              min="0"
               style={inputStyle}
               value={stock}
               onChange={(e) => setStock(e.target.value)}
             />
           </div>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Size</label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>
+              Size (Optional)
+            </label>
             <input
               style={inputStyle}
               value={sizes}
@@ -256,7 +273,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         </div>
 
         <div>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Description</label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Description (Optional)
+          </label>
           <textarea
             style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
             value={description}
@@ -264,10 +283,11 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
           />
         </div>
 
+        {/* --- Submit Button --- */}
         <Button full type="submit" disabled={isUploading}>
           {isUploading
-            ? "Uploading..."
-            : product
+            ? "Saving..."
+            : product?.id
               ? "Update Product"
               : "Save Product"}
         </Button>

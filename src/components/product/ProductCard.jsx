@@ -1,33 +1,38 @@
 import { useState } from "react";
-import { FiShoppingCart, FiCheck } from "react-icons/fi";
+import { FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
 import { fmt, fmtKHR } from "../../utils/currency";
 
 export default function ProductCard({
   product,
   onAddToCart,
   onRemoveFromCart,
+  isFavorite = false,
+  onToggleFavorite,
+  onQuickView,
 }) {
   const [hovered, setHovered] = useState(false);
   const [isJustAdded, setIsJustAdded] = useState(false);
 
-  // 1. Clean logic checks
+  // --- LOGIC CHECKS ---
   const isInCart = product.quantityInCart && product.quantityInCart > 0;
   const isOutOfStock = product.stock === 0;
 
-  // 2. The magic function that handles the animation
+  // --- ACTIONS ---
   const handleAddToCart = () => {
     if (isOutOfStock) return;
-
     onAddToCart(product);
     setIsJustAdded(true);
-
-    // Remove the green checkmark after 1 second
-    setTimeout(() => {
-      setIsJustAdded(false);
-    }, 1000);
+    setTimeout(() => setIsJustAdded(false), 1000);
   };
 
-  // 3. Simplified Stock Status
+  const handleHeartClick = (e) => {
+    e.stopPropagation();
+    if (onToggleFavorite) {
+      onToggleFavorite(product);
+    }
+  };
+
+  // --- COMPUTED STYLES ---
   const getStockStatus = () => {
     if (product.stock > 10)
       return { text: "In Stock", bg: "#DBEAFE", color: "#2563EB" };
@@ -37,7 +42,6 @@ export default function ProductCard({
   };
   const stockStatus = getStockStatus();
 
-  // 4. Dynamic Styles based on state
   const cardStyle = {
     background: "#fff",
     borderRadius: 20,
@@ -49,12 +53,7 @@ export default function ProductCard({
       hovered || isInCart
         ? "0 12px 30px rgba(37,99,235,0.12)"
         : "0 2px 8px rgba(0,0,0,0.05)",
-  };
-
-  const contentAreaStyle = {
-    padding: 16,
-    background: isInCart ? "#EFF6FF" : "#ffffff",
-    transition: "background 0.25s ease",
+    position: "relative",
   };
 
   return (
@@ -63,8 +62,9 @@ export default function ProductCard({
       onMouseLeave={() => setHovered(false)}
       style={cardStyle}
     >
-      {/* Product Image Header */}
+      {/* --- IMAGE HEADER --- */}
       <div
+        onClick={onQuickView}
         style={{
           height: 140,
           background: "#F8FAFC",
@@ -72,9 +72,36 @@ export default function ProductCard({
           alignItems: "center",
           justifyContent: "center",
           position: "relative",
-          padding: "16px",
+          padding: 16,
+          cursor: "pointer", //
         }}
       >
+        {/* Favorite Heart Button */}
+        <button
+          onClick={handleHeartClick}
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            background: "rgba(255, 255, 255, 0.9)",
+            border: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            color: isFavorite ? "#EF4444" : "#9CA3AF",
+            transition: "all 0.2s ease",
+            transform: hovered ? "scale(1.05)" : "scale(1)",
+            zIndex: 10,
+          }}
+        >
+          <FiHeart size={16} fill={isFavorite ? "#EF4444" : "none"} />
+        </button>
+
         <img
           src={product.image}
           alt={product.name}
@@ -82,13 +109,12 @@ export default function ProductCard({
             width: "100%",
             height: "100%",
             objectFit: "contain",
-            // Dim the image if out of stock
             opacity: isOutOfStock ? 0.4 : 1,
             transition: "opacity 0.3s ease",
           }}
         />
 
-        {/* ADDED: Big Sold Out Overlay */}
+        {/* Sold Out Overlay */}
         {isOutOfStock && (
           <div
             style={{
@@ -117,7 +143,7 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* Small Corner Badge (Hide if completely sold out to avoid clutter) */}
+        {/* Stock Badge (Top Right) */}
         {!isOutOfStock && (
           <span
             style={{
@@ -137,15 +163,26 @@ export default function ProductCard({
         )}
       </div>
 
-      {/* Bottom Content Area */}
-      <div style={contentAreaStyle}>
+      {/* --- CONTENT AREA --- */}
+      <div
+        style={{
+          padding: 16,
+          background: isInCart ? "#EFF6FF" : "#ffffff",
+          transition: "background 0.25s ease",
+        }}
+      >
         <h3
+          onClick={onQuickView}
           style={{
             margin: "0 0 6px",
             fontSize: 16,
             fontWeight: 600,
-            color: isOutOfStock ? "#9CA3AF" : "#111827", // Grey out text if sold out
+            color: isOutOfStock ? "#9CA3AF" : "#111827",
             lineHeight: 1.4,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            cursor: "pointer",
           }}
         >
           {product.name}
@@ -159,17 +196,17 @@ export default function ProductCard({
             lineHeight: 1.5,
           }}
         >
-          {product.description?.slice(0, 60)}...
+          {product.description?.slice(0, 50)}...
         </p>
 
-        {/* Sizes & Variants Wrapper */}
+        {/* Variants */}
         <div
           style={{
             display: "flex",
             flexWrap: "wrap",
             gap: 6,
             marginBottom: 12,
-            opacity: isOutOfStock ? 0.5 : 1, // Dim variants if out of stock
+            opacity: isOutOfStock ? 0.5 : 1,
           }}
         >
           {product.sizes && (
@@ -181,13 +218,11 @@ export default function ProductCard({
                 background: isInCart ? "#ffffff" : "#F3F4F6",
                 color: "#374151",
                 fontWeight: 500,
-                display: "inline-block",
               }}
             >
               {product.sizes}
             </span>
           )}
-
           {product.variants && typeof product.variants === "string" && (
             <span
               style={{
@@ -204,7 +239,7 @@ export default function ProductCard({
           )}
         </div>
 
-        {/* Price & Actions */}
+        {/* Price & Cart Actions */}
         <div
           style={{
             display: "flex",
@@ -216,12 +251,12 @@ export default function ProductCard({
             <div style={{ fontSize: 16, fontWeight: 600, color: "#2563EB" }}>
               {fmt(product.price)}
             </div>
-            <div style={{ fontSize: 14, color: "#9CA3AF" }}>
+            <div style={{ fontSize: 13, color: "#9CA3AF" }}>
               {fmtKHR(product.price)}
             </div>
           </div>
 
-          {/* Conditional Button / Quantity Selector */}
+          {/* Cart Buttons */}
           {isJustAdded ? (
             <button
               style={{
@@ -234,7 +269,6 @@ export default function ProductCard({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "all 0.2s ease",
               }}
             >
               <FiCheck size={20} />
@@ -261,14 +295,10 @@ export default function ProductCard({
                   color: "#4B5563",
                   cursor: "pointer",
                   fontSize: 18,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
                 }}
               >
                 −
               </button>
-
               <span
                 style={{
                   width: 24,
@@ -280,8 +310,6 @@ export default function ProductCard({
               >
                 {product.quantityInCart}
               </span>
-
-              {/* Prevent clicking '+' if they reached max stock */}
               <button
                 onClick={handleAddToCart}
                 disabled={product.stock <= product.quantityInCart}
@@ -299,9 +327,6 @@ export default function ProductCard({
                       ? "not-allowed"
                       : "pointer",
                   fontSize: 16,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
                 }}
               >
                 +

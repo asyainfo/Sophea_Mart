@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useStore } from "../hooks/useStore";
 import { useCart } from "../hooks/useCart";
+import { supabase } from "../services/supabase";
 import { USD_TO_KHR } from "../utils/currency";
 import { FiSearch } from "react-icons/fi";
 
@@ -9,6 +10,7 @@ import Hero from "../components/layout/Hero";
 import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
+import QuickViewModal from "../components/product/QuickViewModal"; // <-- 1. IMPORTED MODAL
 import { Toast, useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
 
@@ -51,7 +53,7 @@ const styles = {
 export default function HomePage() {
   const { user } = useAuth();
   const { products } = useStore();
-  const { dispatch } = useCart();
+  const { dispatch, cart } = useCart(); // <-- Grabbed 'cart' here to check quantities
   const { toasts, show: toast } = useToast();
 
   const [search, setSearch] = useState("");
@@ -60,14 +62,39 @@ export default function HomePage() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
 
+  // <-- 2. NEW STATE FOR MODAL -->
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
+
+  useEffect(() => {
+    if (user) {
+      fetchFavorites();
+    } else {
+      setFavoriteIds(new Set());
+    }
+  }, [user]);
+
+  const fetchFavorites = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("favorites")
+        .select("product_id")
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      setFavoriteIds(new Set(data.map((fav) => fav.product_id)));
+    } catch (error) {
+      console.error("Error fetching favorites:", error.message);
+    }
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const categoryMatch = category === "All" || product.category === category;
-
       const searchMatch =
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.description?.toLowerCase().includes(search.toLowerCase());
-
       return categoryMatch && searchMatch;
     });
   }, [products, search, category]);
@@ -79,25 +106,69 @@ export default function HomePage() {
       return;
     }
 
-    // --- NEW FIX: Check stock before allowing the add to cart ---
     if (product.stock <= 0) {
       toast("Sorry, this item is currently out of stock!", "error");
       return;
     }
-    // ------------------------------------------------------------
 
-    dispatch({
-      type: "ADD",
-      product,
+    dispatch({ type: "ADD", product });
+    toast(`${product.name} added to cart!`);
+  };
+
+  const handleRemoveFromCart = (product) => {
+    dispatch({ type: "REMOVE", product });
+  };
+
+  const handleToggleFavorite = async (product) => {
+    if (!user) {
+      toast("Please sign in to save favorites!", "error");
+      setLoginOpen(true);
+      return;
+    }
+
+    const isCurrentlyFavorited = favoriteIds.has(product.id);
+
+    setFavoriteIds((prev) => {
+      const newFavs = new Set(prev);
+      if (isCurrentlyFavorited) newFavs.delete(product.id);
+      else newFavs.add(product.id);
+      return newFavs;
     });
 
-    toast(`${product.name} added to cart!`);
+    try {
+      if (isCurrentlyFavorited) {
+        await supabase
+          .from("favorites")
+          .delete()
+          .match({ user_id: user.id, product_id: product.id });
+      } else {
+        await supabase
+          .from("favorites")
+          .insert([{ user_id: user.id, product_id: product.id }]);
+      }
+    } catch (error) {
+      console.error("Error updating favorite:", error.message);
+      fetchFavorites();
+      toast("Failed to update favorite.", "error");
+    }
   };
 
   const clearFilters = () => {
     setSearch("");
     setCategory("All");
   };
+
+  // <-- 3. DYNAMIC MODAL DATA -->
+  // This ensures the modal always knows exactly how many items are in the cart
+  const safeCart = Array.isArray(cart) ? cart : [];
+  const modalProduct = selectedProduct
+    ? {
+        ...selectedProduct,
+        quantityInCart:
+          safeCart.find((item) => item.id === selectedProduct.id)?.quantity ||
+          0,
+      }
+    : null;
 
   return (
     <div style={styles.page}>
@@ -106,14 +177,8 @@ export default function HomePage() {
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
           @keyframes slideIn {
-            from {
-              transform: translateX(20px);
-              opacity: 0;
-            }
-            to {
-              transform: translateX(0);
-              opacity: 1;
-            }
+            from { transform: translateX(20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
           }
 
           .responsive-grid {
@@ -147,13 +212,24 @@ export default function HomePage() {
 
         {filteredProducts.length ? (
           <div className="responsive-grid">
-            {filteredProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAddToCart={handleAddToCart}
-              />
-            ))}
+            {filteredProducts.map((product) => {
+              // Get cart quantity for the grid cards too!
+              const cartItem = safeCart.find((item) => item.id === product.id);
+              const quantityInCart = cartItem ? cartItem.quantity : 0;
+              const productWithCartData = { ...product, quantityInCart };
+
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={productWithCartData}
+                  onAddToCart={handleAddToCart}
+                  onRemoveFromCart={handleRemoveFromCart}
+                  isFavorite={favoriteIds.has(product.id)}
+                  onToggleFavorite={handleToggleFavorite}
+                  onQuickView={() => setSelectedProduct(product)} // <-- 4. TRIGGER MODAL ON CLICK
+                />
+              );
+            })}
           </div>
         ) : (
           <div style={styles.empty}>
@@ -166,7 +242,6 @@ export default function HomePage() {
             >
               <FiSearch size={64} color="#D1D5DB" />
             </div>
-
             <h3
               style={{
                 margin: "0 0 8px 0",
@@ -176,11 +251,9 @@ export default function HomePage() {
             >
               No products found
             </h3>
-
             <p style={{ margin: "0 0 24px 0", fontSize: "14px" }}>
               Try a different search or category.
             </p>
-
             <Button variant="secondary" onClick={clearFilters}>
               Clear filters
             </Button>
@@ -197,13 +270,13 @@ export default function HomePage() {
         }}
       >
         <h3 style={{ color: "#fff" }}>SOPHEA MART</h3>
-
         <p>
           © 2026 Small Mart · Phnom Penh, Cambodia · 1 USD ={" "}
           {USD_TO_KHR.toLocaleString()} KHR
         </p>
       </footer>
 
+      {/* --- MODALS --- */}
       <LoginModal
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
@@ -222,6 +295,19 @@ export default function HomePage() {
           setLoginOpen(true);
         }}
         toast={toast}
+      />
+
+      {/* <-- 5. RENDER THE QUICK VIEW MODAL --> */}
+      <QuickViewModal
+        open={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        product={modalProduct}
+        onAddToCart={handleAddToCart}
+        onRemoveFromCart={handleRemoveFromCart}
+        isFavorite={
+          selectedProduct ? favoriteIds.has(selectedProduct.id) : false
+        }
+        onToggleFavorite={handleToggleFavorite}
       />
 
       <Toast toasts={toasts} />
