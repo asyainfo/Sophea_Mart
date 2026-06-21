@@ -236,7 +236,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                           onError={(e) => {
                             e.target.onerror = null;
                             e.target.src =
-                              "https://cdn-icons-png.flaticon.com/512/1055/1055644.png"; // fallback
+                              "/Users/macbookpro/Desktop/mart-web/public"; // fallback
                           }}
                         />
                       ) : null}
