@@ -26,35 +26,35 @@ const AVAILABLE_GIFTS = [
     name: "Toys",
     price: 0,
     isGift: true,
-    image: "public/babys/B008.jpg",
+    image: "./babys/B008.jpg",
   },
   {
     id: "gift-2",
     name: "នំដំឡូង សារាយ",
     price: 0,
     isGift: true,
-    image: "public/snacks/S008.jpeg",
+    image: "./snacks/S008.jpeg",
   },
   {
     id: "gift-3",
     name: "គ្រាប់ចន្ទី",
     price: 0,
     isGift: true,
-    image: "public/snacks/S009.webp",
+    image: "./snacks/S009.webp",
   },
   {
     id: "gift-4",
     name: "នំថងមួង",
     price: 0,
     isGift: true,
-    image: "public/images/T003.jpg",
+    image: "./images/T003.jpg",
   },
   {
     id: "gift-5",
     name: "ដំណាប់ស្វាយ",
     price: 0,
     isGift: true,
-    image: "public/images/T001.png",
+    image: "./images/T001.png",
   },
 ];
 
@@ -265,7 +265,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                         {isSelected
                           ? "Selected"
                           : isFreeGiftUnlocked
-                            ? "Choose Gift"
+                            ? "ជ្រើសរើសកាដូ"
                             : "Locked"}
                       </button>
                     </div>
