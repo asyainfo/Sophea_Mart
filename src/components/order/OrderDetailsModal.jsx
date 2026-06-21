@@ -1,19 +1,14 @@
 import { useState, useEffect } from "react";
+import { FiPackage, FiCheckCircle, FiImage, FiClock } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
-import { fmt } from "../../utils/currency";
-import { FiImage, FiCheckCircle } from "react-icons/fi";
+import Button from "../ui/Button";
+import { fmt, fmtKHR } from "../../utils/currency";
 
-export default function OrderDetailsModal({
-  open,
-  onClose,
-  orderId,
-  isAdmin = false,
-}) {
+export default function OrderDetailsModal({ open, onClose, orderId }) {
+  const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
-  const [orderRecord, setOrderRecord] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isApproving, setIsApproving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (open && orderId) {
@@ -22,19 +17,9 @@ export default function OrderDetailsModal({
   }, [open, orderId]);
 
   const fetchOrderDetails = async () => {
-    setLoading(true);
-
+    setIsLoading(true);
     try {
-      // 1. Fetch the items for this order
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", orderId);
-
-      if (itemsError) throw itemsError;
-      setItems(itemsData || []);
-
-      // 2. Fetch the main order record
+      // 1. Fetch the Order Info
       const { data: orderData, error: orderError } = await supabase
         .from("Orders")
         .select("*")
@@ -42,213 +27,389 @@ export default function OrderDetailsModal({
         .single();
 
       if (orderError) throw orderError;
-      setOrderRecord(orderData);
+      setOrder(orderData);
+
+      // 2. Fetch the Items (Standard fetch to prevent Foreign Key crashes)
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId);
+
+      if (itemsError) throw itemsError;
+
+      let mergedItems = itemsData || [];
+
+      // 3. Safely fetch product images manually to avoid database join errors
+      if (mergedItems.length > 0) {
+        const productIds = mergedItems.map((i) => i.product_id).filter(Boolean);
+
+        if (productIds.length > 0) {
+          const { data: productsData } = await supabase
+            .from("products")
+            .select("id, image")
+            .in("id", productIds);
+
+          if (productsData) {
+            mergedItems = mergedItems.map((item) => {
+              const matchedProduct = productsData.find(
+                (p) => p.id === item.product_id,
+              );
+              return { ...item, image: matchedProduct?.image || null };
+            });
+          }
+        }
+      }
+
+      setItems(mergedItems);
     } catch (error) {
-      console.error("Supabase Error:", error.message);
+      console.error("Error fetching order details:", error.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  // --- APPROVE LOGIC ---
-  const handleApproveOrder = async () => {
-    setIsApproving(true);
-    try {
-      const { error } = await supabase
-        .from("Orders")
-        .update({ status: "completed" })
-        .eq("id", orderId);
+  if (isLoading) {
+    return (
+      <Modal open={open} onClose={onClose} title={`Order #${orderId || ""}`}>
+        <div style={{ padding: 40, textAlign: "center", color: "#6B7280" }}>
+          Loading details...
+        </div>
+      </Modal>
+    );
+  }
 
-      if (error) throw error;
-
-      // Trigger the global success toast
-      window.dispatchEvent(
-        new CustomEvent("global-toast", {
-          detail: { message: `Order #${orderId} Approved!`, type: "success" },
-        }),
-      );
-
-      // Close the modal (the Dashboard will auto-update via realtime listener)
-      onClose();
-    } catch (error) {
-      console.error("Error approving order:", error.message);
-      window.dispatchEvent(
-        new CustomEvent("global-toast", {
-          detail: { message: "Failed to approve order", type: "error" },
-        }),
-      );
-    } finally {
-      setIsApproving(false);
-    }
-  };
+  if (!order) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Order #${orderId}`}>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#6B7280" }}>
-          Loading order details...
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Items List */}
-          <div>
-            <h4
-              style={{ margin: "0 0 12px 0", color: "#111827", fontSize: 16 }}
-            >
-              Items Purchased
-            </h4>
-            <div style={{ display: "grid", gap: 12 }}>
-              {items.length > 0 ? (
+    <Modal open={open} onClose={onClose} title={`Order #${order.id}`} wide>
+      <div style={styles.container}>
+        {/* --- LEFT COLUMN: PACKING LIST --- */}
+        <div style={styles.column}>
+          <div style={styles.sectionHeader}>
+            <FiPackage size={18} color="#0066FF" />
+            <h3 style={styles.sectionTitle}>Items Purchased</h3>
+            <span style={styles.badge}>{items.length} items</span>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.itemsList}>
+              {items.length === 0 ? (
+                <div
+                  style={{ padding: 20, textAlign: "center", color: "#9CA3AF" }}
+                >
+                  No items found for this order.
+                </div>
+              ) : (
                 items.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      borderBottom: "1px solid #f3f4f6",
-                      paddingBottom: 8,
-                      color: "#374151",
-                    }}
-                  >
-                    <span>
-                      {item.product_name}{" "}
-                      <span style={{ color: "#9CA3AF" }}>
-                        (x{item.quantity})
-                      </span>
-                    </span>
-                    <strong style={{ color: "#111827" }}>
+                  <div key={item.id} style={styles.itemRow}>
+                    {/* Product Image Thumbnail */}
+                    <div style={styles.imageBox}>
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.product_name}
+                          style={styles.productImage}
+                        />
+                      ) : (
+                        <FiPackage size={20} color="#9CA3AF" />
+                      )}
+                    </div>
+
+                    {/* Product Details */}
+                    <div style={styles.itemDetails}>
+                      <div style={styles.itemName}>{item.product_name}</div>
+                      <div style={styles.itemMeta}>
+                        {fmt(item.price)} × {item.quantity}
+                      </div>
+                    </div>
+
+                    {/* Total Item Price */}
+                    <div style={styles.itemTotal}>
                       {fmt(item.price * item.quantity)}
-                    </strong>
+                    </div>
                   </div>
                 ))
-              ) : (
-                <p style={{ color: "#6B7280", margin: 0 }}>No items found.</p>
               )}
             </div>
-          </div>
 
-          {/* Payment Receipt Section */}
-          {orderRecord?.receipt_url && (
-            <div
-              style={{
-                borderTop: "1px solid #E5E7EB",
-                paddingTop: 20,
-                marginTop: 4,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 12,
-                }}
-              >
-                <FiImage color="#0066FF" />
-                <h4 style={{ margin: 0, color: "#111827", fontSize: 16 }}>
-                  Payment Receipt
-                </h4>
+            {/* Totals Summary */}
+            <div style={styles.totalsBox}>
+              <div style={styles.totalRow}>
+                <span style={styles.totalLabel}>Total USD</span>
+                <span style={styles.totalValueUsd}>{fmt(order.total_usd)}</span>
               </div>
-
-              <div
-                style={{
-                  background: "#F9FAFB",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #E5E7EB",
-                  textAlign: "center",
-                }}
-              >
-                <a
-                  href={orderRecord.receipt_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <img
-                    src={orderRecord.receipt_url}
-                    alt="Customer Uploaded Receipt"
-                    style={{
-                      width: "100%",
-                      maxHeight: 300,
-                      objectFit: "contain",
-                      borderRadius: 8,
-                      cursor: "zoom-in",
-                    }}
-                  />
-                </a>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#6B7280",
-                    margin: "8px 0 0 0",
-                  }}
-                >
-                  Click image to view full size
-                </p>
+              <div style={styles.totalRow}>
+                <span style={styles.totalLabel}>Total KHR</span>
+                <span style={styles.totalValueKhr}>
+                  {fmtKHR(order.total_usd)}
+                </span>
               </div>
             </div>
-          )}
-
-          {/* ACTION FOOTER */}
-          <div
-            style={{
-              marginTop: 10,
-              paddingTop: 20,
-              borderTop: "1px solid #E5E7EB",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 12,
-            }}
-          >
-            <button
-              onClick={onClose}
-              style={{
-                padding: "10px 16px",
-                background: "#F3F4F6",
-                color: "#4B5563",
-                border: "none",
-                borderRadius: 8,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "background 0.2s",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#E5E7EB")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "#F3F4F6")
-              }
-            >
-              Close
-            </button>
-
-            {/* SECURITY FIX: Only show "Approve" if the user is an Admin AND the order is pending */}
-            {isAdmin && orderRecord?.status !== "completed" && (
-              <button
-                onClick={handleApproveOrder}
-                disabled={isApproving}
-                style={{
-                  padding: "10px 20px",
-                  background: "#10B981",
-                  color: "#FFF",
-                  border: "none",
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  cursor: isApproving ? "not-allowed" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  opacity: isApproving ? 0.7 : 1,
-                  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
-                }}
-              >
-                <FiCheckCircle size={18} />
-                {isApproving ? "Approving..." : "Approve Order"}
-              </button>
-            )}
           </div>
         </div>
-      )}
+
+        {/* --- RIGHT COLUMN: PAYMENT & STATUS --- */}
+        <div style={styles.column}>
+          <div style={styles.sectionHeader}>
+            <FiImage size={18} color="#0066FF" />
+            <h3 style={styles.sectionTitle}>Payment Details</h3>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.infoRow}>
+              <span style={styles.infoLabel}>Method:</span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  textTransform: "capitalize",
+                  color: "#111827",
+                }}
+              >
+                {order.payment_method || "Cash"}
+              </span>
+            </div>
+
+            <div style={styles.infoRow}>
+              <span style={styles.infoLabel}>Status:</span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 10px",
+                  borderRadius: 12,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  backgroundColor:
+                    order.status === "completed" ? "#D1FAE5" : "#FEF3C7",
+                  color: order.status === "completed" ? "#065F46" : "#D97706",
+                  textTransform: "capitalize",
+                }}
+              >
+                {order.status === "completed" ? (
+                  <FiCheckCircle size={14} />
+                ) : (
+                  <FiClock size={14} />
+                )}
+                {order.status}
+              </span>
+            </div>
+
+            {order.phone_number && (
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Phone:</span>
+                <span style={{ fontWeight: 600, color: "#111827" }}>
+                  {order.phone_number}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Receipt Image Display */}
+          {order.payment_method === "bank" && order.receipt_url ? (
+            <div style={styles.receiptBox}>
+              <div style={styles.receiptHeader}>Customer Receipt Upload</div>
+              <a
+                href={order.receipt_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "block" }}
+              >
+                <img
+                  src={order.receipt_url}
+                  alt="Payment Receipt"
+                  style={styles.receiptImage}
+                />
+              </a>
+              <div style={styles.receiptHint}>
+                Click image to view full size
+              </div>
+            </div>
+          ) : order.payment_method === "bank" ? (
+            <div style={styles.noReceiptBox}>No receipt uploaded.</div>
+          ) : null}
+
+          <div style={{ marginTop: "auto", paddingTop: 24 }}>
+            <Button variant="secondary" onClick={onClose} full>
+              Close Details
+            </Button>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = {
+  container: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 24,
+    alignItems: "start",
+  },
+  column: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 600,
+    color: "#111827",
+  },
+  badge: {
+    marginLeft: "auto",
+    background: "#EFF6FF",
+    color: "#1D4ED8",
+    padding: "4px 10px",
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  card: {
+    background: "#FFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: 16,
+    overflow: "hidden",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+    marginBottom: 16,
+  },
+  itemsList: {
+    display: "flex",
+    flexDirection: "column",
+    maxHeight: "300px",
+    overflowY: "auto",
+  },
+  itemRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    borderBottom: "1px solid #F3F4F6",
+  },
+  imageBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    background: "#F9FAFB",
+    border: "1px solid #E5E7EB",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  productImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    padding: 2,
+  },
+  itemDetails: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#374151",
+    marginBottom: 2,
+  },
+  itemMeta: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: 500,
+  },
+  itemTotal: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#111827",
+  },
+  totalsBox: {
+    padding: "16px",
+    background: "#F9FAFB",
+    borderTop: "1px solid #E5E7EB",
+  },
+  totalRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  totalLabel: {
+    fontSize: 14,
+    color: "#4B5563",
+    fontWeight: 600,
+  },
+  totalValueUsd: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0066FF",
+  },
+  totalValueKhr: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: 500,
+  },
+  infoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "14px 16px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: 14,
+  },
+  infoLabel: {
+    color: "#6B7280",
+    fontWeight: 500,
+  },
+  receiptBox: {
+    background: "#FFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: 16,
+    overflow: "hidden",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+  },
+  receiptHeader: {
+    background: "#F9FAFB",
+    padding: "12px",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#374151",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "center",
+  },
+  receiptImage: {
+    width: "100%",
+    maxHeight: "240px",
+    objectFit: "contain",
+    background: "#F9FAFB",
+    display: "block",
+  },
+  receiptHint: {
+    padding: 10,
+    fontSize: 12,
+    color: "#9CA3AF",
+    textAlign: "center",
+    borderTop: "1px solid #E5E7EB",
+    background: "#FFF",
+  },
+  noReceiptBox: {
+    padding: 30,
+    textAlign: "center",
+    background: "#F9FAFB",
+    border: "1px dashed #D1D5DB",
+    color: "#9CA3AF",
+    borderRadius: 16,
+    fontSize: 14,
+  },
+};

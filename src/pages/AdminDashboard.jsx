@@ -49,6 +49,10 @@ export default function AdminDashboard() {
 
   const [tab, setTab] = useState("overview");
 
+  // 🏆 NEW: ASYNC LOADING STATES
+  const [processingId, setProcessingId] = useState(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+
   // Modals State
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -138,21 +142,18 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // --- ACTIONS ---
-  // 🏆 1-CLICK BUTTON LOGIC + POINTS AWARD SYSTEM
+  // --- ACTIONS (WITH LOADING SPINNERS) ---
   const toggleOrderStatus = async (
     orderId,
     currentStatus,
     orderUserId,
     totalUsd,
   ) => {
+    setProcessingId(orderId); // 🏆 Start Spinner
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
-
-    // Calculate points ($1.25 = 1 Point)
     const pointsToAward = Math.floor((totalUsd || 0) / 1.25);
 
     try {
-      // 1. Update the order status in the database
       const { error: orderError } = await supabase
         .from("Orders")
         .update({ status: newStatus })
@@ -160,7 +161,6 @@ export default function AdminDashboard() {
 
       if (orderError) throw orderError;
 
-      // 2. If marked completed, add points to the customer's profile
       if (newStatus === "completed" && pointsToAward > 0) {
         const { data: profileData } = await supabase
           .from("profiles")
@@ -177,12 +177,10 @@ export default function AdminDashboard() {
           .eq("id", orderUserId);
 
         triggerGlobalToast(
-          `🎉 Order completed! ${pointsToAward} points added to customer.`,
+          `🎉 Order completed! ${pointsToAward} points added.`,
           "success",
         );
-      }
-      // 3. If reverting back to pending, deduct the points
-      else if (newStatus === "pending" && pointsToAward > 0) {
+      } else if (newStatus === "pending" && pointsToAward > 0) {
         const { data: profileData } = await supabase
           .from("profiles")
           .select("points")
@@ -190,7 +188,7 @@ export default function AdminDashboard() {
           .single();
 
         const currentPoints = profileData?.points || 0;
-        const newPointsTotal = Math.max(0, currentPoints - pointsToAward); // Keep at least 0
+        const newPointsTotal = Math.max(0, currentPoints - pointsToAward);
 
         await supabase
           .from("profiles")
@@ -207,8 +205,10 @@ export default function AdminDashboard() {
 
       fetchDashboardData();
     } catch (error) {
-      console.error("Error updating status & points:", error.message);
+      console.error("Error updating status:", error.message);
       triggerGlobalToast("Failed to update status", "error");
+    } finally {
+      setProcessingId(null); // 🏆 Stop Spinner
     }
   };
 
@@ -242,6 +242,7 @@ export default function AdminDashboard() {
     );
     if (!confirmDelete) return;
 
+    setProcessingId(id); // 🏆 Start Spinner
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
@@ -251,6 +252,32 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error("SUPABASE DELETE ERROR:", error);
       triggerGlobalToast("Failed to delete product", "error");
+    } finally {
+      setProcessingId(null); // 🏆 Stop Spinner
+    }
+  };
+
+  const handleToggleStock = async (id, currentStockStatus, name) => {
+    setProcessingId(id); // 🏆 Start Spinner
+    try {
+      const newStatus = !currentStockStatus;
+      const { error } = await supabase
+        .from("products")
+        .update({ in_stock: newStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      triggerGlobalToast(
+        `${name} is now ${newStatus ? "In Stock" : "Hidden"}`,
+        "success",
+      );
+      fetchProducts();
+    } catch (error) {
+      console.error("Error updating stock:", error);
+      triggerGlobalToast("Failed to update stock status", "error");
+    } finally {
+      setProcessingId(null); // 🏆 Stop Spinner
     }
   };
 
@@ -568,7 +595,6 @@ export default function AdminDashboard() {
                             {fmt(o.total_usd)}
                           </td>
                           <td style={tableCell}>
-                            {/* 1-CLICK TOGGLE BUTTON */}
                             <button
                               onClick={() =>
                                 toggleOrderStatus(
@@ -578,13 +604,17 @@ export default function AdminDashboard() {
                                   o.total_usd,
                                 )
                               }
+                              disabled={processingId === o.id}
                               style={{
                                 padding: "6px 12px",
                                 borderRadius: 10,
                                 fontSize: 12,
                                 fontWeight: 600,
                                 border: "none",
-                                cursor: "pointer",
+                                cursor:
+                                  processingId === o.id
+                                    ? "not-allowed"
+                                    : "pointer",
                                 whiteSpace: "nowrap",
                                 textTransform: "capitalize",
                                 background:
@@ -595,9 +625,10 @@ export default function AdminDashboard() {
                                   o.status === "completed"
                                     ? "#065f46"
                                     : "#713f12",
+                                opacity: processingId === o.id ? 0.6 : 1,
                               }}
                             >
-                              {o.status}
+                              {processingId === o.id ? "..." : o.status}
                             </button>
                           </td>
                           <td style={tableCell}>
@@ -664,6 +695,7 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
+            {/* 🏆 NEW: passing the processingId to the table! */}
             <ProductsTable
               products={dbProducts}
               onEdit={(product) => {
@@ -671,6 +703,8 @@ export default function AdminDashboard() {
                 setShowAddModal(true);
               }}
               onDelete={handleDeleteProduct}
+              onToggleStock={handleToggleStock}
+              processingId={processingId}
             />
           </>
         )}
@@ -780,7 +814,6 @@ export default function AdminDashboard() {
                       </td>
                       <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
                       <td style={tableCell}>
-                        {/* 1-CLICK TOGGLE BUTTON */}
                         <button
                           onClick={() =>
                             toggleOrderStatus(
@@ -790,22 +823,25 @@ export default function AdminDashboard() {
                               o.total_usd,
                             )
                           }
+                          disabled={processingId === o.id}
                           style={{
                             padding: "6px 12px",
                             borderRadius: 10,
                             fontSize: 12,
                             fontWeight: 600,
                             border: "none",
-                            cursor: "pointer",
+                            cursor:
+                              processingId === o.id ? "not-allowed" : "pointer",
                             whiteSpace: "nowrap",
                             textTransform: "capitalize",
                             background:
                               o.status === "completed" ? "#d1fae5" : "#fef9c3",
                             color:
                               o.status === "completed" ? "#065f46" : "#713f12",
+                            opacity: processingId === o.id ? 0.6 : 1,
                           }}
                         >
-                          {o.status}
+                          {processingId === o.id ? "..." : o.status}
                         </button>
                       </td>
                       <td style={tableCell}>
@@ -846,7 +882,9 @@ export default function AdminDashboard() {
           setEditingProduct(null);
         }}
         product={editingProduct}
+        isSaving={isSavingProduct}
         onSave={async (data) => {
+          setIsSavingProduct(true);
           try {
             if (editingProduct) {
               await handleUpdateProduct(editingProduct.id, data);
@@ -856,7 +894,9 @@ export default function AdminDashboard() {
             setShowAddModal(false);
             setEditingProduct(null);
           } catch (error) {
-            // Managed by functions above
+            // Handled inside functions
+          } finally {
+            setIsSavingProduct(false);
           }
         }}
       />
@@ -917,7 +957,7 @@ export default function AdminDashboard() {
             </button>
             <img
               src={receiptImage}
-              alt="Uploaded Payment Receipt Verification"
+              alt="Receipt"
               style={{
                 maxWidth: "100%",
                 maxHeight: "80vh",

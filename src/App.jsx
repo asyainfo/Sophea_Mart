@@ -9,8 +9,9 @@ import { CartProvider } from "./context/CartContext";
 import { useAuth } from "./hooks/useAuth";
 import { useCart } from "./hooks/useCart";
 
-// Global Alerts
+// Global Alerts & UI
 import GlobalAudioAlerts from "./components/GlobalAudioAlerts";
+import { Toast, useToast } from "./components/ui/Toast";
 
 // Pages
 import HomePage from "./pages/HomePage";
@@ -28,7 +29,6 @@ import RegisterModal from "./components/auth/RegisterModal";
 import ForgotPasswordModal from "./components/auth/ForgotPasswordModal";
 import CartDrawer from "./components/cart/CartDrawer";
 import CheckoutModal from "./components/cart/CheckoutModal";
-import { Toast, useToast } from "./components/ui/Toast";
 
 function MainApp() {
   const { profile } = useAuth();
@@ -36,19 +36,19 @@ function MainApp() {
   const location = useLocation();
   const { count = 0 } = useCart();
 
+  // --- UI STATE ---
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  // --- NEW: VOUCHER STATE ---
-  // This holds the voucher when the user clicks "Checkout" in the Cart Drawer
+  // --- VOUCHER STATE ---
   const [appliedVoucher, setAppliedVoucher] = useState(null);
 
   const isAdminPage = location.pathname.startsWith("/admin");
 
-  // --- THE EVENT CATCHER ---
+  // --- GLOBAL EVENT LISTENER ---
   useEffect(() => {
     const handleGlobalToast = (e) => {
       if (toast && e.detail) {
@@ -72,7 +72,13 @@ function MainApp() {
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 pt-6">
+      {/* 🏆 THE FIX: Dynamic bottom padding prevents the floating button from hiding content */}
+      <main
+        className="max-w-7xl mx-auto px-4 pt-6"
+        style={{
+          paddingBottom: count > 0 && !isAdminPage ? "100px" : "24px",
+        }}
+      >
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/order-history" element={<OrderHistory />} />
@@ -87,7 +93,7 @@ function MainApp() {
         </Routes>
       </main>
 
-      {/* Floating Checkout Button */}
+      {/* --- FLOATING CHECKOUT BUTTON --- */}
       {!isAdminPage && count > 0 && (
         <button
           onClick={() => setCartOpen(true)}
@@ -105,11 +111,10 @@ function MainApp() {
         </button>
       )}
 
-      {/* Drawers & Modals */}
+      {/* --- DRAWERS & MODALS --- */}
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
-        // FIX: We now receive the voucher from the cart and save it to state
         onCheckout={(voucher) => {
           setAppliedVoucher(voucher);
           setCartOpen(false);
@@ -155,10 +160,9 @@ function MainApp() {
         open={checkoutOpen}
         onClose={() => {
           setCheckoutOpen(false);
-          setAppliedVoucher(null); // Clear voucher if they cancel checkout
+          setAppliedVoucher(null); // Clear voucher on cancel
         }}
         toast={toast}
-        // FIX: We pass the saved voucher down into the Checkout Modal
         appliedVoucher={appliedVoucher}
       />
 
@@ -167,6 +171,7 @@ function MainApp() {
   );
 }
 
+// Ensure Context Providers wrap the entire app
 export default function App() {
   return (
     <AuthProvider>
@@ -181,12 +186,14 @@ export default function App() {
   );
 }
 
-// --- EXTRACTED STYLES ---
+// ==========================================
+// EXTRACTED STYLES
+// ==========================================
 const styles = {
   floatingButton: {
     position: "fixed",
-    bottom: "30px",
-    right: "30px",
+    bottom: "24px", // Adjusted slightly for better mobile feel
+    right: "24px",
     zIndex: 99,
     background: "#2563EB",
     color: "#ffffff",

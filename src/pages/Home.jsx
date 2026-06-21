@@ -3,7 +3,7 @@ import { supabase } from "../services/supabase";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import ProductCard from "../components/product/ProductCard";
-import QuickViewModal from "../components/product/QuickViewModal"; // <-- 1. NEW IMPORT
+import QuickViewModal from "../components/product/QuickViewModal";
 
 export default function Home() {
   const { user } = useAuth();
@@ -12,11 +12,9 @@ export default function Home() {
   const [products, setProducts] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
-
-  // <-- 2. NEW STATE FOR MODAL -->
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // 1. Fetch Products on Load
+  // 1. Fetch Active Products on Load
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -32,10 +30,13 @@ export default function Home() {
 
   const fetchProducts = async () => {
     try {
+      // 🏆 UPGRADED: Added .eq("in_stock", true) to automatically hide disabled items
       const { data, error } = await supabase
         .from("products")
         .select("*")
+        .eq("in_stock", true)
         .order("id");
+
       if (error) throw error;
       setProducts(data || []);
     } catch (error) {
@@ -102,8 +103,7 @@ export default function Home() {
     }
   };
 
-  // <-- 3. DYNAMIC MODAL DATA -->
-  // This ensures the modal always has the most up-to-date cart quantity!
+  // DYNAMIC MODAL DATA
   const modalProduct = selectedProduct
     ? {
         ...selectedProduct,
@@ -140,14 +140,13 @@ export default function Home() {
                 onRemoveFromCart={removeFromCart}
                 isFavorite={favoriteIds.has(product.id)}
                 onToggleFavorite={handleToggleFavorite}
-                onQuickView={() => setSelectedProduct(product)} // <-- 4. PASSED PROP TO CARD
+                onQuickView={() => setSelectedProduct(product)}
               />
             );
           })}
         </div>
       )}
 
-      {/* <-- 5. RENDER THE MODAL --> */}
       <QuickViewModal
         open={!!selectedProduct}
         onClose={() => setSelectedProduct(null)}

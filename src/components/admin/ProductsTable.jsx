@@ -9,21 +9,60 @@ import {
 } from "react-icons/fi";
 import { fmt } from "../../utils/currency";
 
-export default function ProductsTable({ products, onEdit, onDelete }) {
+// --- REUSABLE LOADING SPINNER ---
+const Spinner = ({ color = "#6B7280" }) => (
+  <svg
+    style={{
+      animation: "spin 1s linear infinite",
+      width: 16,
+      height: 16,
+      color: color,
+    }}
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      style={{ opacity: 0.25 }}
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    ></circle>
+    <path
+      style={{ opacity: 0.75 }}
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    ></path>
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </svg>
+);
+
+export default function ProductsTable({
+  products = [],
+  onEdit,
+  onDelete,
+  onToggleStock,
+  processingId,
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // --- FILTERING & PAGINATION LOGIC ---
   const categories = useMemo(() => {
-    const cats = new Set(products.map((p) => p.category));
+    // Note: If you don't have a 'category' field in your DB yet, this might return undefined.
+    // It's safe to keep, but it relies on your Supabase table having a 'category' column.
+    const cats = new Set(products.map((p) => p.category).filter(Boolean));
     return ["All", ...Array.from(cats)];
   }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((prod) => {
       const matchesSearch = prod.name
-        .toLowerCase()
+        ?.toLowerCase()
         .includes(searchQuery.toLowerCase());
       const matchesCategory =
         selectedCategory === "All" || prod.category === selectedCategory;
@@ -32,43 +71,17 @@ export default function ProductsTable({ products, onEdit, onDelete }) {
   }, [products, searchQuery, selectedCategory]);
 
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1;
+
   const paginatedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredProducts, currentPage]);
 
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 16,
-        overflow: "hidden",
-      }}
-    >
-      {/* Search & Filter Bar */}
-      <div
-        style={{
-          display: "flex",
-          gap: 16,
-          padding: 16,
-          borderBottom: "1px solid #e5e7eb",
-          background: "#f9fafb",
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            flex: "1 1 200px",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: "#fff",
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-          }}
-        >
+    <div style={styles.card}>
+      {/* --- SEARCH & FILTER BAR --- */}
+      <div style={styles.searchBar}>
+        <div style={styles.searchInputWrapper}>
           <FiSearch color="#9ca3af" size={18} />
           <input
             type="text"
@@ -78,64 +91,39 @@ export default function ProductsTable({ products, onEdit, onDelete }) {
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            style={{
-              border: "none",
-              outline: "none",
-              width: "100%",
-              fontSize: 14,
-            }}
+            style={styles.searchInput}
           />
         </div>
-        <select
-          value={selectedCategory}
-          onChange={(e) => {
-            setSelectedCategory(e.target.value);
-            setCurrentPage(1);
-          }}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-            background: "#fff",
-            fontSize: 14,
-            outline: "none",
-            flex: "1 1 150px",
-          }}
-        >
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+
+        {categories.length > 1 && (
+          <select
+            value={selectedCategory}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={styles.selectInput}
+          >
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* Responsive List Container */}
+      {/* --- RESPONSIVE TABLE CONTAINER --- */}
       <div>
         {/* Desktop Header */}
-        <div
-          className="desktop-view"
-          style={{
-            display: "flex",
-            padding: "12px 16px",
-            background: "#fff",
-            borderBottom: "1px solid #e5e7eb",
-            color: "#6b7280",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
+        <div className="desktop-view" style={styles.desktopHeaderRow}>
           <div style={{ flex: 2 }}>Item</div>
-          <div style={{ flex: 1 }}>Category</div>
           <div style={{ flex: 1 }}>Price</div>
-          <div style={{ flex: 1 }}>Stock</div>
+          <div style={{ flex: 1 }}>Status</div>
           <div style={{ flex: 1, textAlign: "right" }}>Actions</div>
         </div>
 
-        {/* CSS Block: 
-          On screens larger than 768px, show 'desktop-view' and hide 'mobile-view'.
-          On screens smaller than 768px, hide 'desktop-view' and show 'mobile-view'.
-        */}
+        {/* CSS Media Queries for layout swapping */}
         <style>{`
           .mobile-view { display: none !important; }
           .desktop-view { display: flex; }
@@ -148,318 +136,418 @@ export default function ProductsTable({ products, onEdit, onDelete }) {
 
         {/* Product Rows */}
         {paginatedProducts.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>
-            No products found.
-          </div>
+          <div style={styles.emptyState}>No products found.</div>
         ) : (
-          paginatedProducts.map((p) => (
-            <div key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-              {/* --- DESKTOP ROW LAYOUT --- */}
+          paginatedProducts.map((p) => {
+            const isProcessing = processingId === p.id;
+
+            return (
               <div
-                className="desktop-view"
-                style={{ alignItems: "center", padding: "12px 16px" }}
+                key={p.id}
+                style={{
+                  borderBottom: "1px solid #f3f4f6",
+                  opacity: isProcessing ? 0.6 : 1,
+                  transition: "opacity 0.2s",
+                }}
               >
+                {/* --- DESKTOP ROW --- */}
                 <div
+                  className="desktop-view"
+                  style={{ alignItems: "center", padding: "12px 16px" }}
+                >
+                  <div
+                    style={{
+                      flex: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={styles.imageBox}>
+                      {p.image ? (
+                        <img src={p.image} alt={p.name} style={styles.image} />
+                      ) : (
+                        <FiImage color="#9ca3af" />
+                      )}
+                    </div>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color: "#111827",
+                        fontSize: 14,
+                      }}
+                    >
+                      {p.name}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: 1,
+                      fontWeight: 700,
+                      color: "#0066ff",
+                      fontSize: 14,
+                    }}
+                  >
+                    {fmt(p.price)}
+                  </div>
+
+                  {/* 🏆 RESTORED: The Interactive Toggle Switch */}
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
+                      <button
+                        onClick={() => onToggleStock(p.id, p.in_stock, p.name)}
+                        disabled={isProcessing}
+                        style={{
+                          ...styles.toggleTrack,
+                          backgroundColor: p.in_stock ? "#10B981" : "#D1D5DB",
+                          cursor: isProcessing ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <div
+                          style={{
+                            ...styles.toggleThumb,
+                            transform: p.in_stock
+                              ? "translateX(20px)"
+                              : "translateX(0)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {isProcessing && (
+                            <Spinner
+                              color={p.in_stock ? "#10B981" : "#9CA3AF"}
+                            />
+                          )}
+                        </div>
+                      </button>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: p.in_stock ? "#10B981" : "#6B7280",
+                        }}
+                      >
+                        {p.in_stock ? "In Stock" : "Hidden"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: 1,
+                      textAlign: "right",
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      onClick={() => onEdit(p)}
+                      disabled={isProcessing}
+                      style={styles.editBtn}
+                    >
+                      <FiEdit2 size={15} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(p.id, p.name)}
+                      disabled={isProcessing}
+                      style={styles.deleteBtn}
+                    >
+                      {isProcessing ? (
+                        <Spinner color="#DC2626" />
+                      ) : (
+                        <FiTrash2 size={15} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* --- MOBILE APP CARD --- */}
+                <div
+                  className="mobile-view"
                   style={{
-                    flex: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
+                    padding: "16px",
+                    gap: "14px",
+                    alignItems: "flex-start",
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
-                      background: "#f3f4f6",
-                      borderRadius: 8,
-                      overflow: "hidden",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
+                      ...styles.imageBox,
+                      width: 64,
+                      height: 64,
+                      border: "1px solid #e5e7eb",
                     }}
                   >
                     {p.image ? (
-                      <img
-                        src={
-                          p.image.startsWith("http") ? p.image : `/${p.image}`
-                        }
-                        alt={p.name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
+                      <img src={p.image} alt={p.name} style={styles.image} />
                     ) : (
-                      <FiImage color="#9ca3af" />
+                      <FiImage color="#9ca3af" size={24} />
                     )}
                   </div>
-                  <span
-                    style={{ fontWeight: 600, color: "#111827", fontSize: 14 }}
-                  >
-                    {p.name}
-                  </span>
-                </div>
-                <div style={{ flex: 1, fontSize: 13 }}>
-                  <span
-                    style={{
-                      background: "#f3f4f6",
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      fontWeight: 500,
-                      color: "#4b5563",
-                    }}
-                  >
-                    {p.category}
-                  </span>
-                </div>
-                <div style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
-                  {fmt(p.price)}
-                </div>
-                <div style={{ flex: 1, fontSize: 13 }}>
-                  <span
-                    style={{
-                      color: p.stock > 0 ? "#10b981" : "#ef4444",
-                      background: p.stock > 0 ? "#d1fae5" : "#fee2e2",
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
-                  </span>
-                </div>
-                <div style={{ flex: 1, textAlign: "right" }}>
-                  <button
-                    onClick={() => onEdit(p)}
-                    style={{
-                      padding: 8,
-                      background: "#eff6ff",
-                      border: "none",
-                      borderRadius: 6,
-                      color: "#0066ff",
-                      cursor: "pointer",
-                      marginRight: 8,
-                    }}
-                  >
-                    <FiEdit2 size={15} />
-                  </button>
-                  <button
-                    onClick={() => onDelete(p.id, p.name)}
-                    style={{
-                      padding: 8,
-                      background: "#fee2e2",
-                      border: "none",
-                      borderRadius: 6,
-                      color: "#ef4444",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <FiTrash2 size={15} />
-                  </button>
-                </div>
-              </div>
 
-              {/* --- MOBILE APP CARD LAYOUT --- */}
-              <div
-                className="mobile-view"
-                style={{
-                  padding: "16px",
-                  gap: "14px",
-                  alignItems: "flex-start",
-                }}
-              >
-                {/* Image on Left */}
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    background: "#f3f4f6",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                    border: "1px solid #e5e7eb",
-                  }}
-                >
-                  {p.image ? (
-                    <img
-                      src={p.image.startsWith("http") ? p.image : `/${p.image}`}
-                      alt={p.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <FiImage color="#9ca3af" size={24} />
-                  )}
-                </div>
-
-                {/* Content on Right */}
-                <div
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  {/* Title */}
                   <div
                     style={{
-                      fontWeight: 600,
-                      color: "#111827",
-                      fontSize: 15,
-                      marginBottom: 6,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {p.name}
-                  </div>
-
-                  {/* Category & Stock Badges */}
-                  <div
-                    style={{
+                      flex: 1,
+                      minWidth: 0,
                       display: "flex",
-                      flexWrap: "wrap",
-                      gap: 6,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <span
-                      style={{
-                        background: "#f3f4f6",
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "#4b5563",
-                      }}
-                    >
-                      {p.category}
-                    </span>
-                    <span
-                      style={{
-                        color: p.stock > 0 ? "#065f46" : "#991b1b",
-                        background: p.stock > 0 ? "#d1fae5" : "#fee2e2",
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {p.stock > 0 ? `${p.stock} left` : "Out of stock"}
-                    </span>
-                  </div>
-
-                  {/* Price & Actions Row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      flexDirection: "column",
                     }}
                   >
                     <div
                       style={{
-                        fontWeight: 700,
-                        fontSize: 16,
-                        color: "#0066ff",
+                        fontWeight: 600,
+                        color: "#111827",
+                        fontSize: 15,
+                        marginBottom: 8,
                       }}
                     >
-                      {fmt(p.price)}
+                      {p.name}
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
+
+                    {/* 🏆 RESTORED: The Interactive Toggle Switch (Mobile Layout) */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        marginBottom: 12,
+                      }}
+                    >
                       <button
-                        onClick={() => onEdit(p)}
+                        onClick={() => onToggleStock(p.id, p.in_stock, p.name)}
+                        disabled={isProcessing}
                         style={{
-                          padding: 6,
-                          background: "#eff6ff",
-                          border: "none",
-                          borderRadius: 6,
+                          ...styles.toggleTrack,
+                          backgroundColor: p.in_stock ? "#10B981" : "#D1D5DB",
+                        }}
+                      >
+                        <div
+                          style={{
+                            ...styles.toggleThumb,
+                            transform: p.in_stock
+                              ? "translateX(20px)"
+                              : "translateX(0)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {isProcessing && (
+                            <Spinner
+                              color={p.in_stock ? "#10B981" : "#9CA3AF"}
+                            />
+                          )}
+                        </div>
+                      </button>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: p.in_stock ? "#10B981" : "#6B7280",
+                        }}
+                      >
+                        {p.in_stock ? "In Stock" : "Hidden"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 16,
                           color: "#0066ff",
-                          cursor: "pointer",
-                          display: "flex",
                         }}
                       >
-                        <FiEdit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => onDelete(p.id, p.name)}
-                        style={{
-                          padding: 6,
-                          background: "#fee2e2",
-                          border: "none",
-                          borderRadius: 6,
-                          color: "#ef4444",
-                          cursor: "pointer",
-                          display: "flex",
-                        }}
-                      >
-                        <FiTrash2 size={16} />
-                      </button>
+                        {fmt(p.price)}
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => onEdit(p)}
+                          disabled={isProcessing}
+                          style={styles.editBtn}
+                        >
+                          <FiEdit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(p.id, p.name)}
+                          disabled={isProcessing}
+                          style={styles.deleteBtn}
+                        >
+                          {isProcessing ? (
+                            <Spinner color="#DC2626" />
+                          ) : (
+                            <FiTrash2 size={16} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      {/* Pagination Controls */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "12px 16px",
-          background: "#f9fafb",
-        }}
-      >
-        <span style={{ fontSize: 13, color: "#6b7280" }}>
-          Showing page <strong>{currentPage}</strong> of{" "}
-          <strong>{totalPages}</strong>
-        </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((prev) => prev - 1)}
-            style={{
-              padding: 6,
-              border: "1px solid #d1d5db",
-              borderRadius: 6,
-              background: "#fff",
-              cursor: currentPage === 1 ? "not-allowed" : "pointer",
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
-          >
-            <FiChevronLeft size={16} />
-          </button>
-          <button
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage((prev) => prev + 1)}
-            style={{
-              padding: 6,
-              border: "1px solid #d1d5db",
-              borderRadius: 6,
-              background: "#fff",
-              cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            <FiChevronRight size={16} />
-          </button>
+      {/* --- PAGINATION CONTROLS --- */}
+      {totalPages > 1 && (
+        <div style={styles.paginationBar}>
+          <span style={{ fontSize: 13, color: "#6b7280" }}>
+            Showing page <strong>{currentPage}</strong> of{" "}
+            <strong>{totalPages}</strong>
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((prev) => prev - 1)}
+              style={{
+                ...styles.pageBtn,
+                opacity: currentPage === 1 ? 0.5 : 1,
+              }}
+            >
+              <FiChevronLeft size={16} />
+            </button>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((prev) => prev + 1)}
+              style={{
+                ...styles.pageBtn,
+                opacity: currentPage === totalPages ? 0.5 : 1,
+              }}
+            >
+              <FiChevronRight size={16} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
+
+// ==========================================
+// STYLES
+// ==========================================
+const styles = {
+  card: {
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  searchBar: {
+    display: "flex",
+    gap: 16,
+    padding: 16,
+    borderBottom: "1px solid #e5e7eb",
+    background: "#f9fafb",
+    flexWrap: "wrap",
+  },
+  searchInputWrapper: {
+    flex: "1 1 200px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    background: "#fff",
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid #d1d5db",
+  },
+  searchInput: { border: "none", outline: "none", width: "100%", fontSize: 14 },
+  selectInput: {
+    padding: "10px 16px",
+    borderRadius: 8,
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    fontSize: 14,
+    outline: "none",
+    flex: "1 1 150px",
+  },
+  desktopHeaderRow: {
+    display: "flex",
+    padding: "12px 16px",
+    background: "#f9fafb",
+    borderBottom: "1px solid #e5e7eb",
+    color: "#6b7280",
+    fontSize: 13,
+    fontWeight: 600,
+    textTransform: "uppercase",
+  },
+  emptyState: { textAlign: "center", padding: 40, color: "#9ca3af" },
+  imageBox: {
+    width: 44,
+    height: 44,
+    background: "#f3f4f6",
+    borderRadius: 8,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    padding: 2,
+    backgroundColor: "#fff",
+  },
+  toggleTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 24,
+    border: "none",
+    padding: 2,
+    transition: "background-color 0.3s ease",
+    display: "flex",
+    alignItems: "center",
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: "50%",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+    transition: "transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)",
+  },
+  editBtn: {
+    padding: 8,
+    background: "#eff6ff",
+    border: "none",
+    borderRadius: 6,
+    color: "#0066ff",
+    cursor: "pointer",
+  },
+  deleteBtn: {
+    padding: 8,
+    background: "#fee2e2",
+    border: "none",
+    borderRadius: 6,
+    color: "#ef4444",
+    cursor: "pointer",
+  },
+  paginationBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 16px",
+    background: "#f9fafb",
+  },
+  pageBtn: {
+    padding: 6,
+    border: "1px solid #d1d5db",
+    borderRadius: 6,
+    background: "#fff",
+    cursor: "pointer",
+  },
+};

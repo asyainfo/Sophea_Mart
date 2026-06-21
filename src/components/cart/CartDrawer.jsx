@@ -13,37 +13,55 @@ import { supabase } from "../../services/supabase";
 import { fmt, fmtKHR } from "../../utils/currency";
 import CartItem from "./CartItem";
 
-// --- STATIC DATA ---
+// --- CONFIGURATION ---
 const FREE_GIFT_THRESHOLD = 15;
 const BRAND_BLUE = "#2563EB";
 const BRAND_GREEN = "#10B981";
 
-// Fake database of gifts (Can be moved to DB later)
+// 🏆 FIX 1: Using local image paths!
+// Just drop your images into your "public/images" folder.
 const AVAILABLE_GIFTS = [
   {
     id: "gift-1",
-    name: "Sophea Mart Tote Bag",
+    name: "Toys",
     price: 0,
     isGift: true,
-    stock: 100,
-    image: "https://cdn-icons-png.flaticon.com/512/1055/1055644.png",
+    image: "public/babys/B008.jpg",
   },
   {
     id: "gift-2",
-    name: "Premium Lychee Candy",
+    name: "នំដំឡូង សារាយ",
     price: 0,
     isGift: true,
-    stock: 100,
-    image: "https://cdn-icons-png.flaticon.com/512/2619/2619488.png",
+    image: "public/snacks/S008.jpeg",
+  },
+  {
+    id: "gift-3",
+    name: "គ្រាប់ចន្ទី",
+    price: 0,
+    isGift: true,
+    image: "public/snacks/S009.webp",
+  },
+  {
+    id: "gift-4",
+    name: "នំថងមួង",
+    price: 0,
+    isGift: true,
+    image: "public/images/T003.jpg",
+  },
+  {
+    id: "gift-5",
+    name: "ដំណាប់ស្វាយ",
+    price: 0,
+    isGift: true,
+    image: "public/images/T001.png",
   },
 ];
 
 export default function CartDrawer({ isOpen, onClose, onCheckout }) {
-  // --- GLOBAL CONTEXT ---
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
 
-  // --- LOCAL STATE ---
   const [vouchers, setVouchers] = useState([]);
   const [appliedVoucher, setAppliedVoucher] = useState(null);
 
@@ -51,17 +69,17 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
   const progressPercentage = Math.min((total / FREE_GIFT_THRESHOLD) * 100, 100);
   const amountRemaining = Math.max(FREE_GIFT_THRESHOLD - total, 0);
   const isFreeGiftUnlocked = total >= FREE_GIFT_THRESHOLD;
-  const hasClaimedGift = items.some((item) => item.isGift);
-  const paidItemsCount = items.filter((item) => !item.isGift).length;
+  const claimedGiftId = items.find((item) => item.isGift)?.id;
 
-  // Calculate final totals with discount applied
-  // Conversion: 4000 KHR = 1 USD
+  // 🏆 FIX 2: Correctly counts TOTAL quantity of items, not just the rows!
+  const paidItemsCount = items
+    .filter((item) => !item.isGift)
+    .reduce((sum, item) => sum + (item.quantity || 1), 0);
+
   const discountUsd = appliedVoucher ? appliedVoucher.discount_khr / 4000 : 0;
   const finalTotalUsd = Math.max(total - discountUsd, 0);
 
   // --- EFFECTS ---
-
-  // 1. Fetch un-used vouchers from database
   useEffect(() => {
     async function fetchVouchers() {
       if (!user || !isOpen) return;
@@ -81,35 +99,30 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
     fetchVouchers();
   }, [user, isOpen]);
 
-  // 2. Auto-Remove Gift if total drops below threshold
+  // Auto-remove gift if total drops below threshold
   useEffect(() => {
-    if (total < FREE_GIFT_THRESHOLD) {
-      const claimedGifts = items.filter((item) => item.isGift);
-      claimedGifts.forEach((gift) => {
-        dispatch({ type: "REMOVE", product: gift });
-      });
+    if (total < FREE_GIFT_THRESHOLD && claimedGiftId) {
+      const claimedGift = items.find((item) => item.id === claimedGiftId);
+      if (claimedGift) {
+        dispatch({ type: "REMOVE", product: claimedGift });
+      }
     }
-  }, [total, items, dispatch]);
+  }, [total, items, dispatch, claimedGiftId]);
 
   // --- HANDLERS ---
   const handleClaimGift = (gift) => {
+    // Remove old gift first (so they can't spam multi-gifts)
+    if (claimedGiftId) {
+      const oldGift = items.find((item) => item.id === claimedGiftId);
+      dispatch({ type: "REMOVE", product: oldGift });
+    }
     dispatch({ type: "ADD", product: { ...gift, quantity: 1 } });
   };
 
   const toggleVoucher = (v) => {
-    if (appliedVoucher?.id === v.id) {
-      setAppliedVoucher(null); // Un-apply if clicked again
-    } else {
-      setAppliedVoucher(v); // Apply new voucher
-    }
+    setAppliedVoucher(appliedVoucher?.id === v.id ? null : v);
   };
 
-  const handleCheckoutClick = () => {
-    // We pass the appliedVoucher to onCheckout so the modal can handle marking it as used
-    onCheckout(appliedVoucher);
-  };
-
-  // --- EARLY RETURN ---
   if (!isOpen) return null;
 
   return (
@@ -131,21 +144,12 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
               <span style={styles.headerCount}>({paidItemsCount})</span>
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            style={styles.closeButton}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "#E5E7EB")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "#F3F4F6")
-            }
-          >
+          <button onClick={onClose} style={styles.closeButton}>
             <FiX size={20} />
           </button>
         </div>
 
-        {/* FREE GIFT PROGRESS & CAROUSEL */}
+        {/* FREE GIFT CAROUSEL */}
         {items.length > 0 && (
           <div style={styles.giftSection}>
             <div style={styles.progressTextGroup}>
@@ -154,7 +158,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                 color={isFreeGiftUnlocked ? BRAND_GREEN : BRAND_BLUE}
               />
               {isFreeGiftUnlocked ? (
-                <span style={{ color: BRAND_GREEN, animation: "fadeIn 0.5s" }}>
+                <span style={{ color: BRAND_GREEN, fontWeight: 700 }}>
                   អ្នកទទួលបានកាដូឥតគិតថ្លៃហើយ! 🎉
                 </span>
               ) : (
@@ -180,57 +184,99 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
               />
             </div>
 
-            {!hasClaimedGift && (
-              <div style={styles.carouselContainer}>
-                <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-                {AVAILABLE_GIFTS.map((gift) => (
-                  <div
-                    key={gift.id}
-                    style={{
-                      ...styles.giftCard,
-                      borderColor: isFreeGiftUnlocked ? BRAND_GREEN : "#E5E7EB",
-                      opacity: isFreeGiftUnlocked ? 1 : 0.6,
-                    }}
-                  >
-                    {!isFreeGiftUnlocked && (
-                      <div style={styles.lockIcon}>
-                        <FiLock size={12} color="#FFF" />
-                      </div>
-                    )}
-                    <img
-                      src={gift.image}
-                      alt={gift.name}
-                      style={styles.giftImage}
-                    />
-                    <div style={styles.giftName}>{gift.name}</div>
-                    <button
-                      onClick={() => handleClaimGift(gift)}
-                      disabled={!isFreeGiftUnlocked}
+            <div style={styles.carouselContainer}>
+              {/* 🏆 FIX 3: Force hiding the scrollbar */}
+              <style>{`
+                .hide-scroll::-webkit-scrollbar { display: none !important; }
+              `}</style>
+
+              <div className="hide-scroll" style={styles.carouselTrack}>
+                {AVAILABLE_GIFTS.map((gift) => {
+                  const isSelected = claimedGiftId === gift.id;
+
+                  return (
+                    <div
+                      key={gift.id}
+                      onClick={() =>
+                        isFreeGiftUnlocked && handleClaimGift(gift)
+                      }
                       style={{
-                        ...styles.claimButton,
-                        backgroundColor: isFreeGiftUnlocked
-                          ? BRAND_GREEN
-                          : "#F3F4F6",
-                        color: isFreeGiftUnlocked ? "#FFF" : "#9CA3AF",
+                        ...styles.giftCard,
+                        borderColor: isSelected
+                          ? BRAND_BLUE
+                          : isFreeGiftUnlocked
+                            ? "#E5E7EB"
+                            : "#F3F4F6",
+                        backgroundColor: isSelected ? "#EFF6FF" : "#FFF",
+                        opacity: isFreeGiftUnlocked ? 1 : 0.6,
+                        filter: isFreeGiftUnlocked ? "none" : "grayscale(100%)",
                         cursor: isFreeGiftUnlocked ? "pointer" : "not-allowed",
                       }}
                     >
-                      {isFreeGiftUnlocked ? "Claim Free" : "Locked"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                      {/* Locked Overlay */}
+                      {!isFreeGiftUnlocked && (
+                        <div style={styles.lockIcon}>
+                          <FiLock size={12} color="#FFF" />
+                        </div>
+                      )}
 
-            {hasClaimedGift && (
-              <div style={styles.claimedSuccess}>
-                ✓ អ្នកបានជ្រើសរើសកាដូរបស់អ្នករួចរាល់ហើយ!
+                      {/* Selected Overlay */}
+                      {isSelected && (
+                        <div style={styles.selectedIcon}>
+                          <FiCheckCircle size={14} color="#FFF" />
+                        </div>
+                      )}
+
+                      {/* We added a fallback icon in case your local images aren't added yet */}
+                      {gift.image ? (
+                        <img
+                          src={gift.image}
+                          alt={gift.name}
+                          style={styles.giftImage}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src =
+                              "https://cdn-icons-png.flaticon.com/512/1055/1055644.png"; // fallback
+                          }}
+                        />
+                      ) : null}
+
+                      <div
+                        style={{
+                          ...styles.giftName,
+                          color: isSelected ? BRAND_BLUE : "#111827",
+                        }}
+                      >
+                        {gift.name}
+                      </div>
+
+                      <button
+                        disabled={!isFreeGiftUnlocked}
+                        style={{
+                          ...styles.claimButton,
+                          backgroundColor: isSelected
+                            ? BRAND_BLUE
+                            : isFreeGiftUnlocked
+                              ? BRAND_GREEN
+                              : "#E5E7EB",
+                          color: isFreeGiftUnlocked ? "#FFF" : "#9CA3AF",
+                        }}
+                      >
+                        {isSelected
+                          ? "Selected"
+                          : isFreeGiftUnlocked
+                            ? "Choose Gift"
+                            : "Locked"}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
         )}
 
-        {/* CART ITEMS */}
+        {/* CART ITEMS & VOUCHERS */}
         <div style={styles.itemsScrollArea}>
           {items.length === 0 ? (
             <div style={styles.emptyCart}>
@@ -250,19 +296,17 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
             </div>
           )}
 
-          {/* --- VOUCHER SECTION --- */}
+          {/* Vouchers */}
           {items.length > 0 && vouchers.length > 0 && (
             <div style={styles.vouchersContainer}>
               <div style={styles.vouchersHeader}>
                 <FiTag size={16} color="#D91236" />
                 <span>Your Rewards</span>
               </div>
-
               <div style={styles.vouchersList}>
                 {vouchers.map((v) => {
                   const isSelected = appliedVoucher?.id === v.id;
                   const usdValue = v.discount_khr / 4000;
-
                   return (
                     <div
                       key={v.id}
@@ -302,13 +346,10 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
         {items.length > 0 && (
           <div style={styles.footer}>
             <div style={styles.summaryBox}>
-              {/* Subtotal */}
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>Subtotal</span>
                 <span style={styles.summaryValue}>{fmt(total)}</span>
               </div>
-
-              {/* Discount Line (Only visible if applied) */}
               {appliedVoucher && (
                 <div style={styles.summaryRowDiscount}>
                   <span style={styles.summaryLabelDiscount}>
@@ -319,10 +360,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                   </span>
                 </div>
               )}
-
               <div style={styles.summaryDivider} />
-
-              {/* Final Totals */}
               <div style={{ ...styles.summaryRow, marginBottom: 4 }}>
                 <span style={styles.summaryLabelTotal}>សរុបទំនិញ (USD)</span>
                 <span style={styles.summaryValueTotal}>
@@ -338,16 +376,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
             </div>
 
             <button
-              onClick={handleCheckoutClick}
+              onClick={() => onCheckout(appliedVoucher)}
               style={styles.checkoutBtn}
-              onMouseDown={(e) => {
-                e.currentTarget.style.transform = "scale(0.98)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.boxShadow = `0 4px 12px rgba(37, 99, 235, 0.25)`;
-              }}
             >
               បន្តទៅបញ្ចប់ការបញ្ជាទិញ
             </button>
@@ -359,7 +389,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
 }
 
 // ==========================================
-// EXTRACTED STYLES
+// STYLES
 // ==========================================
 const styles = {
   backdrop: {
@@ -368,7 +398,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(17, 24, 39, 0.6)",
+    backgroundColor: "rgba(17,24,39,0.6)",
     backdropFilter: "blur(4px)",
     zIndex: 2147483646,
   },
@@ -379,7 +409,7 @@ const styles = {
     bottom: 0,
     width: "100%",
     maxWidth: 420,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fff",
     boxShadow: "-10px 0 30px rgba(0,0,0,0.15)",
     display: "flex",
     flexDirection: "column",
@@ -405,14 +435,12 @@ const styles = {
     border: "none",
     borderRadius: "50%",
     cursor: "pointer",
-    transition: "background-color 0.2s",
   },
 
-  // Free Gift
   giftSection: {
     padding: "0 24px 20px",
     borderBottom: "1px solid #E5E7EB",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fff",
   },
   progressTextGroup: {
     display: "flex",
@@ -432,67 +460,83 @@ const styles = {
   progressFill: {
     height: "100%",
     borderRadius: 10,
-    transition: "width 0.5s ease-in-out, background-color 0.5s ease-in-out",
+    transition: "width 0.5s ease, background-color 0.5s ease",
   },
-  carouselContainer: {
+
+  carouselContainer: { position: "relative", width: "100%" },
+  carouselTrack: {
     display: "flex",
     gap: 12,
     overflowX: "auto",
-    paddingBottom: 8,
-    scrollbarWidth: "none",
-    msOverflowStyle: "none",
+    scrollSnapType: "x mandatory",
+    paddingBottom: 16,
+    paddingTop: 4, // 🏆 Fix for cut-off icons
+    scrollbarWidth: "none", // Firefox hide scrollbar
+    msOverflowStyle: "none", // IE hide scrollbar
   },
   giftCard: {
-    minWidth: 140,
-    backgroundColor: "#FFF",
+    minWidth: 130,
+    flex: "0 0 auto",
+    scrollSnapAlign: "start",
     border: "2px solid",
     borderRadius: 12,
     padding: 12,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
     position: "relative",
     transition: "all 0.3s ease",
   },
+
+  // 🏆 FIX 4: Moved the icons inside the borders so they never get chopped off!
   lockIcon: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    top: 6,
+    right: 6,
+    backgroundColor: "#9CA3AF",
     borderRadius: "50%",
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
-  giftImage: { width: 40, height: 40, objectFit: "contain", marginBottom: 8 },
+  selectedIcon: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    backgroundColor: BRAND_BLUE,
+    borderRadius: "50%",
+    width: 22,
+    height: 22,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+
+  giftImage: { width: 48, height: 48, objectFit: "contain", marginBottom: 10 },
   giftName: {
     fontSize: 12,
-    fontWeight: 600,
-    color: "#111827",
+    fontWeight: 700,
     lineHeight: 1.2,
-    marginBottom: 8,
+    marginBottom: 12,
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
   },
   claimButton: {
     width: "100%",
-    padding: 6,
+    padding: "6px 0",
     borderRadius: 6,
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: 700,
     border: "none",
     transition: "all 0.2s ease",
   },
-  claimedSuccess: {
-    backgroundColor: "#ECFDF5",
-    border: "1px solid #A7F3D0",
-    borderRadius: 8,
-    padding: 12,
-    textAlign: "center",
-    color: "#065F46",
-    fontSize: 13,
-    fontWeight: 500,
-    animation: "fadeIn 0.3s ease-in-out",
-  },
 
-  // Items & Scroll Area
   itemsScrollArea: { flex: 1, overflowY: "auto", padding: "0 24px" },
   emptyCart: {
     display: "flex",
@@ -502,8 +546,6 @@ const styles = {
     height: "100%",
     color: "#9CA3AF",
   },
-
-  // Vouchers UI
   vouchersContainer: { marginTop: 24, marginBottom: 16 },
   vouchersHeader: {
     display: "flex",
@@ -523,16 +565,14 @@ const styles = {
     border: "2px solid",
     borderRadius: 12,
     cursor: "pointer",
-    transition: "all 0.2s ease",
   },
   voucherInfo: { display: "flex", flexDirection: "column", gap: 2 },
   voucherValue: { fontSize: 14, fontWeight: 700, color: "#111827" },
   voucherUsd: { fontSize: 12, fontWeight: 500, color: "#6B7280" },
 
-  // Footer Summary
   footer: {
     padding: 24,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fff",
     borderTop: "1px solid #E5E7EB",
   },
   summaryBox: {
@@ -550,7 +590,6 @@ const styles = {
   },
   summaryLabel: { fontSize: 14, color: "#4B5563", fontWeight: 500 },
   summaryValue: { fontSize: 14, fontWeight: 600, color: "#111827" },
-
   summaryRowDiscount: {
     display: "flex",
     justifyContent: "space-between",
@@ -559,25 +598,20 @@ const styles = {
   },
   summaryLabelDiscount: { fontSize: 14, color: "#D91236", fontWeight: 600 },
   summaryValueDiscount: { fontSize: 14, fontWeight: 700, color: "#D91236" },
-
   summaryDivider: { borderTop: "1px solid #E5E7EB", margin: "12px 0" },
-
   summaryLabelTotal: { fontSize: 15, color: "#111827", fontWeight: 600 },
   summaryValueTotal: { fontSize: 18, fontWeight: 700, color: BRAND_BLUE },
   summaryLabelKhr: { fontSize: 13, color: "#6B7280" },
   summaryValueKhr: { fontSize: 13, fontWeight: 600, color: "#6B7280" },
-
   checkoutBtn: {
     width: "100%",
     padding: 16,
     backgroundColor: BRAND_BLUE,
-    color: "#FFFFFF",
+    color: "#FFF",
     border: "none",
     borderRadius: 12,
     fontSize: 16,
     fontWeight: 600,
     cursor: "pointer",
-    boxShadow: `0 4px 12px rgba(37, 99, 235, 0.25)`,
-    transition: "transform 0.1s ease-in-out, box-shadow 0.1s",
   },
 };

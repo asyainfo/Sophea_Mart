@@ -589,8 +589,8 @@ export default function CheckoutModal({
                   {isProcessing
                     ? "Processing..."
                     : paymentMethod === "bank"
-                      ? `Place Order ${fmt(finalTotalUsd)}`
-                      : "Confirm Order"}
+                      ? `បញ្ជាទិញ ${fmt(finalTotalUsd)}`
+                      : "បញ្ជាក់ការបញ្ជាទិញ"}
                 </Button>
               </div>
             </div>

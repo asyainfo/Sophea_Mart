@@ -26,23 +26,30 @@ export function StoreProvider({ children }) {
     },
   ]);
 
-  // FETCH PRODUCTS FROM SUPABASE (Reads Data)
+  // --- FETCH PRODUCTS FROM SUPABASE ---
   useEffect(() => {
     const fetchProducts = async () => {
-      const { data, error } = await supabase.from("products").select("*");
+      // 🏆 UPGRADE: The magic filter! We only select items that are in stock.
+      // We also added .order("id") so your products don't shuffle around randomly on reload.
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("in_stock", true)
+        .order("id");
+
       if (error) {
         console.error("Error fetching products:", error);
       } else {
-        setProducts(data);
+        setProducts(data || []);
       }
     };
+
     fetchProducts();
   }, []);
 
-  // ADD PRODUCT TO SUPABASE (Creates Data)
+  // --- ADD PRODUCT TO SUPABASE ---
   const addProduct = async (p) => {
     try {
-      // .select().single() ensures Supabase gives us back the newly created row (with its official ID)
       const { data, error } = await supabase
         .from("products")
         .insert([p])
@@ -51,8 +58,7 @@ export function StoreProvider({ children }) {
 
       if (error) throw error;
 
-      // Update local UI instantly
-      if (data) {
+      if (data && data.in_stock !== false) {
         setProducts((prev) => [...prev, data]);
       }
     } catch (err) {
@@ -61,7 +67,7 @@ export function StoreProvider({ children }) {
     }
   };
 
-  // EDIT PRODUCT IN SUPABASE (Updates Data)
+  // --- EDIT PRODUCT IN SUPABASE ---
   const editProduct = async (id, data) => {
     try {
       const { error } = await supabase
@@ -71,7 +77,7 @@ export function StoreProvider({ children }) {
 
       if (error) throw error;
 
-      // Update local UI instantly
+      // Update local UI
       setProducts((prev) =>
         prev.map((p) => (p.id === id ? { ...p, ...data } : p)),
       );
@@ -81,14 +87,14 @@ export function StoreProvider({ children }) {
     }
   };
 
-  // DELETE PRODUCT IN SUPABASE (Deletes Data)
+  // --- DELETE PRODUCT IN SUPABASE ---
   const deleteProduct = async (id) => {
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
 
       if (error) throw error;
 
-      // Update local UI instantly
+      // Update local UI
       setProducts((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       console.error("Error deleting product:", err.message);
