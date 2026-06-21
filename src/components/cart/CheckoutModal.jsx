@@ -23,33 +23,25 @@ export default function CheckoutModal({
   toast,
   appliedVoucher,
 }) {
-  // --- GLOBAL CONTEXT ---
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
 
-  // --- UI STATE ---
   const [confirmed, setConfirmed] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- PAYMENT STATE ---
   const [paymentMethod, setPaymentMethod] = useState("bank");
   const [selectedBank, setSelectedBank] = useState("ABA");
   const [receiptFile, setReceiptFile] = useState(null);
 
-  // --- VERIFICATION STATE ---
   const [phoneNumber, setPhoneNumber] = useState("");
   const [verificationStatus, setVerificationStatus] = useState("unverified");
   const [otpCode, setOtpCode] = useState(["", "", "", ""]);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
   const otpRefs = [useRef(), useRef(), useRef(), useRef()];
 
-  // --- DISCOUNT MATH ---
   const discountUsd = appliedVoucher ? appliedVoucher.discount_khr / 4000 : 0;
   const finalTotalUsd = Math.max(total - discountUsd, 0);
 
-  // ==========================================
-  // HANDLERS: INPUT & UPLOAD
-  // ==========================================
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setReceiptFile(e.target.files[0]);
@@ -84,9 +76,6 @@ export default function CheckoutModal({
     toast("QR Code downloaded! Please scan it in your app.", "success");
   };
 
-  // ==========================================
-  // HANDLERS: VERIFICATION
-  // ==========================================
   const sendVerificationSms = async () => {
     if (phoneNumber.trim().length < 8)
       return toast("Please enter a valid phone number.", "error");
@@ -145,12 +134,14 @@ export default function CheckoutModal({
           .data.publicUrl;
       }
 
-      // 2. Create Order Record (Using Final Discounted Total)
+      // 2. Create Order Record
+      const totalKhrValue = Math.round(finalTotalUsd * 4000); // Prevents float errors
+
       const newOrder = {
         id: orderId,
         user_id: user.id,
         total_usd: finalTotalUsd,
-        total_khr: finalTotalUsd * 4000,
+        total_khr: totalKhrValue,
         total_items: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
         status: "pending",
         payment_method: paymentMethod,
@@ -168,7 +159,7 @@ export default function CheckoutModal({
         .insert([newOrder]);
       if (orderError) throw orderError;
 
-      // 3. Create Order Items (FIXED BIGINT BUG: Returns null if item is a free gift)
+      // 3. Create Order Items
       const orderItemsToSave = items.map((item) => ({
         order_id: orderId,
         product_name: item.name,
@@ -182,7 +173,44 @@ export default function CheckoutModal({
         .insert(orderItemsToSave);
       if (itemsError) throw itemsError;
 
-      // 4. Burn the Voucher (if one was used)
+      // 🏆 4. FIX: UPDATE EXACT STOCK QUANTITIES IN DATABASE
+      for (const item of items) {
+        if (item.isGift) continue; // Don't subtract stock for free gifts
+
+        // Get the absolute newest stock from database to be safe
+        const { data: liveProduct, error: fetchError } = await supabase
+          .from("products")
+          .select("stock")
+          .eq("id", item.id)
+          .single();
+
+        if (fetchError) {
+          console.error(
+            `Failed to fetch live stock for ${item.name}`,
+            fetchError,
+          );
+          continue;
+        }
+
+        // Calculate exact new stock: Current Stock MINUS Quantity Bought
+        const qtyBought = item.quantity || 1;
+        const newStockLevel = Math.max(0, liveProduct.stock - qtyBought); // Math.max prevents negative stock
+
+        // Update the database with the real number
+        const { error: stockUpdateError } = await supabase
+          .from("products")
+          .update({ stock: newStockLevel })
+          .eq("id", item.id);
+
+        if (stockUpdateError) {
+          console.error(
+            `Failed to update stock for ${item.name}`,
+            stockUpdateError,
+          );
+        }
+      }
+
+      // 5. Burn the Voucher (if one was used)
       if (appliedVoucher) {
         const { error: voucherError } = await supabase
           .from("user_vouchers")
@@ -212,9 +240,6 @@ export default function CheckoutModal({
     onClose();
   };
 
-  // ==========================================
-  // RENDER HELPERS
-  // ==========================================
   const bankLogoUrl =
     selectedBank === "ABA" ? "/aba-logo.png" : "/logo-acleda.jpg";
   const bankQrImage = selectedBank === "ABA" ? "/aba-qr.png" : "/acleda-qr.JPG";
@@ -242,7 +267,6 @@ export default function CheckoutModal({
         </div>
       ) : (
         <>
-          {/* SMS VERIFICATION: ENTER PHONE */}
           {verificationStatus === "entering_phone" && (
             <div style={styles.verifyContainer}>
               <button
@@ -277,7 +301,6 @@ export default function CheckoutModal({
             </div>
           )}
 
-          {/* SMS VERIFICATION: ENTER OTP */}
           {verificationStatus === "entering_otp" && (
             <div style={styles.verifyContainerCenter}>
               <button
@@ -315,11 +338,9 @@ export default function CheckoutModal({
             </div>
           )}
 
-          {/* MAIN CHECKOUT VIEW */}
           {(verificationStatus === "unverified" ||
             verificationStatus === "verified") && (
             <div style={styles.layoutGrid}>
-              {/* LEFT SIDE: Payment Methods */}
               <div>
                 <div style={styles.sectionHeader}>
                   <FiCreditCard size={18} color="#0066FF" />
@@ -327,7 +348,6 @@ export default function CheckoutModal({
                 </div>
 
                 <div style={styles.methodSelector}>
-                  {/* Bank Transfer Option */}
                   <label
                     style={
                       paymentMethod === "bank"
@@ -358,7 +378,6 @@ export default function CheckoutModal({
                     </div>
                   </label>
 
-                  {/* Cash Option */}
                   <label
                     style={
                       paymentMethod === "cash"
@@ -384,7 +403,6 @@ export default function CheckoutModal({
                   </label>
                 </div>
 
-                {/* Bank Transfer Details */}
                 {paymentMethod === "bank" && (
                   <div style={styles.bankDetailsArea}>
                     <select
@@ -468,7 +486,6 @@ export default function CheckoutModal({
                   </div>
                 )}
 
-                {/* Cash Options Details */}
                 {paymentMethod === "cash" && (
                   <div style={styles.fadeAnim}>
                     {verificationStatus === "unverified" ? (
@@ -511,7 +528,6 @@ export default function CheckoutModal({
                 )}
               </div>
 
-              {/* RIGHT SIDE: Order Summary */}
               <div>
                 <div style={styles.sectionHeader}>
                   <FiShoppingBag size={18} color="#0066FF" />
@@ -542,13 +558,11 @@ export default function CheckoutModal({
                 </div>
 
                 <div style={styles.totalsBox}>
-                  {/* Subtotal */}
                   <div style={styles.totalsRow}>
                     <span style={styles.totalsRowLabel}>Subtotal</span>
                     <span style={styles.totalsRowValue}>{fmt(total)}</span>
                   </div>
 
-                  {/* Discount line (if applied) */}
                   {appliedVoucher && (
                     <div style={styles.totalsRow}>
                       <span
@@ -570,7 +584,6 @@ export default function CheckoutModal({
 
                   <div style={styles.totalsDivider} />
 
-                  {/* Final Total */}
                   <div style={{ textAlign: "center" }}>
                     <div style={styles.totalsUsd}>{fmt(finalTotalUsd)}</div>
                     <div style={styles.totalsKhr}>{fmtKHR(finalTotalUsd)}</div>
@@ -605,7 +618,6 @@ export default function CheckoutModal({
 // EXTRACTED STYLES
 // ==========================================
 const styles = {
-  // Success Screen
   successContainer: { textAlign: "center", padding: "30px 0" },
   successIconBox: {
     width: 90,
@@ -624,8 +636,6 @@ const styles = {
     margin: "0 auto 24px",
     lineHeight: 1.7,
   },
-
-  // Verification Views
   verifyContainer: { maxWidth: 420, margin: "20px auto", padding: "10px 20px" },
   verifyContainerCenter: {
     maxWidth: 420,
@@ -707,8 +717,6 @@ const styles = {
     outline: "none",
     background: "#F9FAFB",
   },
-
-  // Layout Grid
   layoutGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
@@ -721,8 +729,6 @@ const styles = {
     marginBottom: 16,
   },
   sectionTitle: { margin: 0, fontSize: 16, fontWeight: 600, color: "#111827" },
-
-  // Payment Selection
   methodSelector: {
     display: "flex",
     flexDirection: "column",
@@ -782,8 +788,6 @@ const styles = {
   },
   methodTitle: { fontWeight: 600, color: "#111827", fontSize: 16 },
   methodSubtitle: { fontSize: 13, color: "#6B7280", marginTop: 2 },
-
-  // Bank Specific Details
   bankDetailsArea: {
     animation: "fadeIn 0.3s ease-in-out",
     display: "flex",
@@ -848,8 +852,6 @@ const styles = {
     gap: 8,
     transition: "background 0.2s",
   },
-
-  // Upload Area
   uploadLabelActive: {
     display: "flex",
     flexDirection: "column",
@@ -883,8 +885,6 @@ const styles = {
   uploadSubTextActive: { fontSize: 12, color: "#60A5FA", marginTop: 2 },
   uploadTextInactive: { fontSize: 14, fontWeight: 600, color: "#4B5563" },
   uploadSubTextInactive: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
-
-  // Cash Verification Areas
   fadeAnim: { animation: "fadeIn 0.3s ease-in-out" },
   statusBoxUnverified: {
     border: "1px solid #E5E7EB",
@@ -939,8 +939,6 @@ const styles = {
     color: "#065F46",
   },
   statusDescGreen: { margin: 0, fontSize: 13, color: "#047857" },
-
-  // Order Summary
   summaryListContainer: {
     maxHeight: 220,
     overflowY: "auto",

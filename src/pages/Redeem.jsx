@@ -26,7 +26,6 @@ const BRAND_BLUE_LIGHT = "#60A5FA";
 export default function Redeem() {
   const { user } = useAuth();
 
-  // State
   const [points, setPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRedeeming, setIsRedeeming] = useState(false);
@@ -39,14 +38,41 @@ export default function Redeem() {
     async function fetchPoints() {
       if (!user) return;
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("points")
-          .eq("id", user.id)
-          .single();
+        // 🏆 FIX: Only fetch orders that are officially "completed"!
+        const { data: orders } = await supabase
+          .from("Orders")
+          .select("total_usd")
+          .eq("user_id", user.id)
+          .eq("status", "completed");
 
-        if (error && error.code !== "PGRST116") throw error;
-        setPoints(data?.points || 0);
+        const { data: vouchers } = await supabase
+          .from("user_vouchers")
+          .select("discount_khr")
+          .eq("user_id", user.id);
+
+        let earnedPoints = 0;
+        if (orders) {
+          orders.forEach((order) => {
+            earnedPoints += Math.floor(order.total_usd / 1.25);
+          });
+        }
+
+        let spentPoints = 0;
+        if (vouchers) {
+          vouchers.forEach((voucher) => {
+            if (voucher.discount_khr === 5000) spentPoints += 200;
+            if (voucher.discount_khr === 20000) spentPoints += 800;
+            if (voucher.discount_khr === 50000) spentPoints += 2000;
+          });
+        }
+
+        const trueBalance = Math.max(0, earnedPoints - spentPoints);
+        setPoints(trueBalance);
+
+        await supabase
+          .from("profiles")
+          .update({ points: trueBalance })
+          .eq("id", user.id);
       } catch (error) {
         console.error("Error fetching points:", error);
       } finally {
@@ -110,10 +136,12 @@ export default function Redeem() {
     setIsLoadingHistory(true);
 
     try {
+      // 🏆 FIX: Only show "completed" orders in the history timeline!
       const { data: orders } = await supabase
         .from("Orders")
         .select("id, created_at, total_usd")
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("status", "completed");
 
       const { data: vouchers } = await supabase
         .from("user_vouchers")
@@ -165,13 +193,11 @@ export default function Redeem() {
 
   return (
     <div style={styles.pageContainer}>
-      {/* HEADER */}
       <div style={styles.header}>
         <h1 style={styles.headerTitle}>Redeem</h1>
       </div>
 
       <div style={styles.contentContainer}>
-        {/* HERO CARD */}
         <div style={styles.heroCard}>
           <FiAward
             size={120}
@@ -197,7 +223,6 @@ export default function Redeem() {
           </button>
         </div>
 
-        {/* REWARDS LIST */}
         <h2 style={styles.rewardsSectionTitle}>Available rewards</h2>
         <div style={styles.vouchersList}>
           {VOUCHERS.map((voucher) => {
@@ -221,7 +246,6 @@ export default function Redeem() {
                     e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                {/* TICKET LEFT (Blue Block) */}
                 <div style={styles.ticketLeft}>
                   <div style={styles.ticketLeftInner}>
                     <div style={styles.ticketLabel}>
@@ -235,10 +259,8 @@ export default function Redeem() {
                   </div>
                 </div>
 
-                {/* TICKET MIDDLE (Title) */}
                 <div style={styles.ticketMiddle}>{voucher.title}</div>
 
-                {/* TICKET RIGHT (Points Required) */}
                 <div style={styles.ticketRight}>
                   <span style={styles.ticketCost}>
                     {voucher.cost.toLocaleString()}
@@ -251,7 +273,6 @@ export default function Redeem() {
         </div>
       </div>
 
-      {/* HISTORY MODAL OVERLAY */}
       {historyOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
@@ -427,7 +448,7 @@ const styles = {
     fontWeight: 700,
     lineHeight: 1.2,
     textAlign: "center",
-    width: 80, // Expanded width to fit the text perfectly
+    width: 80,
   },
   ticketCircle: {
     backgroundColor: "#FFF",
