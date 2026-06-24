@@ -51,16 +51,33 @@ export function AuthProvider({ children }) {
       email,
       password,
     });
-    return !error;
+    // Return the real error message if it fails
+    return { success: !error, error: error?.message };
   };
 
   const register = async (name, email, password) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: name } },
     });
-    return !error;
+
+    // 1. If Supabase rejects it (e.g., email taken, weak password), return the REAL error!
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    // 🏆 2. FIX: Force the customer's Name into the profiles table immediately!
+    if (data?.user) {
+      await supabase.from("profiles").upsert([
+        {
+          id: data.user.id,
+          email: email,
+          full_name: name, // Saving to our new column!
+        },
+      ]);
+    }
+
+    return { success: true };
   };
 
   const logout = async () => {

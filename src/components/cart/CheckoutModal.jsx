@@ -53,10 +53,7 @@ export default function CheckoutModal({
     const newOtp = [...otpCode];
     newOtp[index] = value.substring(value.length - 1);
     setOtpCode(newOtp);
-
-    if (value && index < 3) {
-      otpRefs[index + 1].current.focus();
-    }
+    if (value && index < 3) otpRefs[index + 1].current.focus();
   };
 
   const handleOtpKeyDown = (index, e) => {
@@ -120,29 +117,40 @@ export default function CheckoutModal({
       const orderId = `ORD-${String(Date.now()).slice(-4)}`;
       let receiptUrl = null;
 
-      // 1. Upload Receipt
+      // 🏆 1. Fetch Customer Name for Notification
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+
+      const customerName = profileData?.full_name || "Registered Customer";
+
+      // 2. Upload Receipt
       if (paymentMethod === "bank" && receiptFile) {
         const fileExt = receiptFile.name.split(".").pop();
         const fileName = `${orderId}-${Math.random()}.${fileExt}`;
-
         const { error: uploadError } = await supabase.storage
           .from("receipts")
           .upload(fileName, receiptFile);
         if (uploadError) throw uploadError;
-
         receiptUrl = supabase.storage.from("receipts").getPublicUrl(fileName)
           .data.publicUrl;
       }
 
-      // 2. Create Order Record
-      const totalKhrValue = Math.round(finalTotalUsd * 4000); // Prevents float errors
+      // 3. Create Order Record
+      const totalKhrValue = Math.round(finalTotalUsd * 4000);
+      const totalItemsCount = items.reduce(
+        (sum, item) => sum + (item.quantity || 1),
+        0,
+      );
 
       const newOrder = {
         id: orderId,
         user_id: user.id,
         total_usd: finalTotalUsd,
         total_khr: totalKhrValue,
-        total_items: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+        total_items: totalItemsCount,
         status: "pending",
         payment_method: paymentMethod,
         bank_name: paymentMethod === "bank" ? selectedBank : null,
@@ -159,7 +167,7 @@ export default function CheckoutModal({
         .insert([newOrder]);
       if (orderError) throw orderError;
 
-      // 3. Create Order Items
+      // 4. Create Order Items
       const orderItemsToSave = items.map((item) => ({
         order_id: orderId,
         product_name: item.name,
@@ -173,11 +181,9 @@ export default function CheckoutModal({
         .insert(orderItemsToSave);
       if (itemsError) throw itemsError;
 
-      // 🏆 4. FIX: UPDATE EXACT STOCK QUANTITIES IN DATABASE
+      // 5. Update Stock Quantities
       for (const item of items) {
-        if (item.isGift) continue; // Don't subtract stock for free gifts
-
-        // Get the absolute newest stock from database to be safe
+        if (item.isGift) continue;
         const { data: liveProduct, error: fetchError } = await supabase
           .from("products")
           .select("stock")
@@ -192,25 +198,21 @@ export default function CheckoutModal({
           continue;
         }
 
-        // Calculate exact new stock: Current Stock MINUS Quantity Bought
         const qtyBought = item.quantity || 1;
-        const newStockLevel = Math.max(0, liveProduct.stock - qtyBought); // Math.max prevents negative stock
-
-        // Update the database with the real number
+        const newStockLevel = Math.max(0, liveProduct.stock - qtyBought);
         const { error: stockUpdateError } = await supabase
           .from("products")
           .update({ stock: newStockLevel })
           .eq("id", item.id);
 
-        if (stockUpdateError) {
+        if (stockUpdateError)
           console.error(
             `Failed to update stock for ${item.name}`,
             stockUpdateError,
           );
-        }
       }
 
-      // 5. Burn the Voucher (if one was used)
+      // 6. Burn the Voucher
       if (appliedVoucher) {
         const { error: voucherError } = await supabase
           .from("user_vouchers")
@@ -218,6 +220,40 @@ export default function CheckoutModal({
           .eq("id", appliedVoucher.id);
         if (voucherError)
           console.error("Failed to mark voucher as used:", voucherError);
+      }
+
+      // 🏆 7. TELEGRAM BOT NOTIFICATION (Clean & Structured)
+      try {
+        // NOTE: Make sure these are set in your .env file!
+        const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
+        const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+
+        if (botToken && chatId) {
+          const formattedDate = new Date().toLocaleString("en-US", {
+            timeZone: "Asia/Phnom_Penh",
+            dateStyle: "medium",
+            timeStyle: "short",
+          });
+
+          const telegramMessage = `🚨 *NEW ORDER RECEIVED!* 🚨\n----------------------------------------\n🆔 *Order ID:* \`${orderId}\`\n👤 *Customer:* ${customerName}\n📅 *Date:* ${formattedDate}\n\n💵 *Total Amount:* $${finalTotalUsd.toFixed(2)} (${totalKhrValue.toLocaleString()}៛)\n📦 *Total Items:* ${totalItemsCount} items\n----------------------------------------\n🛒 *Check your Admin Dashboard to process this order.*`;
+
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: telegramMessage,
+              parse_mode: "Markdown",
+            }),
+          });
+        } else {
+          console.warn("Telegram tokens missing in .env file.");
+        }
+      } catch (tgError) {
+        console.error(
+          "Telegram notification failed, but order was saved.",
+          tgError,
+        );
       }
 
       setConfirmed(true);
