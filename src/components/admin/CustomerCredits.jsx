@@ -1,5 +1,14 @@
-import { useState, useEffect, useRef } from "react";
-import { FiPlus, FiX, FiUploadCloud, FiImage, FiInbox } from "react-icons/fi";
+import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  FiPlus,
+  FiX,
+  FiUploadCloud,
+  FiImage,
+  FiInbox,
+  FiEdit2,
+  FiTrash2,
+  FiSearch,
+} from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import { fmt, fmtKHR } from "../../utils/currency";
 import Button from "../ui/Button";
@@ -11,6 +20,8 @@ const COLORS = {
   muted: "#6B7280",
   text: "#111827",
   surface: "#F9FAFB",
+  danger: "#DC2626",
+  dangerBg: "#FEE2E2",
 };
 
 const tableCell = {
@@ -32,11 +43,16 @@ export default function CustomerCredits() {
   const [isLoading, setIsLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
 
-  // Modal & Image State
+  // --- Search & Filter States ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  // Modal, Image & Edit State
   const [showModal, setShowModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const fileInputRef = useRef(null);
 
   // Lightbox State
@@ -73,6 +89,29 @@ export default function CustomerCredits() {
     fetchCredits();
   }, []);
 
+  // --- FILTERED CREDITS & STATS ---
+  const filteredCredits = useMemo(() => {
+    return credits.filter((c) => {
+      const matchesSearch = c.customer_name
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "All" || c.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [credits, searchTerm, statusFilter]);
+
+  const stats = useMemo(() => {
+    return credits.reduce(
+      (acc, c) => {
+        const val = parseFloat(c.total_usd || 0);
+        if (c.status === "Unpaid") acc.unpaid += val;
+        if (c.status === "Paid") acc.paid += val;
+        return acc;
+      },
+      { unpaid: 0, paid: 0 },
+    );
+  }, [credits]);
+
   // --- HANDLE IMAGE SELECTION ---
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
@@ -102,44 +141,97 @@ export default function CustomerCredits() {
     return data.publicUrl;
   };
 
-  // --- ADD NEW CREDIT ---
-  const handleAddCredit = async (e) => {
+  // --- SAVE CREDIT (Handles both Add & Edit) ---
+  const handleSaveCredit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
 
     try {
-      let uploadedImageUrl = null;
+      let uploadedImageUrl = imagePreview && !imageFile ? imagePreview : null;
 
       if (imageFile) {
         uploadedImageUrl = await uploadImage(imageFile);
       }
 
-      const { error } = await supabase.from("customer_credits").insert([
-        {
-          customer_name: formData.customer_name,
-          items_desc: formData.items_desc,
-          total_usd: parseFloat(formData.total_usd),
-          due_date: formData.due_date,
-          image_url: uploadedImageUrl,
-          status: "Unpaid",
-        },
-      ]);
+      const payload = {
+        customer_name: formData.customer_name,
+        items_desc: formData.items_desc,
+        total_usd: parseFloat(formData.total_usd),
+        due_date: formData.due_date,
+        image_url: uploadedImageUrl,
+      };
 
-      if (error) throw error;
+      if (editingId) {
+        const { error } = await supabase
+          .from("customer_credits")
+          .update(payload)
+          .eq("id", editingId);
 
-      triggerGlobalToast("Credit record added successfully!", "success");
+        if (error) throw error;
+        triggerGlobalToast("កំណត់ត្រាត្រូវបានកែប្រែដោយជោគជ័យ!", "success");
+      } else {
+        payload.status = "Unpaid";
+        const { error } = await supabase
+          .from("customer_credits")
+          .insert([payload]);
+
+        if (error) throw error;
+        triggerGlobalToast("កំណត់ត្រាត្រូវបានរក្សាទុក!", "success");
+      }
+
       resetForm();
       fetchCredits();
     } catch (error) {
-      console.error("Error adding credit:", error);
-      triggerGlobalToast("Failed to add credit", "error");
+      console.error("Error saving credit:", error);
+      triggerGlobalToast("Failed to save credit", "error");
     } finally {
       setIsSaving(false);
     }
   };
 
+  // --- PREPARE MODAL FOR EDITING ---
+  const openEditModal = (credit) => {
+    setEditingId(credit.id);
+    setFormData({
+      customer_name: credit.customer_name || "",
+      items_desc: credit.items_desc || "",
+      total_usd: credit.total_usd || "",
+      due_date: credit.due_date || "",
+    });
+    setImagePreview(credit.image_url || null);
+    setImageFile(null);
+    setShowModal(true);
+  };
+
+  // --- DELETE CREDIT ---
+  const handleDeleteCredit = async (id, name) => {
+    const confirm = window.confirm(
+      `តើអ្នកប្រាកដថាចង់លុបកំណត់ត្រារបស់ ${name} ជាអចិន្ត្រៃយ៍មែនទេ?`,
+    );
+    if (!confirm) return;
+
+    setProcessingId(id);
+    try {
+      const { error } = await supabase
+        .from("customer_credits")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      triggerGlobalToast(`Deleted record for ${name}`, "success");
+      fetchCredits();
+    } catch (error) {
+      console.error("Error deleting:", error);
+      triggerGlobalToast("Failed to delete record", "error");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const resetForm = () => {
     setShowModal(false);
+    setEditingId(null);
     setFormData({
       customer_name: "",
       items_desc: "",
@@ -152,7 +244,9 @@ export default function CustomerCredits() {
 
   // --- MARK AS PAID ---
   const handleMarkAsPaid = async (id, name) => {
-    const confirm = window.confirm(`Mark ${name}'s debt as Paid?`);
+    const confirm = window.confirm(
+      `តើអ្នកប្រាកដថាចង់កំណត់ថាបំណុលរបស់ ${name} បានបង់រួចមែនទេ?`,
+    );
     if (!confirm) return;
 
     setProcessingId(id);
@@ -176,76 +270,22 @@ export default function CustomerCredits() {
 
   return (
     <>
-      {/* Embedded CSS for Mobile Responsiveness */}
+      {/* Embedded CSS for Mobile Responsiveness & New Action Buttons */}
       <style>
         {`
-          .credits-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            gap: 16px;
-          }
-          .custom-scrollbar::-webkit-scrollbar {
-            height: 8px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1; 
-            border-radius: 8px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #d1d5db; 
-            border-radius: 8px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af; 
-          }
-          .form-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-          .modal-content {
-            background: #fff;
-            border-radius: 20px;
-            width: 92%;
-            max-width: 500px;
-            padding: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            max-height: 90vh;
-            overflow-y: auto;
-          }
-          .form-input {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid ${COLORS.border};
-            border-radius: 10px;
-            outline: none;
-            box-sizing: border-box;
-            font-size: 16px; /* Prevents iOS auto-zoom */
-            transition: all 0.2s ease;
-          }
-          .form-input:focus {
-            border-color: ${COLORS.primary};
-            box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
-          }
-          @media (max-width: 600px) {
-            .credits-header {
-              flex-direction: column;
-              align-items: flex-start;
-            }
-            .credits-header > button {
-              width: 100%;
-            }
-          }
-          @media (min-width: 600px) {
-            .form-grid {
-              grid-template-columns: 1fr 1fr;
-            }
-            .modal-content {
-              padding: 32px;
-            }
-          }
+          .credits-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
+          .custom-scrollbar::-webkit-scrollbar { height: 8px; }
+          .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 8px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+          .form-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+          .modal-content { background: #fff; border-radius: 20px; width: 92%; max-width: 500px; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-height: 90vh; overflow-y: auto; }
+          .form-input { width: 100%; padding: 12px 16px; border: 1px solid ${COLORS.border}; border-radius: 10px; outline: none; box-sizing: border-box; font-size: 16px; transition: all 0.2s ease; }
+          .form-input:focus { border-color: ${COLORS.primary}; box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1); }
+          .action-btn { border: none; padding: 8px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+          .action-btn:hover { opacity: 0.8; }
+          @media (max-width: 600px) { .credits-header { flex-direction: column; align-items: flex-start; } .credits-header > button { width: 100%; } }
+          @media (min-width: 600px) { .form-grid { grid-template-columns: 1fr 1fr; } .modal-content { padding: 32px; } }
         `}
       </style>
 
@@ -261,12 +301,157 @@ export default function CustomerCredits() {
         >
           Customer Credits{" "}
           <span style={{ color: COLORS.muted, fontWeight: 500 }}>
-            ({credits.length})
+            ({filteredCredits.length})
           </span>
         </h2>
         <Button onClick={() => setShowModal(true)}>
-          <FiPlus size={18} style={{ marginRight: 6 }} /> Add Credit
+          <FiPlus size={18} style={{ marginRight: 6 }} /> បន្ថែមឥណទាន
         </Button>
+      </div>
+
+      {/* --- BUSINESS FINANCIAL SUMMARY CARDS --- */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            background: "#FEE2E2",
+            padding: 20,
+            borderRadius: 12,
+            border: "1px solid #FCA5A5",
+          }}
+        >
+          <div
+            style={{
+              color: "#991B1B",
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: "uppercase",
+            }}
+          >
+            បំណុលសរុបមិនទាន់បង់ (Total Unpaid)
+          </div>
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              color: "#991B1B",
+              marginTop: 8,
+            }}
+          >
+            {fmt(stats.unpaid)}
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              color: "#B91C1C",
+              marginTop: 2,
+              fontWeight: 500,
+            }}
+          >
+            {fmtKHR(stats.unpaid)}
+          </div>
+        </div>
+        <div
+          style={{
+            background: "#D1FAE5",
+            padding: 20,
+            borderRadius: 12,
+            border: "1px solid #6EE7B7",
+          }}
+        >
+          <div
+            style={{
+              color: "#065F46",
+              fontSize: 13,
+              fontWeight: 600,
+              textTransform: "uppercase",
+            }}
+          >
+            បំណុលសរុបបានបង់រួច (Total Collected)
+          </div>
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              color: "#065F46",
+              marginTop: 8,
+            }}
+          >
+            {fmt(stats.paid)}
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              color: "#047857",
+              marginTop: 2,
+              fontWeight: 500,
+            }}
+          >
+            {fmtKHR(stats.paid)}
+          </div>
+        </div>
+      </div>
+
+      {/* --- FILTER CONTROLS BAR --- */}
+      <div
+        style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}
+      >
+        {/* Search Input with Icon */}
+        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+          <FiSearch
+            size={18}
+            color={COLORS.muted}
+            style={{
+              position: "absolute",
+              left: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none", // Prevents the icon from blocking clicks
+            }}
+          />
+          <input
+            type="text"
+            placeholder="ស្វែងរកឈ្មោះអតិថិជន..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px 16px 12px 42px", // 42px left padding makes room for the icon
+              borderRadius: 10,
+              border: `1px solid ${COLORS.border}`,
+              fontSize: 14,
+              outline: "none",
+              transition: "border 0.2s",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        {/* Status Dropdown */}
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{
+            padding: "12px 16px",
+            borderRadius: 10,
+            border: `1px solid ${COLORS.border}`,
+            fontSize: 14,
+            outline: "none",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          <option value="All">ស្ថានភាពទាំងអស់ (All Status)</option>
+          <option value="Unpaid">មិនទាន់បង់ (Unpaid)</option>
+          <option value="Paid">បង់រួច (Paid)</option>
+        </select>
       </div>
 
       {/* --- TABLE SECTION --- */}
@@ -279,10 +464,9 @@ export default function CustomerCredits() {
           overflow: "hidden",
         }}
       >
-        {/* custom-scrollbar class allows smooth swiping on mobile */}
         <div className="custom-scrollbar" style={{ overflowX: "auto" }}>
           <table
-            style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}
+            style={{ width: "100%", borderCollapse: "collapse", minWidth: 850 }}
           >
             <thead>
               <tr style={{ background: COLORS.surface }}>
@@ -324,21 +508,12 @@ export default function CustomerCredits() {
                       padding: 60,
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        gap: 10,
-                      }}
-                    >
-                      <span style={{ fontSize: 16, fontWeight: 500 }}>
-                        Loading records...
-                      </span>
-                    </div>
+                    <span style={{ fontSize: 16, fontWeight: 500 }}>
+                      កំពុងផ្ទុកទិន្នន័យ...
+                    </span>
                   </td>
                 </tr>
-              ) : credits.length === 0 ? (
+              ) : filteredCredits.length === 0 ? (
                 <tr>
                   <td
                     colSpan={7}
@@ -362,15 +537,15 @@ export default function CustomerCredits() {
                         marginBottom: 4,
                       }}
                     >
-                      No Active Credits
+                      គ្មានទិន្នន័យ (No Results)
                     </div>
                     <div style={{ fontSize: 14 }}>
-                      Customers who owe money will appear here.
+                      មិនមានទិន្នន័យដែលអ្នកកំពុងស្វែងរកទេ
                     </div>
                   </td>
                 </tr>
               ) : (
-                credits.map((c) => (
+                filteredCredits.map((c) => (
                   <tr
                     key={c.id}
                     style={{
@@ -389,7 +564,7 @@ export default function CustomerCredits() {
                       style={{
                         ...tableCell,
                         color: COLORS.text,
-                        fontWeight: 700,
+                        fontWeight: 600,
                       }}
                     >
                       {c.customer_name}
@@ -438,7 +613,7 @@ export default function CustomerCredits() {
                         <div
                           style={{
                             color: COLORS.muted,
-                            fontSize: 13,
+                            fontSize: 14,
                             maxWidth: 180,
                             whiteSpace: "nowrap",
                             overflow: "hidden",
@@ -454,7 +629,7 @@ export default function CustomerCredits() {
                     <td
                       style={{
                         ...tableCell,
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: COLORS.text,
                       }}
                     >
@@ -477,11 +652,11 @@ export default function CustomerCredits() {
                       <div
                         style={{
                           color: COLORS.muted,
-                          fontSize: 12,
+                          fontSize: 14,
                           marginBottom: 4,
                         }}
                       >
-                        Bought:{" "}
+                        បានទិញ:{" "}
                         {new Date(c.created_at).toISOString().split("T")[0]}
                       </div>
                       <div
@@ -492,7 +667,7 @@ export default function CustomerCredits() {
                           fontSize: 12,
                         }}
                       >
-                        Due: {c.due_date}
+                        ត្រូវបង់: {c.due_date}
                       </div>
                     </td>
 
@@ -513,46 +688,84 @@ export default function CustomerCredits() {
                       </span>
                     </td>
 
-                    {/* Action Button */}
+                    {/* Action Buttons */}
                     <td style={tableCell}>
-                      {c.status === "Unpaid" ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {c.status === "Unpaid" ? (
+                          <button
+                            onClick={() =>
+                              handleMarkAsPaid(c.id, c.customer_name)
+                            }
+                            disabled={processingId === c.id}
+                            style={{
+                              background: COLORS.primary,
+                              color: "#fff",
+                              border: "none",
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              cursor:
+                                processingId === c.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              opacity: processingId === c.id ? 0.7 : 1,
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            {processingId === c.id
+                              ? "កំពុងធ្វើបច្ចុប្បន្នភាព..."
+                              : "កំណត់ថាបានបង់"}
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              color: COLORS.muted,
+                              fontSize: 13,
+                              fontWeight: 600,
+                              background: COLORS.surface,
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                            }}
+                          >
+                            ដោះស្រាយរួចរាល់
+                          </span>
+                        )}
+
                         <button
+                          className="action-btn"
+                          onClick={() => openEditModal(c)}
+                          style={{
+                            background: COLORS.surface,
+                            color: COLORS.text,
+                            border: `1px solid ${COLORS.border}`,
+                          }}
+                          title="Edit Record"
+                        >
+                          <FiEdit2 size={16} />
+                        </button>
+
+                        <button
+                          className="action-btn"
                           onClick={() =>
-                            handleMarkAsPaid(c.id, c.customer_name)
+                            handleDeleteCredit(c.id, c.customer_name)
                           }
                           disabled={processingId === c.id}
                           style={{
-                            background: COLORS.primary,
-                            color: "#fff",
-                            border: "none",
-                            padding: "8px 14px",
-                            borderRadius: 8,
-                            cursor:
-                              processingId === c.id ? "not-allowed" : "pointer",
-                            fontSize: 13,
-                            fontWeight: 600,
-                            opacity: processingId === c.id ? 0.7 : 1,
-                            transition: "all 0.2s",
+                            background: COLORS.dangerBg,
+                            color: COLORS.danger,
                           }}
+                          title="លុបកំណត់ត្រា"
                         >
-                          {processingId === c.id
-                            ? "Updating..."
-                            : "Mark as Paid"}
+                          <FiTrash2 size={16} />
                         </button>
-                      ) : (
-                        <span
-                          style={{
-                            color: COLORS.muted,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            background: COLORS.surface,
-                            padding: "6px 12px",
-                            borderRadius: 8,
-                          }}
-                        >
-                          Resolved
-                        </span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -562,7 +775,7 @@ export default function CustomerCredits() {
         </div>
       </div>
 
-      {/* --- ADD CREDIT MODAL --- */}
+      {/* --- ADD / EDIT CREDIT MODAL --- */}
       {showModal && (
         <div
           style={{
@@ -590,7 +803,7 @@ export default function CustomerCredits() {
               }}
             >
               <h3 style={{ margin: 0, fontSize: 20, color: COLORS.text }}>
-                បន្ថែមឥណទានអតិថិជន
+                {editingId ? "កែប្រែឥណទានអតិថិជន" : "បន្ថែមឥណទានអតិថិជន"}
               </h3>
               <button
                 onClick={resetForm}
@@ -609,21 +822,20 @@ export default function CustomerCredits() {
             </div>
 
             <form
-              onSubmit={handleAddCredit}
+              onSubmit={handleSaveCredit}
               style={{ display: "flex", flexDirection: "column", gap: 20 }}
             >
-              {/* Image Upload Area */}
               <div>
                 <label
                   style={{
                     display: "block",
                     fontSize: 13,
-                    fontWeight: 700,
+                    fontWeight: 600,
                     marginBottom: 8,
                     color: COLORS.text,
                   }}
                 >
-                  Product Receipt / Image
+                  បង្កាន់ដៃទំនិញ / រូបភាព
                 </label>
                 <input
                   type="file"
@@ -702,7 +914,7 @@ export default function CustomerCredits() {
                           fontSize: 14,
                         }}
                       >
-                        Choose a Photo
+                        ជ្រើសរើសរូបភាព
                       </span>
                       <span
                         style={{
@@ -718,7 +930,6 @@ export default function CustomerCredits() {
                 </div>
               </div>
 
-              {/* Form Inputs */}
               <div>
                 <label
                   style={{
@@ -831,7 +1042,11 @@ export default function CustomerCredits() {
                   borderRadius: 12,
                 }}
               >
-                {isSaving ? "កំពុងរក្សាទុក..." : "រក្សាទុកកំណត់ត្រាឥណទាន"}
+                {isSaving
+                  ? "កំពុងរក្សាទុក..."
+                  : editingId
+                    ? "ធ្វើបច្ចុប្បន្នភាព"
+                    : "រក្សាទុកកំណត់ត្រាឥណទាន"}
               </Button>
             </form>
           </div>

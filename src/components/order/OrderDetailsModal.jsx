@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { FiPackage, FiCheckCircle, FiImage, FiClock } from "react-icons/fi";
+import {
+  FiPackage,
+  FiCheckCircle,
+  FiImage,
+  FiClock,
+  FiPrinter,
+} from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
@@ -19,7 +25,6 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
   const fetchOrderDetails = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch the Order Info
       const { data: orderData, error: orderError } = await supabase
         .from("Orders")
         .select("*")
@@ -29,7 +34,6 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
       if (orderError) throw orderError;
       setOrder(orderData);
 
-      // 2. Fetch the Items (Standard fetch to prevent Foreign Key crashes)
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
         .select("*")
@@ -39,7 +43,6 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
       let mergedItems = itemsData || [];
 
-      // 3. Safely fetch product images manually to avoid database join errors
       if (mergedItems.length > 0) {
         const productIds = mergedItems.map((i) => i.product_id).filter(Boolean);
 
@@ -68,6 +71,11 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
     }
   };
 
+  // --- PRINT FUNCTION ---
+  const handlePrint = () => {
+    window.print();
+  };
+
   if (isLoading) {
     return (
       <Modal open={open} onClose={onClose} title={`Order #${orderId || ""}`}>
@@ -81,162 +89,272 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
   if (!order) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Order #${order.id}`} wide>
-      <div style={styles.container}>
-        {/* --- LEFT COLUMN: PACKING LIST --- */}
-        <div style={styles.column}>
-          <div style={styles.sectionHeader}>
-            <FiPackage size={18} color="#0066FF" />
-            <h3 style={styles.sectionTitle}>Items Purchased</h3>
-            <span style={styles.badge}>{items.length} items</span>
+    <>
+      {/* --- CSS FOR THERMAL PRINTING ONLY --- */}
+      <style>
+        {`
+          @media screen {
+            #thermal-receipt { display: none; }
+          }
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            #thermal-receipt, #thermal-receipt * {
+              visibility: visible;
+            }
+            #thermal-receipt {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 58mm; /* Standard Thermal Width */
+              margin: 0;
+              padding: 0 10px;
+              font-family: 'Courier New', Courier, monospace; /* Best for receipts */
+              color: #000;
+              font-size: 12px;
+            }
+            .r-center { text-align: center; }
+            .r-bold { font-weight: bold; }
+            .r-flex { display: flex; justify-content: space-between; }
+            .r-line { border-bottom: 1px dashed #000; margin: 8px 0; }
+            .r-item-name { margin-bottom: 2px; font-size: 11px; }
+            .r-item-calc { font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 6px; }
+          }
+        `}
+      </style>
+
+      {/* --- HIDDEN THERMAL RECEIPT LAYOUT --- */}
+      <div id="thermal-receipt">
+        <div className="r-center">
+          <h2 style={{ margin: "10px 0 5px", fontSize: 18 }}>Sophea Mart</h2>
+          <div>Phnom Penh, Cambodia</div>
+          <div>Tel: 012 345 678</div>
+          <div className="r-line"></div>
+          <div className="r-bold">RECEIPT</div>
+          <div style={{ fontSize: 10, marginTop: 4 }}>
+            Order #{order.id} <br />
+            {new Date(order.created_at).toLocaleString()}
           </div>
+          <div className="r-line"></div>
+        </div>
 
-          <div style={styles.card}>
-            <div style={styles.itemsList}>
-              {items.length === 0 ? (
-                <div
-                  style={{ padding: 20, textAlign: "center", color: "#9CA3AF" }}
-                >
-                  No items found for this order.
-                </div>
-              ) : (
-                items.map((item) => (
-                  <div key={item.id} style={styles.itemRow}>
-                    {/* Product Image Thumbnail */}
-                    <div style={styles.imageBox}>
-                      {item.image ? (
-                        <img
-                          src={item.image}
-                          alt={item.product_name}
-                          style={styles.productImage}
-                        />
-                      ) : (
-                        <FiPackage size={20} color="#9CA3AF" />
-                      )}
-                    </div>
+        <div>
+          {items.map((item) => (
+            <div key={item.id}>
+              <div className="r-item-name">{item.product_name}</div>
+              <div className="r-item-calc">
+                <span>
+                  {item.quantity} x {fmt(item.price)}
+                </span>
+                <span>{fmt(item.price * item.quantity)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
 
-                    {/* Product Details */}
-                    <div style={styles.itemDetails}>
-                      <div style={styles.itemName}>{item.product_name}</div>
-                      <div style={styles.itemMeta}>
-                        {fmt(item.price)} × {item.quantity}
+        <div className="r-line"></div>
+        <div className="r-flex r-bold" style={{ fontSize: 14 }}>
+          <span>TOTAL USD</span>
+          <span>{fmt(order.total_usd)}</span>
+        </div>
+        <div className="r-flex" style={{ fontSize: 12, marginTop: 4 }}>
+          <span>TOTAL KHR</span>
+          <span>{fmtKHR(order.total_usd)}</span>
+        </div>
+
+        <div className="r-line" style={{ marginTop: 12 }}></div>
+        <div className="r-flex" style={{ fontSize: 11 }}>
+          <span>Payment Method:</span>
+          <span style={{ textTransform: "capitalize" }}>
+            {order.payment_method || "Cash"}
+          </span>
+        </div>
+
+        <div className="r-center" style={{ marginTop: 16, fontSize: 11 }}>
+          Thank you for shopping with us! <br />
+          សូមអរគុណ!
+        </div>
+      </div>
+
+      {/* --- STANDARD MODAL UI --- */}
+      <Modal open={open} onClose={onClose} title={`Order #${order.id}`} wide>
+        <div style={styles.container}>
+          {/* --- LEFT COLUMN: PACKING LIST --- */}
+          <div style={styles.column}>
+            <div style={styles.sectionHeader}>
+              <FiPackage size={18} color="#0066FF" />
+              <h3 style={styles.sectionTitle}>Items Purchased</h3>
+              <span style={styles.badge}>{items.length} items</span>
+            </div>
+
+            <div style={styles.card}>
+              <div style={styles.itemsList}>
+                {items.length === 0 ? (
+                  <div
+                    style={{
+                      padding: 20,
+                      textAlign: "center",
+                      color: "#9CA3AF",
+                    }}
+                  >
+                    No items found for this order.
+                  </div>
+                ) : (
+                  items.map((item) => (
+                    <div key={item.id} style={styles.itemRow}>
+                      <div style={styles.imageBox}>
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.product_name}
+                            style={styles.productImage}
+                          />
+                        ) : (
+                          <FiPackage size={20} color="#9CA3AF" />
+                        )}
+                      </div>
+                      <div style={styles.itemDetails}>
+                        <div style={styles.itemName}>{item.product_name}</div>
+                        <div style={styles.itemMeta}>
+                          {fmt(item.price)} × {item.quantity}
+                        </div>
+                      </div>
+                      <div style={styles.itemTotal}>
+                        {fmt(item.price * item.quantity)}
                       </div>
                     </div>
+                  ))
+                )}
+              </div>
 
-                    {/* Total Item Price */}
-                    <div style={styles.itemTotal}>
-                      {fmt(item.price * item.quantity)}
-                    </div>
-                  </div>
-                ))
+              <div style={styles.totalsBox}>
+                <div style={styles.totalRow}>
+                  <span style={styles.totalLabel}>Total USD</span>
+                  <span style={styles.totalValueUsd}>
+                    {fmt(order.total_usd)}
+                  </span>
+                </div>
+                <div style={styles.totalRow}>
+                  <span style={styles.totalLabel}>Total KHR</span>
+                  <span style={styles.totalValueKhr}>
+                    {fmtKHR(order.total_usd)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* --- RIGHT COLUMN: PAYMENT & STATUS --- */}
+          <div style={styles.column}>
+            <div style={styles.sectionHeader}>
+              <FiImage size={18} color="#0066FF" />
+              <h3 style={styles.sectionTitle}>Payment Details</h3>
+            </div>
+
+            <div style={styles.card}>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Method:</span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    textTransform: "capitalize",
+                    color: "#111827",
+                  }}
+                >
+                  {order.payment_method || "Cash"}
+                </span>
+              </div>
+
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Status:</span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 12,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: "capitalize",
+                    backgroundColor:
+                      order.status === "completed" ? "#D1FAE5" : "#FEF3C7",
+                    color: order.status === "completed" ? "#065F46" : "#D97706",
+                  }}
+                >
+                  {order.status === "completed" ? (
+                    <FiCheckCircle size={14} />
+                  ) : (
+                    <FiClock size={14} />
+                  )}
+                  {order.status}
+                </span>
+              </div>
+
+              {order.phone_number && (
+                <div style={styles.infoRow}>
+                  <span style={styles.infoLabel}>Phone:</span>
+                  <span style={{ fontWeight: 600, color: "#111827" }}>
+                    {order.phone_number}
+                  </span>
+                </div>
               )}
             </div>
 
-            {/* Totals Summary */}
-            <div style={styles.totalsBox}>
-              <div style={styles.totalRow}>
-                <span style={styles.totalLabel}>Total USD</span>
-                <span style={styles.totalValueUsd}>{fmt(order.total_usd)}</span>
+            {order.payment_method === "bank" && order.receipt_url ? (
+              <div style={styles.receiptBox}>
+                <div style={styles.receiptHeader}>Customer Receipt Upload</div>
+                <a
+                  href={order.receipt_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "block" }}
+                >
+                  <img
+                    src={order.receipt_url}
+                    alt="Payment Receipt"
+                    style={styles.receiptImage}
+                  />
+                </a>
+                <div style={styles.receiptHint}>
+                  Click image to view full size
+                </div>
               </div>
-              <div style={styles.totalRow}>
-                <span style={styles.totalLabel}>Total KHR</span>
-                <span style={styles.totalValueKhr}>
-                  {fmtKHR(order.total_usd)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+            ) : order.payment_method === "bank" ? (
+              <div style={styles.noReceiptBox}>No receipt uploaded.</div>
+            ) : null}
 
-        {/* --- RIGHT COLUMN: PAYMENT & STATUS --- */}
-        <div style={styles.column}>
-          <div style={styles.sectionHeader}>
-            <FiImage size={18} color="#0066FF" />
-            <h3 style={styles.sectionTitle}>Payment Details</h3>
-          </div>
-
-          <div style={styles.card}>
-            <div style={styles.infoRow}>
-              <span style={styles.infoLabel}>Method:</span>
-              <span
+            {/* --- ACTION BUTTONS --- */}
+            <div
+              style={{
+                marginTop: "auto",
+                paddingTop: 24,
+                display: "flex",
+                gap: 12,
+              }}
+            >
+              <Button variant="secondary" onClick={onClose} style={{ flex: 1 }}>
+                Close
+              </Button>
+              <Button
+                onClick={handlePrint}
                 style={{
-                  fontWeight: 600,
-                  textTransform: "capitalize",
-                  color: "#111827",
-                }}
-              >
-                {order.payment_method || "Cash"}
-              </span>
-            </div>
-
-            <div style={styles.infoRow}>
-              <span style={styles.infoLabel}>Status:</span>
-              <span
-                style={{
-                  display: "inline-flex",
+                  flex: 1,
+                  display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "4px 10px",
-                  borderRadius: 12,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  backgroundColor:
-                    order.status === "completed" ? "#D1FAE5" : "#FEF3C7",
-                  color: order.status === "completed" ? "#065F46" : "#D97706",
-                  textTransform: "capitalize",
+                  justifyContent: "center",
+                  gap: 8,
                 }}
               >
-                {order.status === "completed" ? (
-                  <FiCheckCircle size={14} />
-                ) : (
-                  <FiClock size={14} />
-                )}
-                {order.status}
-              </span>
+                <FiPrinter size={18} />
+                Print Receipt
+              </Button>
             </div>
-
-            {order.phone_number && (
-              <div style={styles.infoRow}>
-                <span style={styles.infoLabel}>Phone:</span>
-                <span style={{ fontWeight: 600, color: "#111827" }}>
-                  {order.phone_number}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Receipt Image Display */}
-          {order.payment_method === "bank" && order.receipt_url ? (
-            <div style={styles.receiptBox}>
-              <div style={styles.receiptHeader}>Customer Receipt Upload</div>
-              <a
-                href={order.receipt_url}
-                target="_blank"
-                rel="noreferrer"
-                style={{ display: "block" }}
-              >
-                <img
-                  src={order.receipt_url}
-                  alt="Payment Receipt"
-                  style={styles.receiptImage}
-                />
-              </a>
-              <div style={styles.receiptHint}>
-                Click image to view full size
-              </div>
-            </div>
-          ) : order.payment_method === "bank" ? (
-            <div style={styles.noReceiptBox}>No receipt uploaded.</div>
-          ) : null}
-
-          <div style={{ marginTop: "auto", paddingTop: 24 }}>
-            <Button variant="secondary" onClick={onClose} full>
-              Close Details
-            </Button>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+    </>
   );
 }
 
@@ -250,23 +368,14 @@ const styles = {
     gap: 24,
     alignItems: "start",
   },
-  column: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-  },
+  column: { display: "flex", flexDirection: "column", height: "100%" },
   sectionHeader: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     marginBottom: 12,
   },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 600,
-    color: "#111827",
-  },
+  sectionTitle: { margin: 0, fontSize: 16, fontWeight: 600, color: "#111827" },
   badge: {
     marginLeft: "auto",
     background: "#EFF6FF",
@@ -315,25 +424,15 @@ const styles = {
     objectFit: "contain",
     padding: 2,
   },
-  itemDetails: {
-    flex: 1,
-  },
+  itemDetails: { flex: 1 },
   itemName: {
     fontSize: 14,
     fontWeight: 600,
     color: "#374151",
     marginBottom: 2,
   },
-  itemMeta: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: 500,
-  },
-  itemTotal: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#111827",
-  },
+  itemMeta: { fontSize: 12, color: "#6B7280", fontWeight: 500 },
+  itemTotal: { fontSize: 14, fontWeight: 700, color: "#111827" },
   totalsBox: {
     padding: "16px",
     background: "#F9FAFB",
@@ -345,21 +444,9 @@ const styles = {
     alignItems: "center",
     marginBottom: 4,
   },
-  totalLabel: {
-    fontSize: 14,
-    color: "#4B5563",
-    fontWeight: 600,
-  },
-  totalValueUsd: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#0066FF",
-  },
-  totalValueKhr: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontWeight: 500,
-  },
+  totalLabel: { fontSize: 14, color: "#4B5563", fontWeight: 600 },
+  totalValueUsd: { fontSize: 18, fontWeight: 800, color: "#0066FF" },
+  totalValueKhr: { fontSize: 13, color: "#6B7280", fontWeight: 500 },
   infoRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -368,10 +455,7 @@ const styles = {
     borderBottom: "1px solid #F3F4F6",
     fontSize: 14,
   },
-  infoLabel: {
-    color: "#6B7280",
-    fontWeight: 500,
-  },
+  infoLabel: { color: "#6B7280", fontWeight: 500 },
   receiptBox: {
     background: "#FFF",
     border: "1px solid #E5E7EB",

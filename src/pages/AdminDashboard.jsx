@@ -21,7 +21,6 @@ import { fmt, fmtKHR } from "../utils/currency";
 import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
 import ProductsTable from "../components/admin/ProductsTable";
-// 🏆 NEW: Imported your new CustomerDebts component
 import CustomerDebts from "../components/admin/CustomerCredits";
 
 const COLORS = {
@@ -67,6 +66,9 @@ export default function AdminDashboard() {
   const [dbProducts, setDbProducts] = useState([]);
   const [dbRevenue, setDbRevenue] = useState(0);
   const [dbUsersCount, setDbUsersCount] = useState(0);
+
+  // 🏆 NEW: Payment Filter State for Cash Drawer Tracking
+  const [paymentFilter, setPaymentFilter] = useState("all");
 
   // Bouncer: Kick out non-admins
   useEffect(() => {
@@ -283,7 +285,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- COMPUTED STATS ---
+  // --- COMPUTED STATS & FILTERS ---
   const stats = useMemo(
     () => [
       {
@@ -319,6 +321,25 @@ export default function AdminDashboard() {
   );
 
   const recentOrders = useMemo(() => dbOrders.slice(0, 5), [dbOrders]);
+
+  // 🏆 NEW: Filter orders based on payment selection
+  const filteredOrders = useMemo(() => {
+    if (paymentFilter === "all") return dbOrders;
+    return dbOrders.filter((o) => {
+      const method = (o.payment_method || "cash").toLowerCase();
+      return method === paymentFilter;
+    });
+  }, [dbOrders, paymentFilter]);
+
+  // 🏆 NEW: Calculate actual revenue for the selected filter view
+  const filteredOrdersRevenue = useMemo(() => {
+    return filteredOrders.reduce((sum, order) => {
+      if (order.status === "completed") {
+        return sum + (order.total_usd || 0);
+      }
+      return sum;
+    }, 0);
+  }, [filteredOrders]);
 
   return (
     <div
@@ -432,7 +453,6 @@ export default function AdminDashboard() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 8 }}>
-            {/* 🏆 NEW: Added "credits" to the array so it shows up in the header */}
             {["overview", "products", "orders", "credits"].map((t) => (
               <button
                 key={t}
@@ -721,14 +741,62 @@ export default function AdminDashboard() {
               overflow: "hidden",
             }}
           >
+            {/* 🏆 NEW: Filter & Revenue Tracking Header */}
             <div
               style={{
                 padding: "18px 20px",
                 borderBottom: `1px solid ${COLORS.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 16,
               }}
             >
-              <h3 style={{ margin: 0 }}>All Orders ({dbOrders.length})</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <h3 style={{ margin: 0 }}>
+                  All Orders ({filteredOrders.length})
+                </h3>
+                {/* Visual Revenue Badge based on filter */}
+                <div
+                  style={{
+                    padding: "6px 14px",
+                    background: "#EFF6FF",
+                    color: "#1D4ED8",
+                    borderRadius: 12,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <FiDollarSign size={14} />
+                  Collected: {fmt(filteredOrdersRevenue)}
+                </div>
+              </div>
+
+              {/* Payment Type Dropdown Filter */}
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  border: `1px solid ${COLORS.border}`,
+                  fontSize: 14,
+                  outline: "none",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  background: "#f9fafb",
+                }}
+              >
+                <option value="all">All Payment Methods</option>
+                <option value="cash">💵 Cash Only</option>
+                <option value="bank">🏦 ABA KHQR / Bank</option>
+              </select>
             </div>
+
             <div style={{ overflowX: "auto" }}>
               <table
                 style={{
@@ -764,118 +832,139 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {dbOrders.map((o) => (
-                    <tr
-                      key={o.id}
-                      style={{ borderTop: `1px solid ${COLORS.border}` }}
-                    >
+                  {filteredOrders.length === 0 ? (
+                    <tr>
                       <td
+                        colSpan={8}
                         style={{
-                          ...tableCell,
-                          color: COLORS.primary,
-                          fontWeight: 600,
+                          padding: 40,
+                          textAlign: "center",
+                          color: COLORS.muted,
                         }}
                       >
-                        {o.id}
-                      </td>
-                      <td style={tableCell}>
-                        {new Date(o.created_at).toISOString().split("T")[0]}
-                      </td>
-                      <td style={tableCell}>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {o.payment_method || "cash"}
-                        </div>
-                        {o.payment_method === "bank" && o.receipt_url && (
-                          <button
-                            onClick={() => setReceiptImage(o.receipt_url)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "none",
-                              border: "none",
-                              color: COLORS.primary,
-                              padding: "2px 0",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            <FiImage size={12} /> View Receipt
-                          </button>
-                        )}
-                      </td>
-                      <td style={tableCell}>{o.total_items} items</td>
-                      <td style={{ ...tableCell, fontWeight: 700 }}>
-                        {fmt(o.total_usd)}
-                      </td>
-                      <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
-                      <td style={tableCell}>
-                        <button
-                          onClick={() =>
-                            toggleOrderStatus(
-                              o.id,
-                              o.status,
-                              o.user_id,
-                              o.total_usd,
-                            )
-                          }
-                          disabled={processingId === o.id}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: 10,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            border: "none",
-                            cursor:
-                              processingId === o.id ? "not-allowed" : "pointer",
-                            whiteSpace: "nowrap",
-                            textTransform: "capitalize",
-                            background:
-                              o.status === "completed" ? "#d1fae5" : "#fef9c3",
-                            color:
-                              o.status === "completed" ? "#065f46" : "#713f12",
-                            opacity: processingId === o.id ? 0.6 : 1,
-                          }}
-                        >
-                          {processingId === o.id ? "..." : o.status}
-                        </button>
-                      </td>
-                      <td style={tableCell}>
-                        <button
-                          onClick={() => {
-                            setSelectedOrderId(o.id);
-                            setShowOrderModal(true);
-                          }}
-                          style={{
-                            background: "#DBEAFE",
-                            color: "#1D4ED8",
-                            border: "none",
-                            padding: "6px 12px",
-                            borderRadius: 10,
-                            cursor: "pointer",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          View Items
-                        </button>
+                        No orders match the selected payment method.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredOrders.map((o) => (
+                      <tr
+                        key={o.id}
+                        style={{ borderTop: `1px solid ${COLORS.border}` }}
+                      >
+                        <td
+                          style={{
+                            ...tableCell,
+                            color: COLORS.primary,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {o.id}
+                        </td>
+                        <td style={tableCell}>
+                          {new Date(o.created_at).toISOString().split("T")[0]}
+                        </td>
+                        <td style={tableCell}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {o.payment_method || "cash"}
+                          </div>
+                          {o.payment_method === "bank" && o.receipt_url && (
+                            <button
+                              onClick={() => setReceiptImage(o.receipt_url)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                background: "none",
+                                border: "none",
+                                color: COLORS.primary,
+                                padding: "2px 0",
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <FiImage size={12} /> View Receipt
+                            </button>
+                          )}
+                        </td>
+                        <td style={tableCell}>{o.total_items} items</td>
+                        <td style={{ ...tableCell, fontWeight: 700 }}>
+                          {fmt(o.total_usd)}
+                        </td>
+                        <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
+                        <td style={tableCell}>
+                          <button
+                            onClick={() =>
+                              toggleOrderStatus(
+                                o.id,
+                                o.status,
+                                o.user_id,
+                                o.total_usd,
+                              )
+                            }
+                            disabled={processingId === o.id}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 10,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              border: "none",
+                              cursor:
+                                processingId === o.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                              whiteSpace: "nowrap",
+                              textTransform: "capitalize",
+                              background:
+                                o.status === "completed"
+                                  ? "#d1fae5"
+                                  : "#fef9c3",
+                              color:
+                                o.status === "completed"
+                                  ? "#065f46"
+                                  : "#713f12",
+                              opacity: processingId === o.id ? 0.6 : 1,
+                            }}
+                          >
+                            {processingId === o.id ? "..." : o.status}
+                          </button>
+                        </td>
+                        <td style={tableCell}>
+                          <button
+                            onClick={() => {
+                              setSelectedOrderId(o.id);
+                              setShowOrderModal(true);
+                            }}
+                            style={{
+                              background: "#DBEAFE",
+                              color: "#1D4ED8",
+                              border: "none",
+                              padding: "6px 12px",
+                              borderRadius: 10,
+                              cursor: "pointer",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            View Items
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* 🏆 NEW: CREDITS TAB RENDER */}
+        {/* CREDITS TAB RENDER */}
         {tab === "credits" && (
           <CustomerDebts
             onMarkAsPaid={(id) =>
