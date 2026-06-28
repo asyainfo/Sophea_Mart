@@ -21,6 +21,8 @@ import { fmt, fmtKHR } from "../utils/currency";
 import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
 import ProductsTable from "../components/admin/ProductsTable";
+// 🏆 NEW: Imported your new CustomerDebts component
+import CustomerDebts from "../components/admin/CustomerCredits";
 
 const COLORS = {
   primary: "#0066FF",
@@ -49,7 +51,7 @@ export default function AdminDashboard() {
 
   const [tab, setTab] = useState("overview");
 
-  // 🏆 NEW: ASYNC LOADING STATES
+  // ASYNC LOADING STATES
   const [processingId, setProcessingId] = useState(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
 
@@ -149,7 +151,7 @@ export default function AdminDashboard() {
     orderUserId,
     totalUsd,
   ) => {
-    setProcessingId(orderId); // 🏆 Start Spinner
+    setProcessingId(orderId);
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
     const pointsToAward = Math.floor((totalUsd || 0) / 1.25);
 
@@ -208,7 +210,7 @@ export default function AdminDashboard() {
       console.error("Error updating status:", error.message);
       triggerGlobalToast("Failed to update status", "error");
     } finally {
-      setProcessingId(null); // 🏆 Stop Spinner
+      setProcessingId(null);
     }
   };
 
@@ -242,7 +244,7 @@ export default function AdminDashboard() {
     );
     if (!confirmDelete) return;
 
-    setProcessingId(id); // 🏆 Start Spinner
+    setProcessingId(id);
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
@@ -253,12 +255,12 @@ export default function AdminDashboard() {
       console.error("SUPABASE DELETE ERROR:", error);
       triggerGlobalToast("Failed to delete product", "error");
     } finally {
-      setProcessingId(null); // 🏆 Stop Spinner
+      setProcessingId(null);
     }
   };
 
   const handleToggleStock = async (id, currentStockStatus, name) => {
-    setProcessingId(id); // 🏆 Start Spinner
+    setProcessingId(id);
     try {
       const newStatus = !currentStockStatus;
       const { error } = await supabase
@@ -277,7 +279,7 @@ export default function AdminDashboard() {
       console.error("Error updating stock:", error);
       triggerGlobalToast("Failed to update stock status", "error");
     } finally {
-      setProcessingId(null); // 🏆 Stop Spinner
+      setProcessingId(null);
     }
   };
 
@@ -430,7 +432,8 @@ export default function AdminDashboard() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 8 }}>
-            {["overview", "products", "orders"].map((t) => (
+            {/* 🏆 NEW: Added "credits" to the array so it shows up in the header */}
+            {["overview", "products", "orders", "credits"].map((t) => (
               <button
                 key={t}
                 type="button"
@@ -695,7 +698,6 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
-            {/* 🏆 NEW: passing the processingId to the table! */}
             <ProductsTable
               products={dbProducts}
               onEdit={(product) => {
@@ -871,6 +873,15 @@ export default function AdminDashboard() {
               </table>
             </div>
           </div>
+        )}
+
+        {/* 🏆 NEW: CREDITS TAB RENDER */}
+        {tab === "credits" && (
+          <CustomerDebts
+            onMarkAsPaid={(id) =>
+              triggerGlobalToast(`Debt ${id} marked as paid!`, "success")
+            }
+          />
         )}
       </div>
 
