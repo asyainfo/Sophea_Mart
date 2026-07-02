@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FiPlus,
   FiX,
@@ -8,6 +9,8 @@ import {
   FiEdit2,
   FiTrash2,
   FiSearch,
+  FiDollarSign,
+  FiCheckCircle,
 } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import { fmt, fmtKHR } from "../../utils/currency";
@@ -28,7 +31,7 @@ const tableCell = {
   padding: "16px 20px",
   fontSize: 14,
   verticalAlign: "middle",
-  whiteSpace: "nowrap", // Prevents text from squishing on mobile
+  whiteSpace: "nowrap",
 };
 
 // --- GLOBAL TOAST DISPATCHER ---
@@ -39,6 +42,7 @@ const triggerGlobalToast = (message, type = "success") => {
 };
 
 export default function CustomerCredits() {
+  const { t } = useTranslation();
   const [credits, setCredits] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
@@ -54,6 +58,11 @@ export default function CustomerCredits() {
   const [imagePreview, setImagePreview] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Partial Payment State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [partialAmount, setPartialAmount] = useState("");
 
   // Lightbox State
   const [viewImage, setViewImage] = useState(null);
@@ -79,7 +88,7 @@ export default function CustomerCredits() {
       setCredits(data || []);
     } catch (error) {
       console.error("Error fetching credits:", error);
-      triggerGlobalToast("Failed to load credits", "error");
+      triggerGlobalToast(t("credits.toast.load_failed"), "error");
     } finally {
       setIsLoading(false);
     }
@@ -168,7 +177,7 @@ export default function CustomerCredits() {
           .eq("id", editingId);
 
         if (error) throw error;
-        triggerGlobalToast("កំណត់ត្រាត្រូវបានកែប្រែដោយជោគជ័យ!", "success");
+        triggerGlobalToast(t("credits.toast.update_success"), "success");
       } else {
         payload.status = "Unpaid";
         const { error } = await supabase
@@ -176,14 +185,14 @@ export default function CustomerCredits() {
           .insert([payload]);
 
         if (error) throw error;
-        triggerGlobalToast("កំណត់ត្រាត្រូវបានរក្សាទុក!", "success");
+        triggerGlobalToast(t("credits.toast.save_success"), "success");
       }
 
       resetForm();
       fetchCredits();
     } catch (error) {
       console.error("Error saving credit:", error);
-      triggerGlobalToast("Failed to save credit", "error");
+      triggerGlobalToast(t("credits.toast.save_failed"), "error");
     } finally {
       setIsSaving(false);
     }
@@ -206,7 +215,7 @@ export default function CustomerCredits() {
   // --- DELETE CREDIT ---
   const handleDeleteCredit = async (id, name) => {
     const confirm = window.confirm(
-      `តើអ្នកប្រាកដថាចង់លុបកំណត់ត្រារបស់ ${name} ជាអចិន្ត្រៃយ៍មែនទេ?`,
+      t("credits.prompt.delete_confirm", { name }),
     );
     if (!confirm) return;
 
@@ -219,11 +228,14 @@ export default function CustomerCredits() {
 
       if (error) throw error;
 
-      triggerGlobalToast(`Deleted record for ${name}`, "success");
+      triggerGlobalToast(
+        t("credits.toast.delete_success", { name }),
+        "success",
+      );
       fetchCredits();
     } catch (error) {
       console.error("Error deleting:", error);
-      triggerGlobalToast("Failed to delete record", "error");
+      triggerGlobalToast(t("credits.toast.delete_failed"), "error");
     } finally {
       setProcessingId(null);
     }
@@ -242,10 +254,10 @@ export default function CustomerCredits() {
     setImagePreview(null);
   };
 
-  // --- MARK AS PAID ---
+  // --- MARK AS PAID (FULL AMOUNT) ---
   const handleMarkAsPaid = async (id, name) => {
     const confirm = window.confirm(
-      `តើអ្នកប្រាកដថាចង់កំណត់ថាបំណុលរបស់ ${name} បានបង់រួចមែនទេ?`,
+      t("credits.prompt.pay_full_confirm", { name }),
     );
     if (!confirm) return;
 
@@ -258,19 +270,84 @@ export default function CustomerCredits() {
 
       if (error) throw error;
 
-      triggerGlobalToast(`${name}'s debt marked as Paid!`, "success");
+      triggerGlobalToast(
+        t("credits.toast.pay_full_success", { name }),
+        "success",
+      );
       fetchCredits();
     } catch (error) {
       console.error("Error updating status:", error);
-      triggerGlobalToast("Failed to update status", "error");
+      triggerGlobalToast(t("credits.toast.update_status_failed"), "error");
     } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // --- 🏆 NEW: HANDLE PARTIAL PAYMENT ---
+  const handlePartialPayment = async (e) => {
+    e.preventDefault();
+    const amountToPay = parseFloat(partialAmount);
+
+    if (
+      !amountToPay ||
+      amountToPay <= 0 ||
+      amountToPay > paymentData.total_usd
+    ) {
+      alert(t("credits.prompt.invalid_amount"));
+      return;
+    }
+
+    setProcessingId(paymentData.id);
+    setIsSaving(true);
+
+    try {
+      if (amountToPay === paymentData.total_usd) {
+        // If they paid the exact full amount, just mark the whole thing as paid
+        await supabase
+          .from("customer_credits")
+          .update({ status: "Paid" })
+          .eq("id", paymentData.id);
+      } else {
+        // 1. Reduce the original Unpaid record by the amount paid
+        const newBalance = paymentData.total_usd - amountToPay;
+        await supabase
+          .from("customer_credits")
+          .update({ total_usd: newBalance })
+          .eq("id", paymentData.id);
+
+        // 2. Create a new "Paid" receipt record so your "Total Collected" stat tracks the money
+        await supabase.from("customer_credits").insert([
+          {
+            customer_name: paymentData.customer_name,
+            total_usd: amountToPay,
+            status: "Paid",
+            items_desc:
+              `${t("credits.table.partial_pay_prefix")} ${paymentData.items_desc || ""}`.trim(),
+            due_date: new Date().toISOString().split("T")[0],
+            image_url: paymentData.image_url,
+          },
+        ]);
+      }
+
+      triggerGlobalToast(
+        t("credits.toast.partial_pay_success", { amount: fmt(amountToPay) }),
+        "success",
+      );
+      setShowPaymentModal(false);
+      setPartialAmount("");
+      setPaymentData(null);
+      fetchCredits();
+    } catch (error) {
+      console.error("Error processing partial payment:", error);
+      triggerGlobalToast(t("credits.toast.payment_failed"), "error");
+    } finally {
+      setIsSaving(false);
       setProcessingId(null);
     }
   };
 
   return (
     <>
-      {/* Embedded CSS for Mobile Responsiveness & New Action Buttons */}
       <style>
         {`
           .credits-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
@@ -299,13 +376,15 @@ export default function CustomerCredits() {
             fontWeight: 700,
           }}
         >
-          Customer Credits{" "}
+          {t("credits.header.title")}
+          {""}
           <span style={{ color: COLORS.muted, fontWeight: 500 }}>
             ({filteredCredits.length})
           </span>
         </h2>
         <Button onClick={() => setShowModal(true)}>
-          <FiPlus size={18} style={{ marginRight: 6 }} /> បន្ថែមឥណទាន
+          <FiPlus size={18} style={{ marginRight: 6 }} />{" "}
+          {t("credits.header.add_credit")}
         </Button>
       </div>
 
@@ -334,7 +413,7 @@ export default function CustomerCredits() {
               textTransform: "uppercase",
             }}
           >
-            បំណុលសរុបមិនទាន់បង់ (Total Unpaid)
+            {t("credits.stats.total_unpaid")}
           </div>
           <div
             style={{
@@ -373,7 +452,7 @@ export default function CustomerCredits() {
               textTransform: "uppercase",
             }}
           >
-            បំណុលសរុបបានបង់រួច (Total Collected)
+            {t("credits.stats.total_collected")}
           </div>
           <div
             style={{
@@ -402,7 +481,6 @@ export default function CustomerCredits() {
       <div
         style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}
       >
-        {/* Search Input with Icon */}
         <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
           <FiSearch
             size={18}
@@ -412,28 +490,25 @@ export default function CustomerCredits() {
               left: 14,
               top: "50%",
               transform: "translateY(-50%)",
-              pointerEvents: "none", // Prevents the icon from blocking clicks
+              pointerEvents: "none",
             }}
           />
           <input
             type="text"
-            placeholder="ស្វែងរកឈ្មោះអតិថិជន..."
+            placeholder={t("credits.filters.search_placeholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
               width: "100%",
-              padding: "12px 16px 12px 42px", // 42px left padding makes room for the icon
+              padding: "12px 16px 12px 42px",
               borderRadius: 10,
               border: `1px solid ${COLORS.border}`,
               fontSize: 14,
               outline: "none",
-              transition: "border 0.2s",
               boxSizing: "border-box",
             }}
           />
         </div>
-
-        {/* Status Dropdown */}
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -448,9 +523,9 @@ export default function CustomerCredits() {
             fontWeight: 500,
           }}
         >
-          <option value="All">ស្ថានភាពទាំងអស់ (All Status)</option>
-          <option value="Unpaid">មិនទាន់បង់ (Unpaid)</option>
-          <option value="Paid">បង់រួច (Paid)</option>
+          <option value="All">{t("credits.filters.all_status")}</option>
+          <option value="Unpaid">{t("credits.filters.unpaid")}</option>
+          <option value="Paid">{t("credits.filters.paid")}</option>
         </select>
       </div>
 
@@ -471,13 +546,13 @@ export default function CustomerCredits() {
             <thead>
               <tr style={{ background: COLORS.surface }}>
                 {[
-                  "Customer Name",
-                  "Items & Image",
+                  t("credits.table.th_customer"),
+                  t("credits.table.th_items"),
                   "USD",
                   "KHR",
-                  "Dates",
-                  "Status",
-                  "Action",
+                  t("credits.table.th_dates"),
+                  t("credits.table.th_status"),
+                  t("credits.table.th_action"),
                 ].map((h) => (
                   <th
                     key={h}
@@ -509,7 +584,7 @@ export default function CustomerCredits() {
                     }}
                   >
                     <span style={{ fontSize: 16, fontWeight: 500 }}>
-                      កំពុងផ្ទុកទិន្នន័យ...
+                      {t("credits.table.loading")}
                     </span>
                   </td>
                 </tr>
@@ -537,10 +612,10 @@ export default function CustomerCredits() {
                         marginBottom: 4,
                       }}
                     >
-                      គ្មានទិន្នន័យ (No Results)
+                      {t("credits.table.no_results")}
                     </div>
                     <div style={{ fontSize: 14 }}>
-                      មិនមានទិន្នន័យដែលអ្នកកំពុងស្វែងរកទេ
+                      {t("credits.table.no_results_desc")}
                     </div>
                   </td>
                 </tr>
@@ -559,7 +634,6 @@ export default function CustomerCredits() {
                       (e.currentTarget.style.background = "transparent")
                     }
                   >
-                    {/* Customer Name */}
                     <td
                       style={{
                         ...tableCell,
@@ -570,7 +644,6 @@ export default function CustomerCredits() {
                       {c.customer_name}
                     </td>
 
-                    {/* Items & Image Column */}
                     <td style={tableCell}>
                       <div
                         style={{
@@ -620,12 +693,11 @@ export default function CustomerCredits() {
                             textOverflow: "ellipsis",
                           }}
                         >
-                          {c.items_desc || "No description"}
+                          {c.items_desc || t("credits.table.no_description")}
                         </div>
                       </div>
                     </td>
 
-                    {/* USD */}
                     <td
                       style={{
                         ...tableCell,
@@ -635,8 +707,6 @@ export default function CustomerCredits() {
                     >
                       {fmt(c.total_usd)}
                     </td>
-
-                    {/* KHR */}
                     <td
                       style={{
                         ...tableCell,
@@ -647,7 +717,6 @@ export default function CustomerCredits() {
                       {fmtKHR(c.total_usd)}
                     </td>
 
-                    {/* Dates */}
                     <td style={tableCell}>
                       <div
                         style={{
@@ -656,7 +725,7 @@ export default function CustomerCredits() {
                           marginBottom: 4,
                         }}
                       >
-                        បានទិញ:{" "}
+                        {t("credits.table.bought_date")}{" "}
                         {new Date(c.created_at).toISOString().split("T")[0]}
                       </div>
                       <div
@@ -667,11 +736,10 @@ export default function CustomerCredits() {
                           fontSize: 12,
                         }}
                       >
-                        ត្រូវបង់: {c.due_date}
+                        {t("credits.table.due_date")} {c.due_date}
                       </div>
                     </td>
 
-                    {/* Status Badge */}
                     <td style={tableCell}>
                       <span
                         style={{
@@ -698,31 +766,64 @@ export default function CustomerCredits() {
                         }}
                       >
                         {c.status === "Unpaid" ? (
-                          <button
-                            onClick={() =>
-                              handleMarkAsPaid(c.id, c.customer_name)
-                            }
-                            disabled={processingId === c.id}
-                            style={{
-                              background: COLORS.primary,
-                              color: "#fff",
-                              border: "none",
-                              padding: "8px 14px",
-                              borderRadius: 8,
-                              cursor:
-                                processingId === c.id
-                                  ? "not-allowed"
-                                  : "pointer",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              opacity: processingId === c.id ? 0.7 : 1,
-                              transition: "all 0.2s",
-                            }}
-                          >
-                            {processingId === c.id
-                              ? "កំពុងធ្វើបច្ចុប្បន្នភាព..."
-                              : "កំណត់ថាបានបង់"}
-                          </button>
+                          <>
+                            {/* 🏆 Full Payment Button */}
+                            <button
+                              onClick={() =>
+                                handleMarkAsPaid(c.id, c.customer_name)
+                              }
+                              disabled={processingId === c.id}
+                              style={{
+                                background: COLORS.primary,
+                                color: "#fff",
+                                border: "none",
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                cursor:
+                                  processingId === c.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                              title={t("credits.table.tooltip_full")}
+                            >
+                              <FiCheckCircle size={14} />{" "}
+                              {t("credits.table.btn_full")}
+                            </button>
+
+                            {/* 🏆 Partial Payment Button */}
+                            <button
+                              onClick={() => {
+                                setPaymentData(c);
+                                setShowPaymentModal(true);
+                              }}
+                              disabled={processingId === c.id}
+                              style={{
+                                background: "#EFF6FF",
+                                color: COLORS.primary,
+                                border: "none",
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                cursor:
+                                  processingId === c.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                              title={t("credits.table.tooltip_partial")}
+                            >
+                              <FiDollarSign size={14} />{" "}
+                              {t("credits.table.btn_partial")}
+                            </button>
+                          </>
                         ) : (
                           <span
                             style={{
@@ -734,7 +835,7 @@ export default function CustomerCredits() {
                               borderRadius: 8,
                             }}
                           >
-                            ដោះស្រាយរួចរាល់
+                            {t("credits.table.settled")}
                           </span>
                         )}
 
@@ -746,11 +847,10 @@ export default function CustomerCredits() {
                             color: COLORS.text,
                             border: `1px solid ${COLORS.border}`,
                           }}
-                          title="Edit Record"
+                          title={t("credits.table.tooltip_edit")}
                         >
                           <FiEdit2 size={16} />
                         </button>
-
                         <button
                           className="action-btn"
                           onClick={() =>
@@ -761,7 +861,7 @@ export default function CustomerCredits() {
                             background: COLORS.dangerBg,
                             color: COLORS.danger,
                           }}
-                          title="លុបកំណត់ត្រា"
+                          title={t("credits.table.tooltip_delete")}
                         >
                           <FiTrash2 size={16} />
                         </button>
@@ -774,6 +874,181 @@ export default function CustomerCredits() {
           </table>
         </div>
       </div>
+
+      {/* --- 🏆 NEW: PARTIAL PAYMENT MODAL --- */}
+      {showPaymentModal && paymentData && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.7)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backdropFilter: "blur(4px)",
+            padding: 16,
+          }}
+        >
+          <div className="modal-content" style={{ maxWidth: 400 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 18, color: COLORS.text }}>
+                {t("credits.payment.title", {
+                  name: paymentData.customer_name,
+                })}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setPartialAmount("");
+                }}
+                style={{
+                  background: COLORS.surface,
+                  border: "none",
+                  cursor: "pointer",
+                  color: COLORS.muted,
+                  padding: 8,
+                  borderRadius: 999,
+                  display: "flex",
+                }}
+              >
+                <FiX size={20} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: "#FEF3C7",
+                padding: 16,
+                borderRadius: 12,
+                marginBottom: 20,
+                border: "1px solid #FDE68A",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#B45309",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                }}
+              >
+                {t("credits.payment.current_debt")}
+              </div>
+              <div
+                style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: "#92400E",
+                  marginTop: 4,
+                }}
+              >
+                {fmt(paymentData.total_usd)}
+              </div>
+            </div>
+
+            <form
+              onSubmit={handlePartialPayment}
+              style={{ display: "flex", flexDirection: "column", gap: 16 }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 8,
+                    color: COLORS.text,
+                  }}
+                >
+                  {t("credits.payment.amount_received")}
+                </label>
+                <div style={{ position: "relative" }}>
+                  <FiDollarSign
+                    size={18}
+                    color={COLORS.muted}
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={paymentData.total_usd}
+                    value={partialAmount}
+                    onChange={(e) => setPartialAmount(e.target.value)}
+                    placeholder="0.00"
+                    style={{
+                      width: "100%",
+                      padding: "12px 16px 12px 42px",
+                      borderRadius: 10,
+                      border: `1px solid ${COLORS.border}`,
+                      fontSize: 16,
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: COLORS.muted }}>
+                    {t("credits.payment.partial")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPartialAmount(paymentData.total_usd)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: COLORS.primary,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("credits.payment.pay_all")}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isSaving}
+                style={{
+                  width: "100%",
+                  padding: 16,
+                  fontSize: 16,
+                  borderRadius: 12,
+                }}
+              >
+                {isSaving
+                  ? t("credits.payment.saving")
+                  : t("credits.payment.confirm")}
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- ADD / EDIT CREDIT MODAL --- */}
       {showModal && (
@@ -803,7 +1078,9 @@ export default function CustomerCredits() {
               }}
             >
               <h3 style={{ margin: 0, fontSize: 20, color: COLORS.text }}>
-                {editingId ? "កែប្រែឥណទានអតិថិជន" : "បន្ថែមឥណទានអតិថិជន"}
+                {editingId
+                  ? t("credits.form.title_edit")
+                  : t("credits.form.title_add")}
               </h3>
               <button
                 onClick={resetForm}
@@ -835,7 +1112,7 @@ export default function CustomerCredits() {
                     color: COLORS.text,
                   }}
                 >
-                  បង្កាន់ដៃទំនិញ / រូបភាព
+                  {t("credits.form.lbl_receipt")}
                 </label>
                 <input
                   type="file"
@@ -844,7 +1121,6 @@ export default function CustomerCredits() {
                   onChange={handleImageSelect}
                   style={{ display: "none" }}
                 />
-
                 <div
                   onClick={() => fileInputRef.current.click()}
                   style={{
@@ -891,7 +1167,7 @@ export default function CustomerCredits() {
                           borderRadius: 999,
                         }}
                       >
-                        Change Photo
+                        {t("credits.form.change_photo")}
                       </span>
                     </div>
                   ) : (
@@ -914,7 +1190,7 @@ export default function CustomerCredits() {
                           fontSize: 14,
                         }}
                       >
-                        ជ្រើសរើសរូបភាព
+                        {t("credits.form.choose_photo")}
                       </span>
                       <span
                         style={{
@@ -923,7 +1199,7 @@ export default function CustomerCredits() {
                           marginTop: 4,
                         }}
                       >
-                        Optional
+                        {t("credits.form.optional")}
                       </span>
                     </>
                   )}
@@ -940,7 +1216,7 @@ export default function CustomerCredits() {
                     color: COLORS.text,
                   }}
                 >
-                  ឈ្មោះអតិថិជន
+                  {t("credits.form.lbl_name")}
                 </label>
                 <input
                   required
@@ -949,7 +1225,7 @@ export default function CustomerCredits() {
                   onChange={(e) =>
                     setFormData({ ...formData, customer_name: e.target.value })
                   }
-                  placeholder="e.g. Asya (Neighbor)"
+                  placeholder={t("credits.form.placeholder_name")}
                   className="form-input"
                 />
               </div>
@@ -965,7 +1241,7 @@ export default function CustomerCredits() {
                       color: COLORS.text,
                     }}
                   >
-                    បំណុលសរុប (USD)
+                    {t("credits.form.lbl_total")}
                   </label>
                   <input
                     required
@@ -989,7 +1265,7 @@ export default function CustomerCredits() {
                       color: COLORS.text,
                     }}
                   >
-                    ថ្ងៃកំណត់បង់ប្រាក់
+                    {t("credits.form.lbl_due_date")}
                   </label>
                   <input
                     required
@@ -1014,14 +1290,14 @@ export default function CustomerCredits() {
                     color: COLORS.text,
                   }}
                 >
-                  ការពិពណ៌នា (ជាជម្រើស)
+                  {t("credits.form.lbl_desc")}
                 </label>
                 <textarea
                   value={formData.items_desc}
                   onChange={(e) =>
                     setFormData({ ...formData, items_desc: e.target.value })
                   }
-                  placeholder="បញ្ជាក់ទំនិញដែលបានទិញ..."
+                  placeholder={t("credits.form.placeholder_desc")}
                   className="form-input"
                   style={{
                     minHeight: 80,
@@ -1043,10 +1319,10 @@ export default function CustomerCredits() {
                 }}
               >
                 {isSaving
-                  ? "កំពុងរក្សាទុក..."
+                  ? t("credits.payment.saving")
                   : editingId
-                    ? "ធ្វើបច្ចុប្បន្នភាព"
-                    : "រក្សាទុកកំណត់ត្រាឥណទាន"}
+                    ? t("credits.form.btn_update")
+                    : t("credits.form.btn_save")}
               </Button>
             </form>
           </div>

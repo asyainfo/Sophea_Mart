@@ -5,8 +5,10 @@ import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
 import ProductCard from "../components/product/ProductCard";
 import Button from "../components/ui/Button";
+import { useTranslation } from "react-i18next";
 
 export default function Favorites() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { dispatch, cart } = useCart();
 
@@ -84,12 +86,16 @@ export default function Favorites() {
     return (
       <div style={{ textAlign: "center", padding: "100px 20px" }}>
         <FiHeart size={48} color="#9CA3AF" style={{ margin: "0 auto 20px" }} />
-        <h2>Please Sign In</h2>
+        {/* 🏆 Translated Text */}
+        <h2>{t("favorites.please_sign_in", "Please Sign In")}</h2>
         <p style={{ color: "#6B7280" }}>
-          You need to be logged in to view your saved items.
+          {t(
+            "favorites.sign_in_desc",
+            "You need to be logged in to view your saved items.",
+          )}
         </p>
         <Button onClick={() => (window.location.href = "/")}>
-          Return to Store
+          {t("favorites.return_store", "Return to Store")}
         </Button>
       </div>
     );
@@ -148,7 +154,8 @@ export default function Favorites() {
               (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
             }
           >
-            <FiArrowLeft /> Back to Store
+            {/* 🏆 Translated Text */}
+            <FiArrowLeft /> {t("favorites.back_to_store", "Back to Store")}
           </button>
 
           <h1
@@ -160,10 +167,15 @@ export default function Favorites() {
               gap: 12,
             }}
           >
-            <FiHeart fill="#FFFFFF" /> Saved Items
+            {/* 🏆 Translated Text */}
+            <FiHeart fill="#FFFFFF" />{" "}
+            {t("favorites.saved_items", "Saved Items")}
           </h1>
           <p style={{ margin: "8px 0 0", opacity: 0.8, fontSize: 15 }}>
-            Your personal collection of favorite products.
+            {t(
+              "favorites.saved_desc",
+              "Your personal collection of favorite products.",
+            )}
           </p>
         </div>
       </div>
@@ -188,7 +200,10 @@ export default function Favorites() {
               boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
             }}
           >
-            <span style={{ color: "#6B7280" }}>Loading your favorites...</span>
+            {/* 🏆 Translated Text */}
+            <span style={{ color: "#6B7280" }}>
+              {t("favorites.loading", "Loading your favorites...")}
+            </span>
           </div>
         ) : favoriteProducts.length === 0 ? (
           <div
@@ -218,7 +233,8 @@ export default function Favorites() {
               <FiHeart size={32} color="#EF4444" />
             </div>
             <h3 style={{ margin: "0 0 8px 0", color: "#111827", fontSize: 20 }}>
-              No saved items yet
+              {/* 🏆 Translated Text */}
+              {t("favorites.no_saved", "No saved items yet")}
             </h3>
             <p
               style={{
@@ -227,15 +243,18 @@ export default function Favorites() {
                 lineHeight: 1.5,
               }}
             >
-              Browse the store and click the heart icon on items you love to
-              save them here for later!
+              {/* 🏆 Translated Text */}
+              {t(
+                "favorites.no_saved_desc",
+                "Browse the store and click the heart icon on items you love to save them here for later!",
+              )}
             </p>
             <Button onClick={() => (window.location.href = "/")}>
-              Browse Products
+              {/* 🏆 Translated Text */}
+              {t("favorites.browse_products", "Browse Products")}
             </Button>
           </div>
         ) : (
-          /* FIXED: Now using the exact same responsive grid as the Homepage */
           <div className="responsive-grid">
             {favoriteProducts.map((product) => {
               const safeCart = Array.isArray(cart) ? cart : [];

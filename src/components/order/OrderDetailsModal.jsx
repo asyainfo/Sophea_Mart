@@ -10,8 +10,10 @@ import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { fmt, fmtKHR } from "../../utils/currency";
+import { useTranslation } from "react-i18next"; // 🏆 1. Imported
 
 export default function OrderDetailsModal({ open, onClose, orderId }) {
+  const { t } = useTranslation(); // 🏆 2. Initialized
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,9 +80,13 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
   if (isLoading) {
     return (
-      <Modal open={open} onClose={onClose} title={`Order #${orderId || ""}`}>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={`${t("order_modal.order", "Order")} #${orderId || ""}`}
+      >
         <div style={{ padding: 40, textAlign: "center", color: "#6B7280" }}>
-          Loading details...
+          {t("order_modal.loading", "Loading details...")}
         </div>
       </Modal>
     );
@@ -131,9 +137,9 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
           <div>Phnom Penh, Cambodia</div>
           <div>Tel: 012 345 678</div>
           <div className="r-line"></div>
-          <div className="r-bold">RECEIPT</div>
+          <div className="r-bold">{t("order_modal.receipt", "RECEIPT")}</div>
           <div style={{ fontSize: 10, marginTop: 4 }}>
-            Order #{order.id} <br />
+            {t("order_modal.order", "Order")} #{order.id} <br />
             {new Date(order.created_at).toLocaleString()}
           </div>
           <div className="r-line"></div>
@@ -155,37 +161,47 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
         <div className="r-line"></div>
         <div className="r-flex r-bold" style={{ fontSize: 14 }}>
-          <span>TOTAL USD</span>
+          <span>{t("order_modal.total_usd", "TOTAL USD")}</span>
           <span>{fmt(order.total_usd)}</span>
         </div>
         <div className="r-flex" style={{ fontSize: 12, marginTop: 4 }}>
-          <span>TOTAL KHR</span>
+          <span>{t("order_modal.total_khr", "TOTAL KHR")}</span>
           <span>{fmtKHR(order.total_usd)}</span>
         </div>
 
         <div className="r-line" style={{ marginTop: 12 }}></div>
         <div className="r-flex" style={{ fontSize: 11 }}>
-          <span>Payment Method:</span>
+          <span>{t("order_modal.payment_method", "Payment Method:")}</span>
           <span style={{ textTransform: "capitalize" }}>
-            {order.payment_method || "Cash"}
+            {order.payment_method || t("order_modal.cash", "Cash")}
           </span>
         </div>
 
         <div className="r-center" style={{ marginTop: 16, fontSize: 11 }}>
-          Thank you for shopping with us! <br />
-          សូមអរគុណ!
+          {t("order_modal.thank_you_1", "Thank you for shopping with us!")}{" "}
+          <br />
+          {t("order_modal.thank_you_2", "សូមអរគុណ!")}
         </div>
       </div>
 
       {/* --- STANDARD MODAL UI --- */}
-      <Modal open={open} onClose={onClose} title={`Order #${order.id}`} wide>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={`${t("order_modal.order", "Order")} #${order.id}`}
+        wide
+      >
         <div style={styles.container}>
           {/* --- LEFT COLUMN: PACKING LIST --- */}
           <div style={styles.column}>
             <div style={styles.sectionHeader}>
               <FiPackage size={18} color="#0066FF" />
-              <h3 style={styles.sectionTitle}>Items Purchased</h3>
-              <span style={styles.badge}>{items.length} items</span>
+              <h3 style={styles.sectionTitle}>
+                {t("order_modal.items_purchased", "Items Purchased")}
+              </h3>
+              <span style={styles.badge}>
+                {items.length} {t("store.items", "items")}
+              </span>
             </div>
 
             <div style={styles.card}>
@@ -198,7 +214,10 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                       color: "#9CA3AF",
                     }}
                   >
-                    No items found for this order.
+                    {t(
+                      "order_modal.no_items",
+                      "No items found for this order.",
+                    )}
                   </div>
                 ) : (
                   items.map((item) => (
@@ -230,13 +249,17 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
               <div style={styles.totalsBox}>
                 <div style={styles.totalRow}>
-                  <span style={styles.totalLabel}>Total USD</span>
+                  <span style={styles.totalLabel}>
+                    {t("order_modal.total_usd", "Total USD")}
+                  </span>
                   <span style={styles.totalValueUsd}>
                     {fmt(order.total_usd)}
                   </span>
                 </div>
                 <div style={styles.totalRow}>
-                  <span style={styles.totalLabel}>Total KHR</span>
+                  <span style={styles.totalLabel}>
+                    {t("order_modal.total_khr", "Total KHR")}
+                  </span>
                   <span style={styles.totalValueKhr}>
                     {fmtKHR(order.total_usd)}
                   </span>
@@ -249,12 +272,16 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
           <div style={styles.column}>
             <div style={styles.sectionHeader}>
               <FiImage size={18} color="#0066FF" />
-              <h3 style={styles.sectionTitle}>Payment Details</h3>
+              <h3 style={styles.sectionTitle}>
+                {t("order_modal.payment_details", "Payment Details")}
+              </h3>
             </div>
 
             <div style={styles.card}>
               <div style={styles.infoRow}>
-                <span style={styles.infoLabel}>Method:</span>
+                <span style={styles.infoLabel}>
+                  {t("order_modal.method", "Method:")}
+                </span>
                 <span
                   style={{
                     fontWeight: 600,
@@ -262,12 +289,14 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                     color: "#111827",
                   }}
                 >
-                  {order.payment_method || "Cash"}
+                  {order.payment_method || t("order_modal.cash", "Cash")}
                 </span>
               </div>
 
               <div style={styles.infoRow}>
-                <span style={styles.infoLabel}>Status:</span>
+                <span style={styles.infoLabel}>
+                  {t("order_modal.status", "Status:")}
+                </span>
                 <span
                   style={{
                     display: "inline-flex",
@@ -288,13 +317,15 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                   ) : (
                     <FiClock size={14} />
                   )}
-                  {order.status}
+                  {t(`order_modal.status_val.${order.status}`, order.status)}
                 </span>
               </div>
 
               {order.phone_number && (
                 <div style={styles.infoRow}>
-                  <span style={styles.infoLabel}>Phone:</span>
+                  <span style={styles.infoLabel}>
+                    {t("order_modal.phone", "Phone:")}
+                  </span>
                   <span style={{ fontWeight: 600, color: "#111827" }}>
                     {order.phone_number}
                   </span>
@@ -304,7 +335,9 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
             {order.payment_method === "bank" && order.receipt_url ? (
               <div style={styles.receiptBox}>
-                <div style={styles.receiptHeader}>Customer Receipt Upload</div>
+                <div style={styles.receiptHeader}>
+                  {t("order_modal.receipt_upload", "Customer Receipt Upload")}
+                </div>
                 <a
                   href={order.receipt_url}
                   target="_blank"
@@ -318,11 +351,16 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                   />
                 </a>
                 <div style={styles.receiptHint}>
-                  Click image to view full size
+                  {t(
+                    "order_modal.click_to_view",
+                    "Click image to view full size",
+                  )}
                 </div>
               </div>
             ) : order.payment_method === "bank" ? (
-              <div style={styles.noReceiptBox}>No receipt uploaded.</div>
+              <div style={styles.noReceiptBox}>
+                {t("order_modal.no_receipt", "No receipt uploaded.")}
+              </div>
             ) : null}
 
             {/* --- ACTION BUTTONS --- */}
@@ -335,7 +373,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
               }}
             >
               <Button variant="secondary" onClick={onClose} style={{ flex: 1 }}>
-                Close
+                {t("order_modal.close", "Close")}
               </Button>
               <Button
                 onClick={handlePrint}
@@ -348,7 +386,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                 }}
               >
                 <FiPrinter size={18} />
-                Print Receipt
+                {t("order_modal.print", "Print Receipt")}
               </Button>
             </div>
           </div>

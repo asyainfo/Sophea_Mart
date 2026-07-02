@@ -16,6 +16,7 @@ import {
   FaEyeDropper,
   FaMortarPestle,
   FaCalendarCheck,
+  FaShoePrints,
 } from "react-icons/fa";
 import {
   BiSolidCoffeeBean,
@@ -27,38 +28,102 @@ import {
   BiSolidSpa,
   BiSolidMagicWand,
 } from "react-icons/bi";
+
 import { GiClothes, GiFlour } from "react-icons/gi";
+import { GiNoodles } from "react-icons/gi";
 import { PiCowFill } from "react-icons/pi";
 import { FaIceCream, FaKitchenSet } from "react-icons/fa6";
+import { useTranslation } from "react-i18next";
 
-// 1. Moved categories OUTSIDE the component so it doesn't re-render
-// every time the user types in the search bar (Performance boost!)
+// 🏆 UPGRADED: Added "dbValue" (for Supabase) and "key" (for Translations)
 const CATEGORIES = [
-  { name: "All", icon: <FiGrid size={16} /> },
-  { name: "ជម្រើសល្អៗបំផុត", icon: <BiHeart size={16} /> },
-  { name: "ភេសជ្ជៈ", icon: <FaGulp size={16} /> },
-  { name: "ការ៉េម", icon: <FaIceCream size={16} /> },
-  { name: "គ្រឿងផ្សំ", icon: <FaMortarPestle size={16} /> },
-  { name: "អាហារសម្រន់", icon: <BiSolidPizza size={16} /> },
-  { name: "សម្ភារៈទារក", icon: <FaBaby size={16} /> },
-  { name: "ឱសថស្ថាន", icon: <BiSolidFirstAid size={16} /> },
-  { name: "ការថែទាំខ្លួនប្រាណ", icon: <BiSolidSpa size={16} /> },
-  { name: "ថែរក្សាសម្រស់", icon: <BiSolidMagicWand size={16} /> },
-  { name: "សាប៊ូកក់សក់", icon: <FaShower size={16} /> },
-  { name: "គ្រឿងសម្អាង", icon: <FaAirFreshener size={16} /> },
-  { name: "ផលិតផលថែរក្សាស្បែក", icon: <FaEyeDropper size={16} /> },
-  { name: "គ្រឿងតុបតែងសក់", icon: <FiScissors size={16} /> },
-  { name: "អេឡិចត្រូនិក", icon: <BiSolidBolt size={16} /> },
-  { name: "គ្រឿងសំណង់", icon: <FaTools size={16} /> }, // Fixed 'ssize' typo here
-  { name: "ផលិតផលលក់ដុំ", icon: <FiLayers size={16} /> },
-  { name: "ម្សៅ", icon: <GiFlour size={16} /> },
-  { name: "បរិក្ខារផ្ទះបាយ", icon: <FaKitchenSet size={16} /> },
-  { name: "កាហ្វេ និងតែ", icon: <BiSolidCoffeeBean size={16} /> },
-  { name: "អាហារកំប៉ុង", icon: <BiSolidBowlHot size={16} /> },
-  { name: "ឧបករណ៍ចាំបាច់នានា", icon: <FaCalendarCheck size={16} /> },
-  { name: "សម្លៀកបំពាក់", icon: <GiClothes size={16} /> },
-  { name: "ទឹកដោះគោ", icon: <PiCowFill size={16} /> },
-  { name: "សម្ភារៈទូទៅ", icon: <FaDollyFlatbed size={16} /> },
+  { key: "all", dbValue: "All", icon: <FiGrid size={16} /> },
+  {
+    key: "best_picks",
+    dbValue: "ជម្រើសល្អៗបំផុត",
+    icon: <BiHeart size={16} />,
+  },
+  { key: "beverages", dbValue: "ភេសជ្ជៈ", icon: <FaGulp size={16} /> },
+  { key: "ice_cream", dbValue: "ការ៉េម", icon: <FaIceCream size={16} /> },
+  {
+    key: "ingredients",
+    dbValue: "គ្រឿងផ្សំ",
+    icon: <FaMortarPestle size={16} />,
+  },
+  { key: "snacks", dbValue: "អាហារសម្រន់", icon: <BiSolidPizza size={16} /> },
+  { key: "baby_needs", dbValue: "សម្ភារៈទារក", icon: <FaBaby size={16} /> },
+  { key: "pharmacy", dbValue: "ឱសថស្ថាន", icon: <BiSolidFirstAid size={16} /> },
+  {
+    key: "body_care",
+    dbValue: "ការថែទាំខ្លួនប្រាណ",
+    icon: <BiSolidSpa size={16} />,
+  },
+  {
+    key: "beauty_care",
+    dbValue: "ថែរក្សាសម្រស់",
+    icon: <BiSolidMagicWand size={16} />,
+  },
+  { key: "shampoo", dbValue: "សាប៊ូកក់សក់", icon: <FaShower size={16} /> },
+  {
+    key: "cosmetics",
+    dbValue: "គ្រឿងសម្អាង",
+    icon: <FaAirFreshener size={16} />,
+  },
+  {
+    key: "skincare",
+    dbValue: "ផលិតផលថែរក្សាស្បែក",
+    icon: <FaEyeDropper size={16} />,
+  },
+  {
+    key: "hair_accessories",
+    dbValue: "គ្រឿងតុបតែងសក់",
+    icon: <FiScissors size={16} />,
+  },
+  {
+    key: "electronics",
+    dbValue: "អេឡិចត្រូនិក",
+    icon: <BiSolidBolt size={16} />,
+  },
+  {
+    key: "shoes",
+    dbValue: "ស្បែកជើង",
+    icon: <FaShoePrints size={16} />,
+  },
+  { key: "construction", dbValue: "គ្រឿងសំណង់", icon: <FaTools size={16} /> },
+  { key: "wholesale", dbValue: "ផលិតផលលក់ដុំ", icon: <FiLayers size={16} /> },
+  { key: "flour", dbValue: "ម្សៅ", icon: <GiFlour size={16} /> },
+  {
+    key: "kitchenware",
+    dbValue: "បរិក្ខារផ្ទះបាយ",
+    icon: <FaKitchenSet size={16} />,
+  },
+  {
+    key: "coffee_tea",
+    dbValue: "កាហ្វេ និងតែ",
+    icon: <BiSolidCoffeeBean size={16} />,
+  },
+  {
+    key: "nodble",
+    dbValue: "មី​ និង​ គុយទាវ",
+    icon: <GiNoodles size={16} />,
+  },
+  {
+    key: "canned_food",
+    dbValue: "អាហារកំប៉ុង",
+    icon: <BiSolidBowlHot size={16} />,
+  },
+  {
+    key: "essentials",
+    dbValue: "ឧបករណ៍ចាំបាច់នានា",
+    icon: <FaCalendarCheck size={16} />,
+  },
+  { key: "clothing", dbValue: "សម្លៀកបំពាក់", icon: <GiClothes size={16} /> },
+  { key: "milk", dbValue: "ទឹកដោះគោ", icon: <PiCowFill size={16} /> },
+  {
+    key: "general_items",
+    dbValue: "សម្ភារៈទូទៅ",
+    icon: <FaDollyFlatbed size={16} />,
+  },
 ];
 
 export default function Hero({
@@ -68,10 +133,10 @@ export default function Hero({
   setCategory,
 }) {
   const [focused, setFocused] = useState(false);
+  const { t } = useTranslation(); // 🏆 IMPORT TRANSLATION
 
   return (
     <div style={styles.heroWrapper}>
-      {/* CSS injection to hide the scrollbar specifically for the category list */}
       <style>
         {`
           .hide-scroll::-webkit-scrollbar {
@@ -84,20 +149,21 @@ export default function Hero({
         {/* Badge */}
         <div style={styles.badge}>
           <FiPackage size={12} />
-          <span>FRESH DAILY</span>
+          <span>{t("hero.badge", "FRESH DAILY")}</span>
         </div>
 
         {/* Heading */}
         <h1 style={styles.heading}>
-          សូមស្វាគមន៍មកកាន់{" "}
+          {t("hero.welcome", "Welcome to")}{" "}
           <span style={{ color: "#2563EB" }}>SOPHEA MART</span>
         </h1>
 
         {/* Description */}
         <p style={styles.description}>
-          ផ្សារម៉ាតជិតផ្ទះរបស់អ្នក មានលក់ភេសជ្ជៈត្រជាក់ៗ គ្រឿងទេសប្រចាំថ្ងៃ
-          អាហារសម្រន់ឆ្ងាញ់ៗ និងសម្ភារៈចាំបាច់សម្រាប់ទារក
-          ដើម្បីបំពេញរាល់តម្រូវការប្រចាំថ្ងៃរបស់អ្នក។
+          {t(
+            "hero.description",
+            "Your local mart with cold drinks, daily groceries, delicious snacks, and baby essentials to fulfill your everyday needs.",
+          )}
         </p>
 
         {/* Search Input */}
@@ -108,7 +174,10 @@ export default function Hero({
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="Search for drinks, snacks, baby needs..."
+            placeholder={t(
+              "hero.search_placeholder",
+              "Search for drinks, snacks, baby needs...",
+            )}
             style={{
               ...styles.searchInput,
               border: focused ? "1px solid #2563EB" : "1px solid #E5E7EB",
@@ -122,12 +191,13 @@ export default function Hero({
         {/* Categories Slider */}
         <div className="hide-scroll" style={styles.categoriesSlider}>
           {CATEGORIES.map((cat) => {
-            const active = activeCategory === cat.name;
+            // 🏆 Check against dbValue instead of name
+            const active = activeCategory === cat.dbValue;
 
             return (
               <button
-                key={cat.name}
-                onClick={() => setCategory(active ? "All" : cat.name)}
+                key={cat.key}
+                onClick={() => setCategory(active ? "All" : cat.dbValue)} // Send dbValue to Supabase Filter
                 style={{
                   ...styles.categoryBtn,
                   background: active ? "#2563EB" : "#FFFFFF",
@@ -139,7 +209,8 @@ export default function Hero({
                 }}
               >
                 {cat.icon}
-                <span>{cat.name}</span>
+                {/* 🏆 Ask translation file for the proper display name */}
+                <span>{t(`categories.${cat.key}`)}</span>
               </button>
             );
           })}

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next"; // Added i18n hook
 import {
   FiCheckCircle,
   FiCreditCard,
@@ -23,6 +24,7 @@ export default function CheckoutModal({
   toast,
   appliedVoucher,
 }) {
+  const { t } = useTranslation(); // Initialize translation function
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
 
@@ -70,18 +72,18 @@ export default function CheckoutModal({
     document.body.appendChild(downloadLink);
     downloadLink.click();
     document.body.removeChild(downloadLink);
-    toast("QR Code downloaded! Please scan it in your app.", "success");
+    toast(t("checkout.toasts.qr_downloaded"), "success");
   };
 
   const sendVerificationSms = async () => {
     if (phoneNumber.trim().length < 8)
-      return toast("Please enter a valid phone number.", "error");
+      return toast(t("checkout.toasts.invalid_phone"), "error");
     setIsVerifyingLoading(true);
     try {
       setVerificationStatus("entering_otp");
-      toast("Verification code sent successfully!", "success");
+      toast(t("checkout.toasts.code_sent"), "success");
     } catch (err) {
-      toast(err.message || "Failed to send SMS.", "error");
+      toast(err.message || t("checkout.toasts.sms_failed"), "error");
     } finally {
       setIsVerifyingLoading(false);
     }
@@ -89,13 +91,13 @@ export default function CheckoutModal({
 
   const verifyOtpCode = async () => {
     if (otpCode.join("").length < 4)
-      return toast("Please enter all 4 digits.", "error");
+      return toast(t("checkout.toasts.enter_all_digits"), "error");
     setIsVerifyingLoading(true);
     try {
       setVerificationStatus("verified");
-      toast("Phone verified successfully!", "success");
+      toast(t("checkout.toasts.phone_verified"), "success");
     } catch (err) {
-      toast(err.message || "Invalid verification code.", "error");
+      toast(err.message || t("checkout.toasts.invalid_code"), "error");
     } finally {
       setIsVerifyingLoading(false);
     }
@@ -105,11 +107,11 @@ export default function CheckoutModal({
   // HANDLERS: CHECKOUT & DATABASE
   // ==========================================
   const confirm = async () => {
-    if (!user) return toast("Please sign in to complete purchase.", "error");
+    if (!user) return toast(t("checkout.toasts.sign_in_required"), "error");
     if (paymentMethod === "bank" && !receiptFile)
-      return toast("Please upload your payment receipt.", "error");
+      return toast(t("checkout.toasts.upload_receipt"), "error");
     if (paymentMethod === "cash" && verificationStatus !== "verified")
-      return toast("Please verify your phone number first.", "error");
+      return toast(t("checkout.toasts.verify_phone_first"), "error");
 
     setIsProcessing(true);
 
@@ -222,9 +224,8 @@ export default function CheckoutModal({
           console.error("Failed to mark voucher as used:", voucherError);
       }
 
-      // 🏆 7. TELEGRAM BOT NOTIFICATION (Clean & Structured)
+      // 🏆 7. TELEGRAM BOT NOTIFICATION
       try {
-        // NOTE: Make sure these are set in your .env file!
         const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
         const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
 
@@ -246,8 +247,6 @@ export default function CheckoutModal({
               parse_mode: "Markdown",
             }),
           });
-        } else {
-          console.warn("Telegram tokens missing in .env file.");
         }
       } catch (tgError) {
         console.error(
@@ -259,7 +258,7 @@ export default function CheckoutModal({
       setConfirmed(true);
     } catch (error) {
       console.error("Error during checkout:", error.message);
-      toast("Checkout failed. Please try again.", "error");
+      toast(t("checkout.toasts.checkout_failed"), "error");
     } finally {
       setIsProcessing(false);
     }
@@ -284,7 +283,7 @@ export default function CheckoutModal({
     <Modal
       open={open}
       onClose={close}
-      title={confirmed ? "Order Received" : "Checkout"}
+      title={confirmed ? t("checkout.title_success") : t("checkout.title")}
       wide
     >
       {confirmed ? (
@@ -292,13 +291,10 @@ export default function CheckoutModal({
           <div style={styles.successIconBox}>
             <FiCheckCircle size={48} color="#0066FF" />
           </div>
-          <h2 style={styles.successTitle}>ការបញ្ជាទិញបានជោគជ័យ</h2>
-          <p style={styles.successDesc}>
-            ការបញ្ជាទិញរបស់អ្នកត្រូវបានដាក់រួចរាល់ហើយ។ ឥឡូវនេះ
-            អ្នកអាចមកទទួលទំនិញរបស់អ្នកនៅ Sophea Mart បាន។
-          </p>
+          <h2 style={styles.successTitle}>{t("checkout.success_heading")}</h2>
+          <p style={styles.successDesc}>{t("checkout.success_desc")}</p>
           <Button onClick={close} full>
-            បន្តទិញទំនិញ
+            {t("checkout.continue_shopping")}
           </Button>
         </div>
       ) : (
@@ -309,13 +305,12 @@ export default function CheckoutModal({
                 onClick={() => setVerificationStatus("unverified")}
                 style={styles.backButton}
               >
-                <FiArrowLeft size={16} /> Back to Checkout
+                <FiArrowLeft size={16} /> {t("checkout.back_to_checkout")}
               </button>
-              <h2 style={styles.verifyTitle}>Verify Phone Number</h2>
-              <p style={styles.verifyDesc}>
-                Enter your phone number to receive a secure 4-digit verification
-                code via SMS.
-              </p>
+              <h2 style={styles.verifyTitle}>
+                {t("checkout.verify_phone_title")}
+              </h2>
+              <p style={styles.verifyDesc}>{t("checkout.verify_phone_desc")}</p>
               <div style={styles.phoneInputWrapper}>
                 <div style={styles.phonePrefix}>🇰🇭 +855</div>
                 <input
@@ -332,7 +327,9 @@ export default function CheckoutModal({
                 full
                 disabled={isVerifyingLoading}
               >
-                {isVerifyingLoading ? "Sending Code..." : "Continue"}
+                {isVerifyingLoading
+                  ? t("checkout.sending_code")
+                  : t("checkout.continue")}
               </Button>
             </div>
           )}
@@ -343,11 +340,13 @@ export default function CheckoutModal({
                 onClick={() => setVerificationStatus("entering_phone")}
                 style={styles.backButton}
               >
-                <FiArrowLeft size={16} /> Change Phone Number
+                <FiArrowLeft size={16} /> {t("checkout.change_phone")}
               </button>
-              <h2 style={styles.verifyTitle}>Verification Code</h2>
+              <h2 style={styles.verifyTitle}>
+                {t("checkout.verification_code")}
+              </h2>
               <p style={styles.verifyDesc}>
-                We sent a 4-digit verification code to{" "}
+                {t("checkout.code_sent_to")}{" "}
                 <strong style={{ color: "#111827" }}>+855 {phoneNumber}</strong>
               </p>
               <div style={styles.otpWrapper}>
@@ -369,7 +368,9 @@ export default function CheckoutModal({
                 full
                 disabled={isVerifyingLoading}
               >
-                {isVerifyingLoading ? "Verifying..." : "Verify & Connect"}
+                {isVerifyingLoading
+                  ? t("checkout.verifying")
+                  : t("checkout.verify_connect")}
               </Button>
             </div>
           )}
@@ -380,7 +381,9 @@ export default function CheckoutModal({
               <div>
                 <div style={styles.sectionHeader}>
                   <FiCreditCard size={18} color="#0066FF" />
-                  <h3 style={styles.sectionTitle}>Payment Method</h3>
+                  <h3 style={styles.sectionTitle}>
+                    {t("checkout.payment_method")}
+                  </h3>
                 </div>
 
                 <div style={styles.methodSelector}>
@@ -406,9 +409,11 @@ export default function CheckoutModal({
                         />
                       </div>
                       <div>
-                        <div style={styles.methodTitle}>Bank Transfer</div>
+                        <div style={styles.methodTitle}>
+                          {t("checkout.bank_transfer")}
+                        </div>
                         <div style={styles.methodSubtitle}>
-                          ទូទាត់លុយតាមរយៈធនាគារ
+                          {t("checkout.bank_transfer_desc")}
                         </div>
                       </div>
                     </div>
@@ -430,9 +435,11 @@ export default function CheckoutModal({
                       />
                       <div style={styles.cashLogoWrapper}>៛</div>
                       <div>
-                        <div style={styles.methodTitle}>Cash on Take-Away</div>
+                        <div style={styles.methodTitle}>
+                          {t("checkout.cash_takeaway")}
+                        </div>
                         <div style={styles.methodSubtitle}>
-                          បង់លុយពេលមកទទួលយកទំនិញ
+                          {t("checkout.cash_takeaway_desc")}
                         </div>
                       </div>
                     </div>
@@ -452,7 +459,7 @@ export default function CheckoutModal({
 
                     <div style={styles.qrAmountBanner}>
                       <div style={styles.qrAmountSub}>
-                        សូមស្កេន QR និងបញ្ចូលចំនួនទឹកប្រាក់ឱ្យបានត្រឹមត្រូវ
+                        {t("checkout.scan_qr_prompt")}
                       </div>
                       <div style={styles.qrAmountMain}>
                         {fmt(finalTotalUsd)}{" "}
@@ -473,7 +480,7 @@ export default function CheckoutModal({
                       onClick={handleDownloadQR}
                       style={styles.downloadBtn}
                     >
-                      <FiDownload size={18} /> Download QR Code
+                      <FiDownload size={18} /> {t("checkout.download_qr")}
                     </button>
 
                     <label
@@ -500,7 +507,7 @@ export default function CheckoutModal({
                             {receiptFile.name}
                           </span>
                           <span style={styles.uploadSubTextActive}>
-                            Click to change
+                            {t("checkout.click_to_change")}
                           </span>
                         </>
                       ) : (
@@ -511,10 +518,10 @@ export default function CheckoutModal({
                             style={{ marginBottom: 4 }}
                           />
                           <span style={styles.uploadTextInactive}>
-                            Upload Screenshot
+                            {t("checkout.upload_screenshot")}
                           </span>
                           <span style={styles.uploadSubTextInactive}>
-                            JPEG, PNG accepted
+                            {t("checkout.accepted_formats")}
                           </span>
                         </>
                       )}
@@ -530,11 +537,10 @@ export default function CheckoutModal({
                           <FiLock size={20} color="#6B7280" />
                         </div>
                         <h4 style={styles.statusTitleDark}>
-                          តម្រូវឱ្យផ្ទៀងផ្ទាត់លេខទូរស័ព្ទ
+                          {t("checkout.phone_req_title")}
                         </h4>
                         <p style={styles.statusDescGray}>
-                          សូមផ្ទៀងផ្ទាត់លេខទូរស័ព្ទរបស់អ្នក
-                          មុនពេលបញ្ជាក់ការបញ្ជាទិញ។
+                          {t("checkout.phone_req_desc")}
                         </p>
                         <Button
                           type="button"
@@ -543,7 +549,7 @@ export default function CheckoutModal({
                           }
                           style={{ width: "100%" }}
                         >
-                          Verify Phone Number
+                          {t("checkout.verify_phone_title")}
                         </Button>
                       </div>
                     ) : (
@@ -552,11 +558,12 @@ export default function CheckoutModal({
                           <FiCheckCircle size={22} color="#10B981" />
                         </div>
                         <h4 style={styles.statusTitleGreen}>
-                          Verification Successful!
+                          {t("checkout.verify_success_title")}
                         </h4>
                         <p style={styles.statusDescGreen}>
-                          Your phone is verified (+855 {phoneNumber}). Enjoy
-                          your shopping!
+                          {t("checkout.verify_success_desc", {
+                            phone: `+855 ${phoneNumber}`,
+                          })}
                         </p>
                       </div>
                     )}
@@ -567,7 +574,9 @@ export default function CheckoutModal({
               <div>
                 <div style={styles.sectionHeader}>
                   <FiShoppingBag size={18} color="#0066FF" />
-                  <h3 style={styles.sectionTitle}>Order Summary</h3>
+                  <h3 style={styles.sectionTitle}>
+                    {t("checkout.order_summary")}
+                  </h3>
                 </div>
 
                 <div style={styles.summaryListContainer}>
@@ -595,7 +604,9 @@ export default function CheckoutModal({
 
                 <div style={styles.totalsBox}>
                   <div style={styles.totalsRow}>
-                    <span style={styles.totalsRowLabel}>Subtotal</span>
+                    <span style={styles.totalsRowLabel}>
+                      {t("checkout.subtotal")}
+                    </span>
                     <span style={styles.totalsRowValue}>{fmt(total)}</span>
                   </div>
 
@@ -608,7 +619,7 @@ export default function CheckoutModal({
                           fontWeight: 600,
                         }}
                       >
-                        Voucher
+                        {t("checkout.voucher")}
                       </span>
                       <span
                         style={{ ...styles.totalsRowValue, color: "#D91236" }}
@@ -636,10 +647,12 @@ export default function CheckoutModal({
                   }
                 >
                   {isProcessing
-                    ? "Processing..."
+                    ? t("checkout.processing")
                     : paymentMethod === "bank"
-                      ? `បញ្ជាទិញ ${fmt(finalTotalUsd)}`
-                      : "បញ្ជាក់ការបញ្ជាទិញ"}
+                      ? t("checkout.order_amount", {
+                          amount: fmt(finalTotalUsd),
+                        })
+                      : t("checkout.confirm_order")}
                 </Button>
               </div>
             </div>

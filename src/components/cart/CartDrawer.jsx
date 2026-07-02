@@ -12,66 +12,32 @@ import { useAuth } from "../../hooks/useAuth";
 import { supabase } from "../../services/supabase";
 import { fmt, fmtKHR } from "../../utils/currency";
 import CartItem from "./CartItem";
+import { useTranslation } from "react-i18next";
 
 // --- CONFIGURATION ---
 const FREE_GIFT_THRESHOLD = 15;
 const BRAND_BLUE = "#2563EB";
 const BRAND_GREEN = "#10B981";
 
-// 🏆 FIX 1: Using local image paths!
-// Just drop your images into your "public/images" folder.
-const AVAILABLE_GIFTS = [
-  {
-    id: "gift-1",
-    name: "Toys",
-    price: 0,
-    isGift: true,
-    image: "./babys/B008.jpg",
-  },
-  {
-    id: "gift-2",
-    name: "នំដំឡូង សារាយ",
-    price: 0,
-    isGift: true,
-    image: "./snacks/S008.jpeg",
-  },
-  {
-    id: "gift-3",
-    name: "គ្រាប់ចន្ទី",
-    price: 0,
-    isGift: true,
-    image: "./snacks/S009.webp",
-  },
-  {
-    id: "gift-4",
-    name: "នំថងមួង",
-    price: 0,
-    isGift: true,
-    image: "./images/T003.jpg",
-  },
-  {
-    id: "gift-5",
-    name: "ដំណាប់ស្វាយ",
-    price: 0,
-    isGift: true,
-    image: "./images/T001.png",
-  },
-];
-
 export default function CartDrawer({ isOpen, onClose, onCheckout }) {
+  const { t } = useTranslation();
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
 
   const [vouchers, setVouchers] = useState([]);
   const [appliedVoucher, setAppliedVoucher] = useState(null);
 
+  // Settings & DB Gifts State
+  const [promotionsEnabled, setPromotionsEnabled] = useState(false);
+  const [availableGifts, setAvailableGifts] = useState([]);
+
   // --- DERIVED STATE ---
   const progressPercentage = Math.min((total / FREE_GIFT_THRESHOLD) * 100, 100);
   const amountRemaining = Math.max(FREE_GIFT_THRESHOLD - total, 0);
   const isFreeGiftUnlocked = total >= FREE_GIFT_THRESHOLD;
+
   const claimedGiftId = items.find((item) => item.isGift)?.id;
 
-  // 🏆 FIX 2: Correctly counts TOTAL quantity of items, not just the rows!
   const paidItemsCount = items
     .filter((item) => !item.isGift)
     .reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -80,6 +46,44 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
   const finalTotalUsd = Math.max(total - discountUsd, 0);
 
   // --- EFFECTS ---
+  useEffect(() => {
+    async function fetchPromotionsData() {
+      if (!isOpen) return;
+      try {
+        const { data: settingsData, error: settingsError } = await supabase
+          .from("store_settings")
+          .select("setting_value")
+          .eq("setting_key", "enable_promotions")
+          .single();
+
+        if (!settingsError && settingsData) {
+          setPromotionsEnabled(settingsData.setting_value);
+
+          if (settingsData.setting_value) {
+            const { data: giftsData, error: giftsError } = await supabase
+              .from("free_gifts")
+              .select("*")
+              .order("created_at", { ascending: true });
+
+            if (!giftsError && giftsData) {
+              const formattedGifts = giftsData.map((gift) => ({
+                id: gift.id,
+                name: gift.name,
+                price: 0,
+                isGift: true,
+                image: gift.image_url,
+              }));
+              setAvailableGifts(formattedGifts);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching promotions data:", err);
+      }
+    }
+    fetchPromotionsData();
+  }, [isOpen]);
+
   useEffect(() => {
     async function fetchVouchers() {
       if (!user || !isOpen) return;
@@ -99,24 +103,30 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
     fetchVouchers();
   }, [user, isOpen]);
 
-  // Auto-remove gift if total drops below threshold
   useEffect(() => {
-    if (total < FREE_GIFT_THRESHOLD && claimedGiftId) {
+    if ((total < FREE_GIFT_THRESHOLD || !promotionsEnabled) && claimedGiftId) {
       const claimedGift = items.find((item) => item.id === claimedGiftId);
       if (claimedGift) {
         dispatch({ type: "REMOVE", product: claimedGift });
       }
     }
-  }, [total, items, dispatch, claimedGiftId]);
+  }, [total, items, dispatch, claimedGiftId, promotionsEnabled]);
 
   // --- HANDLERS ---
   const handleClaimGift = (gift) => {
-    // Remove old gift first (so they can't spam multi-gifts)
-    if (claimedGiftId) {
-      const oldGift = items.find((item) => item.id === claimedGiftId);
-      dispatch({ type: "REMOVE", product: oldGift });
+    const isCurrentlySelected = claimedGiftId === gift.id;
+
+    if (isCurrentlySelected) {
+      const giftToRemove = items.find((item) => item.id === gift.id);
+      if (giftToRemove) {
+        dispatch({ type: "REMOVE", product: giftToRemove });
+      }
+    } else if (!claimedGiftId) {
+      dispatch({
+        type: "ADD",
+        product: { ...gift, quantity: 1, isGift: true },
+      });
     }
-    dispatch({ type: "ADD", product: { ...gift, quantity: 1 } });
   };
 
   const toggleVoucher = (v) => {
@@ -140,7 +150,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
           <div style={styles.headerTitleGroup}>
             <FiShoppingBag size={22} color={BRAND_BLUE} />
             <h2 style={styles.headerTitle}>
-              ទំនិញរបស់អ្នក{" "}
+              {/* 🏆 Translated Text */}
+              {t("cart.your_cart", "Your Cart")}{" "}
               <span style={styles.headerCount}>({paidItemsCount})</span>
             </h2>
           </div>
@@ -150,7 +161,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
         </div>
 
         {/* FREE GIFT CAROUSEL */}
-        {items.length > 0 && (
+        {promotionsEnabled && items.length > 0 && availableGifts.length > 0 && (
           <div style={styles.giftSection}>
             <div style={styles.progressTextGroup}>
               <FiGift
@@ -158,16 +169,23 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                 color={isFreeGiftUnlocked ? BRAND_GREEN : BRAND_BLUE}
               />
               {isFreeGiftUnlocked ? (
-                <span style={{ color: BRAND_GREEN, fontWeight: 700 }}>
-                  អ្នកទទួលបានកាដូឥតគិតថ្លៃហើយ! 🎉
+                <span
+                  style={{ color: BRAND_GREEN, fontWeight: 700, fontSize: 13 }}
+                >
+                  {/* 🏆 Translated Text */}
+                  {t(
+                    "cart.free_gift_unlocked",
+                    "You've unlocked a free gift! 🎉",
+                  )}
                 </span>
               ) : (
-                <span style={{ color: "#4B5563" }}>
-                  ទិញថែម{" "}
-                  <span style={{ color: BRAND_BLUE }}>
+                <span style={{ color: "#4B5563", fontSize: 13 }}>
+                  {/* 🏆 Translated Text */}
+                  {t("cart.add_more", "Add")}{" "}
+                  <span style={{ color: BRAND_BLUE, fontWeight: 700 }}>
                     {fmt(amountRemaining)}
                   </span>{" "}
-                  ទៀតដើម្បីទទួលបានកាដូ!
+                  {t("cart.to_get_gift", "more to get a free gift!")}
                 </span>
               )}
             </div>
@@ -185,90 +203,70 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
             </div>
 
             <div style={styles.carouselContainer}>
-              {/* 🏆 FIX 3: Force hiding the scrollbar */}
               <style>{`
                 .hide-scroll::-webkit-scrollbar { display: none !important; }
               `}</style>
 
               <div className="hide-scroll" style={styles.carouselTrack}>
-                {AVAILABLE_GIFTS.map((gift) => {
+                {availableGifts.map((gift) => {
                   const isSelected = claimedGiftId === gift.id;
+                  const isLockedOut = claimedGiftId && !isSelected;
+                  const isDisabled = !isFreeGiftUnlocked || isLockedOut;
 
                   return (
-                    <div
+                    <button
                       key={gift.id}
-                      onClick={() =>
-                        isFreeGiftUnlocked && handleClaimGift(gift)
-                      }
+                      onClick={() => !isDisabled && handleClaimGift(gift)}
+                      disabled={isDisabled}
                       style={{
-                        ...styles.giftCard,
+                        ...styles.compactGiftCard,
                         borderColor: isSelected
                           ? BRAND_BLUE
-                          : isFreeGiftUnlocked
+                          : !isDisabled
                             ? "#E5E7EB"
                             : "#F3F4F6",
                         backgroundColor: isSelected ? "#EFF6FF" : "#FFF",
-                        opacity: isFreeGiftUnlocked ? 1 : 0.6,
-                        filter: isFreeGiftUnlocked ? "none" : "grayscale(100%)",
-                        cursor: isFreeGiftUnlocked ? "pointer" : "not-allowed",
+                        opacity: !isDisabled || isSelected ? 1 : 0.4,
+                        cursor: isDisabled ? "not-allowed" : "pointer",
                       }}
                     >
-                      {/* Locked Overlay */}
                       {!isFreeGiftUnlocked && (
-                        <div style={styles.lockIcon}>
-                          <FiLock size={12} color="#FFF" />
+                        <div style={styles.compactLockIcon}>
+                          <FiLock size={10} color="#FFF" />
                         </div>
                       )}
 
-                      {/* Selected Overlay */}
                       {isSelected && (
-                        <div style={styles.selectedIcon}>
-                          <FiCheckCircle size={14} color="#FFF" />
+                        <div style={styles.compactSelectedIcon}>
+                          <FiCheckCircle size={12} color="#FFF" />
                         </div>
                       )}
 
-                      {/* We added a fallback icon in case your local images aren't added yet */}
                       {gift.image ? (
                         <img
                           src={gift.image}
                           alt={gift.name}
-                          style={styles.giftImage}
+                          style={styles.compactGiftImage}
                           onError={(e) => {
                             e.target.onerror = null;
-                            e.target.src =
-                              "/Users/macbookpro/Desktop/mart-web/public"; // fallback
+                            e.target.src = "/Sophea Mart no1.png";
                           }}
                         />
-                      ) : null}
+                      ) : (
+                        <div style={styles.compactPlaceholder}>
+                          <FiGift color="#9CA3AF" size={16} />
+                        </div>
+                      )}
 
                       <div
                         style={{
-                          ...styles.giftName,
+                          ...styles.compactGiftName,
                           color: isSelected ? BRAND_BLUE : "#111827",
                         }}
                       >
                         {gift.name}
                       </div>
-
-                      <button
-                        disabled={!isFreeGiftUnlocked}
-                        style={{
-                          ...styles.claimButton,
-                          backgroundColor: isSelected
-                            ? BRAND_BLUE
-                            : isFreeGiftUnlocked
-                              ? BRAND_GREEN
-                              : "#E5E7EB",
-                          color: isFreeGiftUnlocked ? "#FFF" : "#9CA3AF",
-                        }}
-                      >
-                        {isSelected
-                          ? "Selected"
-                          : isFreeGiftUnlocked
-                            ? "ជ្រើសរើសកាដូ"
-                            : "Locked"}
-                      </button>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -285,7 +283,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                 style={{ marginBottom: 16, opacity: 0.5 }}
               />
               <p style={{ fontSize: 16, fontWeight: 500 }}>
-                Your cart is empty.
+                {/* 🏆 Translated Text */}
+                {t("cart.empty_cart", "Your cart is empty.")}
               </p>
             </div>
           ) : (
@@ -301,7 +300,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
             <div style={styles.vouchersContainer}>
               <div style={styles.vouchersHeader}>
                 <FiTag size={16} color="#D91236" />
-                <span>Your Rewards</span>
+                {/* 🏆 Translated Text */}
+                <span>{t("cart.your_rewards", "Your Rewards")}</span>
               </div>
               <div style={styles.vouchersList}>
                 {vouchers.map((v) => {
@@ -319,10 +319,11 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
                     >
                       <div style={styles.voucherInfo}>
                         <div style={styles.voucherValue}>
-                          {v.discount_khr.toLocaleString()}៛ Discount
+                          {v.discount_khr.toLocaleString()}៛{" "}
+                          {t("cart.discount", "Discount")}
                         </div>
                         <div style={styles.voucherUsd}>
-                          Save {fmt(usdValue)}
+                          {t("cart.save", "Save")} {fmt(usdValue)}
                         </div>
                       </div>
                       <div
@@ -347,13 +348,17 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
           <div style={styles.footer}>
             <div style={styles.summaryBox}>
               <div style={styles.summaryRow}>
-                <span style={styles.summaryLabel}>Subtotal</span>
+                {/* 🏆 Translated Text */}
+                <span style={styles.summaryLabel}>
+                  {t("cart.subtotal", "Subtotal")}
+                </span>
                 <span style={styles.summaryValue}>{fmt(total)}</span>
               </div>
               {appliedVoucher && (
                 <div style={styles.summaryRowDiscount}>
+                  {/* 🏆 Translated Text */}
                   <span style={styles.summaryLabelDiscount}>
-                    Voucher Discount
+                    {t("cart.voucher_discount", "Voucher Discount")}
                   </span>
                   <span style={styles.summaryValueDiscount}>
                     -{fmt(discountUsd)}
@@ -362,13 +367,19 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
               )}
               <div style={styles.summaryDivider} />
               <div style={{ ...styles.summaryRow, marginBottom: 4 }}>
-                <span style={styles.summaryLabelTotal}>សរុបទំនិញ (USD)</span>
+                {/* 🏆 Translated Text */}
+                <span style={styles.summaryLabelTotal}>
+                  {t("cart.total_usd", "Total (USD)")}
+                </span>
                 <span style={styles.summaryValueTotal}>
                   {fmt(finalTotalUsd)}
                 </span>
               </div>
               <div style={styles.summaryRow}>
-                <span style={styles.summaryLabelKhr}>សរុបទំនិញ (KHR)</span>
+                {/* 🏆 Translated Text */}
+                <span style={styles.summaryLabelKhr}>
+                  {t("cart.total_khr", "Total (KHR)")}
+                </span>
                 <span style={styles.summaryValueKhr}>
                   {fmtKHR(finalTotalUsd)}
                 </span>
@@ -379,7 +390,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }) {
               onClick={() => onCheckout(appliedVoucher)}
               style={styles.checkoutBtn}
             >
-              បន្តទៅបញ្ចប់ការបញ្ជាទិញ
+              {/* 🏆 Translated Text */}
+              {t("cart.checkout", "Proceed to Checkout")}
             </button>
           </div>
         )}
@@ -416,17 +428,17 @@ const styles = {
     zIndex: 2147483647,
   },
   header: {
-    padding: "24px 24px 20px",
+    padding: "20px 24px 16px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
   },
   headerTitleGroup: { display: "flex", alignItems: "center", gap: 10 },
-  headerTitle: { margin: 0, fontSize: 20, fontWeight: 700, color: "#111827" },
-  headerCount: { color: "#6B7280", fontSize: 16, fontWeight: 500 },
+  headerTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: "#111827" },
+  headerCount: { color: "#6B7280", fontSize: 15, fontWeight: 500 },
   closeButton: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -438,7 +450,7 @@ const styles = {
   },
 
   giftSection: {
-    padding: "0 24px 20px",
+    padding: "0 24px 16px",
     borderBottom: "1px solid #E5E7EB",
     backgroundColor: "#fff",
   },
@@ -447,15 +459,14 @@ const styles = {
     alignItems: "center",
     gap: 8,
     marginBottom: 12,
-    fontSize: 14,
     fontWeight: 600,
   },
   progressTrack: {
-    height: 8,
+    height: 6,
     backgroundColor: "#F3F4F6",
     borderRadius: 10,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   progressFill: {
     height: "100%",
@@ -466,75 +477,78 @@ const styles = {
   carouselContainer: { position: "relative", width: "100%" },
   carouselTrack: {
     display: "flex",
-    gap: 12,
+    gap: 10,
     overflowX: "auto",
-    scrollSnapType: "x mandatory",
-    paddingBottom: 16,
-    paddingTop: 4, // 🏆 Fix for cut-off icons
-    scrollbarWidth: "none", // Firefox hide scrollbar
-    msOverflowStyle: "none", // IE hide scrollbar
+    paddingBottom: 6,
+    paddingTop: 4,
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
   },
-  giftCard: {
-    minWidth: 130,
+
+  compactGiftCard: {
+    minWidth: 84,
+    maxWidth: 100,
     flex: "0 0 auto",
-    scrollSnapAlign: "start",
     border: "2px solid",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: "8px 6px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    textAlign: "center",
     position: "relative",
-    transition: "all 0.3s ease",
+    transition: "all 0.2s ease",
   },
-
-  // 🏆 FIX 4: Moved the icons inside the borders so they never get chopped off!
-  lockIcon: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    backgroundColor: "#9CA3AF",
-    borderRadius: "50%",
-    width: 22,
-    height: 22,
+  compactGiftImage: {
+    width: 36,
+    height: 36,
+    objectFit: "contain",
+    marginBottom: 6,
+  },
+  compactPlaceholder: {
+    width: 36,
+    height: 36,
+    marginBottom: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 6,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
   },
-  selectedIcon: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    backgroundColor: BRAND_BLUE,
-    borderRadius: "50%",
-    width: 22,
-    height: 22,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2,
-  },
-
-  giftImage: { width: 48, height: 48, objectFit: "contain", marginBottom: 10 },
-  giftName: {
-    fontSize: 12,
+  compactGiftName: {
+    fontSize: 11,
     fontWeight: 700,
     lineHeight: 1.2,
-    marginBottom: 12,
-    flex: 1,
+    width: "100%",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  compactLockIcon: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#9CA3AF",
+    borderRadius: "50%",
+    width: 18,
+    height: 18,
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
   },
-  claimButton: {
-    width: "100%",
-    padding: "6px 0",
-    borderRadius: 6,
-    fontSize: 12,
-    fontWeight: 700,
-    border: "none",
-    transition: "all 0.2s ease",
+  compactSelectedIcon: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: BRAND_BLUE,
+    borderRadius: "50%",
+    width: 18,
+    height: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
   },
 
   itemsScrollArea: { flex: 1, overflowY: "auto", padding: "0 24px" },

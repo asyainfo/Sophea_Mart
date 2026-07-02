@@ -4,8 +4,8 @@ import Modal from "../ui/Modal";
 import Field from "../ui/Field";
 import Button from "../ui/Button";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { useTranslation } from "react-i18next"; // 🏆 1. Imported
 
-// Added onSwitchForgot to the modal's props
 export default function LoginModal({
   open,
   onClose,
@@ -13,26 +13,46 @@ export default function LoginModal({
   onSwitchForgot,
   toast,
 }) {
-  const { login } = useAuth(); // Cleaned up unused sendPasswordReset
+  const { t } = useTranslation(); // 🏆 2. Initialized
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const submit = async () => {
+    // 🏆 NEW: Strict validation check
+    // If email or password is blank (or just spaces), stop and show an error
+    if (!email.trim() || !pw.trim()) {
+      toast(t("login.fill_fields", "Please fill in all fields."), "error");
+      return; // This strictly stops the login process right here
+    }
+
     const success = await login(email, pw);
 
     if (success) {
-      toast("Welcome back!");
+      toast(t("login.welcome_back", "Welcome back!"), "success");
       onClose();
     } else {
-      toast("Invalid email or password.", "error");
+      toast(
+        t("login.invalid_credentials", "Invalid email or password."),
+        "error",
+      );
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Sign in to Small Mart">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("login.title", "Sign in to Sophea Mart")}
+    >
       <div style={{ marginBottom: "16px" }}>
-        <Field label="Email" value={email} onChange={setEmail} type="email" />
+        <Field
+          label={t("login.email_label", "Email")}
+          value={email}
+          onChange={setEmail}
+          type="email"
+        />
       </div>
 
       {/* Password Field */}
@@ -46,13 +66,13 @@ export default function LoginModal({
             color: "#374151",
           }}
         >
-          Password
+          {t("login.password_label", "Password")}
         </label>
 
         <div style={{ position: "relative" }}>
           <input
             type={showPassword ? "text" : "password"}
-            placeholder="Password"
+            placeholder={t("login.password_placeholder", "Password")}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             style={{
@@ -100,7 +120,7 @@ export default function LoginModal({
         }}
       >
         <span
-          onClick={onSwitchForgot} // Updated to switch to the Forgot Password Modal
+          onClick={onSwitchForgot}
           style={{
             fontSize: "13px",
             color: "#0066FF",
@@ -108,12 +128,12 @@ export default function LoginModal({
             fontWeight: 500,
           }}
         >
-          Forgot Password?
+          {t("login.forgot_password", "Forgot Password?")}
         </span>
       </div>
 
       <Button onClick={submit} full>
-        Sign In
+        {t("login.sign_in", "Sign In")}
       </Button>
 
       <p
@@ -124,12 +144,12 @@ export default function LoginModal({
           color: "#6b7280",
         }}
       >
-        No account?{" "}
+        {t("login.no_account", "No account?")}{" "}
         <span
           onClick={onSwitchRegister}
           style={{ color: "#0066FF", cursor: "pointer", fontWeight: 600 }}
         >
-          Register
+          {t("login.register", "Register")}
         </span>
       </p>
     </Modal>

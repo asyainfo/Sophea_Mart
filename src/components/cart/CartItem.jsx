@@ -1,7 +1,9 @@
 import { FiTrash2, FiPlus, FiMinus } from "react-icons/fi";
 import { fmt } from "../../utils/currency";
+import { useTranslation } from "react-i18next"; // 🏆 1. Imported
 
 export default function CartItem({ item, dispatch }) {
+  const { t } = useTranslation(); // 🏆 2. Initialized
   const amount = item.qty || item.quantity || 1;
 
   const isGift = Boolean(item.isGift);
@@ -13,7 +15,8 @@ export default function CartItem({ item, dispatch }) {
       window.dispatchEvent(
         new CustomEvent("global-toast", {
           detail: {
-            message: `Sorry, we only have ${item.stock} left in stock!`,
+            // 🏆 Translated Toast Warning
+            message: `${t("cart_item.sorry_stock_1", "Sorry, we only have")} ${item.stock} ${t("cart_item.sorry_stock_2", "left in stock!")}`,
             type: "error",
           },
         }),
@@ -46,7 +49,10 @@ export default function CartItem({ item, dispatch }) {
       <div style={styles.detailsArea}>
         <div>
           <h3 style={styles.name}>{item.name}</h3>
-          <div style={styles.price}>{isGift ? "FREE" : fmt(item.price)}</div>
+          {/* 🏆 Translated "FREE" */}
+          <div style={styles.price}>
+            {isGift ? t("cart_item.free", "FREE") : fmt(item.price)}
+          </div>
         </div>
 
         {/* Conditional Quantity Controls vs Gift Badge */}
@@ -71,7 +77,10 @@ export default function CartItem({ item, dispatch }) {
             </button>
           </div>
         ) : (
-          <div style={styles.giftBadge}>Gift Selected</div>
+          /* 🏆 Translated "Gift Selected" */
+          <div style={styles.giftBadge}>
+            {t("cart_item.gift_selected", "Gift Selected")}
+          </div>
         )}
       </div>
 
@@ -80,7 +89,10 @@ export default function CartItem({ item, dispatch }) {
         <button
           onClick={handleRemoveClick}
           style={styles.removeBtn}
-          title="Remove Item"
+          title={t(
+            "cart_item.remove_item",
+            "Remove Item",
+          )} /* 🏆 Translated Hover Title */
           onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "#ca0303")}
         >

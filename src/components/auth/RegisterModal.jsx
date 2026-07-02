@@ -4,8 +4,10 @@ import Modal from "../ui/Modal";
 import Field from "../ui/Field";
 import Button from "../ui/Button";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { useTranslation } from "react-i18next"; // 🏆 1. Imported
 
 export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
+  const { t } = useTranslation(); // 🏆 2. Initialized
   const { register } = useAuth();
 
   // State
@@ -19,10 +21,19 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
   const submit = async () => {
     // 1. Frontend Validation (Fast fail)
     if (!name.trim() || !email.trim() || !pw) {
-      return toast("Please fill in all fields.", "error");
+      return toast(
+        t("register.fill_fields", "Please fill in all fields."),
+        "error",
+      );
     }
     if (pw.length < 6) {
-      return toast("Password must be at least 6 characters.", "error");
+      return toast(
+        t(
+          "register.password_length",
+          "Password must be at least 6 characters.",
+        ),
+        "error",
+      );
     }
 
     setIsLoading(true);
@@ -32,7 +43,7 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
       const result = await register(name, email, pw);
 
       if (result.success) {
-        toast("Account created! Welcome 🎉", "success");
+        toast(t("register.success", "Account created! Welcome 🎉"), "success");
         // Reset fields
         setName("");
         setEmail("");
@@ -41,33 +52,53 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
       } else {
         // 🏆 3. Display the REAL error from Supabase!
         toast(
-          result.error || "Registration failed. Please try again.",
+          result.error ||
+            t("register.failed", "Registration failed. Please try again."),
           "error",
         );
       }
     } catch (error) {
       console.error("Sign up crash:", error);
-      toast("An unexpected error occurred.", "error");
+      toast(
+        t("register.unexpected_error", "An unexpected error occurred."),
+        "error",
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Create an Account">
-      <Field label="Name" value={name} onChange={setName} type="text" />
-      <Field label="Email" value={email} onChange={setEmail} type="email" />
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("register.title", "Create an Account")}
+    >
+      <Field
+        label={t("register.name_label", "Name")}
+        value={name}
+        onChange={setName}
+        type="text"
+      />
+      <Field
+        label={t("register.email_label", "Email")}
+        value={email}
+        onChange={setEmail}
+        type="email"
+      />
 
       {/* Password Field */}
       <div style={styles.inputGroup}>
-        <label style={styles.label}>Password</label>
+        <label style={styles.label}>
+          {t("register.password_label", "Password")}
+        </label>
 
         <div style={styles.passwordWrapper}>
           <input
             type={showPassword ? "text" : "password"}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            placeholder="Password"
+            placeholder={t("register.password_placeholder", "Password")}
             style={styles.input}
             onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
             onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
@@ -86,16 +117,18 @@ export default function RegisterModal({ open, onClose, onSwitchLogin, toast }) {
       </div>
 
       <Button onClick={submit} full disabled={isLoading}>
-        {isLoading ? "Signing Up..." : "Sign Up"}
+        {isLoading
+          ? t("register.signing_up", "Signing Up...")
+          : t("register.sign_up", "Sign Up")}
       </Button>
 
       <p style={styles.footerText}>
-        Already have an account?{" "}
+        {t("register.already_have_account", "Already have an account?")}{" "}
         <span
           onClick={!isLoading ? onSwitchLogin : undefined}
           style={styles.link}
         >
-          Sign In
+          {t("register.sign_in", "Sign In")}
         </span>
       </p>
     </Modal>

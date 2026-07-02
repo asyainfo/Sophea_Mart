@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FiSearch,
   FiEdit2,
@@ -6,6 +7,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiImage,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { fmt } from "../../utils/currency";
 
@@ -46,26 +48,55 @@ export default function ProductsTable({
   onToggleStock,
   processingId,
 }) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // --- 🚀 BARCODE SCANNER LISTENER ---
+  useEffect(() => {
+    let barcodeBuffer = "";
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e) => {
+      const currentTime = Date.now();
+
+      if (currentTime - lastKeyTime > 50) {
+        barcodeBuffer = "";
+      }
+
+      if (e.key === "Enter" && barcodeBuffer.length > 3) {
+        setSearchQuery(barcodeBuffer);
+        setCurrentPage(1);
+        barcodeBuffer = "";
+      } else if (e.key !== "Enter" && e.key.length === 1) {
+        barcodeBuffer += e.key;
+      }
+
+      lastKeyTime = currentTime;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // --- FILTERING & PAGINATION LOGIC ---
   const categories = useMemo(() => {
-    // Note: If you don't have a 'category' field in your DB yet, this might return undefined.
-    // It's safe to keep, but it relies on your Supabase table having a 'category' column.
     const cats = new Set(products.map((p) => p.category).filter(Boolean));
     return ["All", ...Array.from(cats)];
   }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((prod) => {
-      const matchesSearch = prod.name
-        ?.toLowerCase()
-        .includes(searchQuery.toLowerCase());
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch =
+        prod.name?.toLowerCase().includes(searchLower) ||
+        prod.barcode?.toLowerCase().includes(searchLower);
+
       const matchesCategory =
         selectedCategory === "All" || prod.category === selectedCategory;
+
       return matchesSearch && matchesCategory;
     });
   }, [products, searchQuery, selectedCategory]);
@@ -85,7 +116,10 @@ export default function ProductsTable({
           <FiSearch color="#9ca3af" size={18} />
           <input
             type="text"
-            placeholder="Search product name..."
+            placeholder={t(
+              "products_table.search_placeholder",
+              "Search by name or barcode...",
+            )}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -106,7 +140,9 @@ export default function ProductsTable({
           >
             {categories.map((cat) => (
               <option key={cat} value={cat}>
-                {cat}
+                {cat === "All"
+                  ? t("products_table.all_categories", "All Categories")
+                  : cat}
               </option>
             ))}
           </select>
@@ -115,15 +151,21 @@ export default function ProductsTable({
 
       {/* --- RESPONSIVE TABLE CONTAINER --- */}
       <div>
-        {/* Desktop Header */}
         <div className="desktop-view" style={styles.desktopHeaderRow}>
-          <div style={{ flex: 2 }}>Item</div>
-          <div style={{ flex: 1 }}>Price</div>
-          <div style={{ flex: 1 }}>Status</div>
-          <div style={{ flex: 1, textAlign: "right" }}>Actions</div>
+          <div style={{ flex: 2 }}>
+            {t("products_table.header_item", "Item")}
+          </div>
+          <div style={{ flex: 1 }}>
+            {t("products_table.header_price", "Price")}
+          </div>
+          <div style={{ flex: 1 }}>
+            {t("products_table.header_status", "Status")}
+          </div>
+          <div style={{ flex: 1, textAlign: "right" }}>
+            {t("products_table.header_actions", "Actions")}
+          </div>
         </div>
 
-        {/* CSS Media Queries for layout swapping */}
         <style>{`
           .mobile-view { display: none !important; }
           .desktop-view { display: flex; }
@@ -134,20 +176,24 @@ export default function ProductsTable({
           }
         `}</style>
 
-        {/* Product Rows */}
         {paginatedProducts.length === 0 ? (
-          <div style={styles.emptyState}>No products found.</div>
+          <div style={styles.emptyState}>
+            {t("products_table.no_products", "No products found.")}
+          </div>
         ) : (
           paginatedProducts.map((p) => {
             const isProcessing = processingId === p.id;
+            const stockQty = p.stock || 0;
+            const isLowStock = stockQty < 5 && p.in_stock;
 
             return (
               <div
                 key={p.id}
                 style={{
                   borderBottom: "1px solid #f3f4f6",
+                  backgroundColor: isLowStock ? "#FEF9C3" : "#FFFFFF",
                   opacity: isProcessing ? 0.6 : 1,
-                  transition: "opacity 0.2s",
+                  transition: "all 0.2s",
                 }}
               >
                 {/* --- DESKTOP ROW --- */}
@@ -170,15 +216,38 @@ export default function ProductsTable({
                         <FiImage color="#9ca3af" />
                       )}
                     </div>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: "#111827",
-                        fontSize: 14,
-                      }}
-                    >
-                      {p.name}
-                    </span>
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          color: "#111827",
+                          fontSize: 14,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {p.name}
+                        {isLowStock && (
+                          <span style={styles.lowStockBadge}>
+                            <FiAlertTriangle size={12} />{" "}
+                            {t("products_table.low_stock", "Low Stock")} (
+                            {stockQty})
+                          </span>
+                        )}
+                      </div>
+                      {p.barcode && (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#6B7280",
+                            marginTop: 2,
+                          }}
+                        >
+                          {p.barcode}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div
@@ -192,7 +261,6 @@ export default function ProductsTable({
                     {fmt(p.price)}
                   </div>
 
-                  {/* 🏆 RESTORED: The Interactive Toggle Switch */}
                   <div style={{ flex: 1 }}>
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 10 }}
@@ -202,7 +270,7 @@ export default function ProductsTable({
                         disabled={isProcessing}
                         style={{
                           ...styles.toggleTrack,
-                          backgroundColor: p.in_stock ? "#10B981" : "#D1D5DB",
+                          backgroundColor: p.in_stock ? "#0066FF" : "#D1D5DB",
                           cursor: isProcessing ? "not-allowed" : "pointer",
                         }}
                       >
@@ -228,10 +296,14 @@ export default function ProductsTable({
                         style={{
                           fontSize: 13,
                           fontWeight: 600,
-                          color: p.in_stock ? "#10B981" : "#6B7280",
+                          color: p.in_stock ? "#0052CC" : "#6B7280",
                         }}
                       >
-                        {p.in_stock ? "In Stock" : "Hidden"}
+                        {p.in_stock
+                          ? stockQty > 0
+                            ? `${stockQty} ${t("products_table.in_stock", "In Stock")}`
+                            : t("products_table.in_stock", "In Stock")
+                          : t("products_table.hidden", "Hidden")}
                       </span>
                     </div>
                   </div>
@@ -303,13 +375,34 @@ export default function ProductsTable({
                         fontWeight: 600,
                         color: "#111827",
                         fontSize: 15,
-                        marginBottom: 8,
+                        marginBottom: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
                       }}
                     >
                       {p.name}
+                      {isLowStock && (
+                        <span style={styles.lowStockBadge}>
+                          <FiAlertTriangle size={12} /> ({stockQty}){" "}
+                          {t("products_table.left", "left")}
+                        </span>
+                      )}
                     </div>
 
-                    {/* 🏆 RESTORED: The Interactive Toggle Switch (Mobile Layout) */}
+                    {p.barcode && (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#6B7280",
+                          marginBottom: 8,
+                        }}
+                      >
+                        {p.barcode}
+                      </div>
+                    )}
+
                     <div
                       style={{
                         display: "flex",
@@ -351,7 +444,11 @@ export default function ProductsTable({
                           color: p.in_stock ? "#10B981" : "#6B7280",
                         }}
                       >
-                        {p.in_stock ? "In Stock" : "Hidden"}
+                        {p.in_stock
+                          ? stockQty > 0
+                            ? `${stockQty} ${t("products_table.in_stock", "In Stock")}`
+                            : t("products_table.in_stock", "In Stock")
+                          : t("products_table.hidden", "Hidden")}
                       </span>
                     </div>
 
@@ -404,7 +501,8 @@ export default function ProductsTable({
       {totalPages > 1 && (
         <div style={styles.paginationBar}>
           <span style={{ fontSize: 13, color: "#6b7280" }}>
-            Showing page <strong>{currentPage}</strong> of{" "}
+            {t("products_table.showing_page", "Showing page")}{" "}
+            <strong>{currentPage}</strong> {t("products_table.of", "of")}{" "}
             <strong>{totalPages}</strong>
           </span>
           <div style={{ display: "flex", gap: 6 }}>
@@ -533,7 +631,7 @@ const styles = {
     background: "#fee2e2",
     border: "none",
     borderRadius: 6,
-    color: "#ef4444",
+    color: "#DD2D4A",
     cursor: "pointer",
   },
   paginationBar: {
@@ -549,5 +647,16 @@ const styles = {
     borderRadius: 6,
     background: "#fff",
     cursor: "pointer",
+  },
+  lowStockBadge: {
+    background: "#DD2D4A",
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: 600,
+    padding: "2px 8px",
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
   },
 };

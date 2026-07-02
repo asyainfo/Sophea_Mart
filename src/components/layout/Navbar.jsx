@@ -11,24 +11,33 @@ import {
   FiPackage,
   FiHeart,
   FiAward,
+  FiGlobe,
 } from "react-icons/fi";
 
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import Button from "../ui/Button";
+import { useTranslation } from "react-i18next";
 
 export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   const navigate = useNavigate();
   const { user, logout, profile } = useAuth();
   const { count } = useCart();
 
+  const { t, i18n } = useTranslation();
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const dropdownRef = useRef(null);
 
-  // 🏆 Logic: Prioritize database 'full_name', fallback to email
   const displayName = profile?.full_name || user?.email || "User";
   const firstName = displayName.split(" ")[0];
+  const isStaff = profile?.role === "admin" || profile?.role === "cashier";
+
+  const toggleLanguage = () => {
+    const newLang = i18n.language === "en" ? "km" : "en";
+    i18n.changeLanguage(newLang);
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -41,14 +50,19 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   }, []);
 
   const handleLogout = async () => {
-    if (!window.confirm("Are you sure you want to log out?")) return;
+    if (
+      !window.confirm(
+        t("navbar.logout_confirm", "Are you sure you want to log out?"),
+      )
+    )
+      return;
     setIsLoggingOut(true);
     try {
       await logout();
       setProfileOpen(false);
     } catch (error) {
       console.error("Logout failed", error);
-      alert("Failed to log out.");
+      alert(t("navbar.logout_failed", "Failed to log out."));
     } finally {
       setIsLoggingOut(false);
     }
@@ -60,230 +74,339 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   };
 
   return (
-    <nav style={styles.navBar} className="nav-container-mobile">
-      <div style={styles.innerContainer}>
-        {/* Logo */}
-        <div onClick={() => navigate("/")} style={styles.logoWrapper}>
-          <img src="/Sophea Mart no1.png" alt="Logo" style={styles.logoImage} />
-          <span style={styles.logoText}>
-            SOPHEA <span style={{ color: "#0066FF" }}>MART</span>
-          </span>
-        </div>
+    <>
+      <style>
+        {`
+          /* Base Styles */
+          .nav-container {
+            position: sticky;
+            top: 0;
+            z-index: 300;
+            background: #FFFFFF;
+            border-bottom: 1px solid #E5E7EB;
+            padding: 0 24px;
+          }
+          .inner-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+          }
+          
+          /* Logo */
+          .logo-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            min-width: 0; 
+          }
+          .logo-img {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+          }
+          .logo-text {
+            font-weight: 900;
+            font-size: 20px;
+            color: #111827;
+            letter-spacing: -0.5px;
+            white-space: nowrap;
+          }
 
-        {/* Actions */}
-        <div style={styles.actionsWrapper}>
-          {!user ? (
-            <>
-              <Button onClick={onLogin} variant="ghost" small>
-                Sign In
-              </Button>
-              <Button onClick={onRegister} small>
-                Sign Up
-              </Button>
-            </>
-          ) : (
-            <>
-              {profile?.role === "admin" && (
-                <button
-                  onClick={() => navigate("/admin")}
-                  style={styles.adminButton}
-                >
-                  <FiSettings size={18} />{" "}
-                  <span className="hide-on-mobile">Admin</span>
-                </button>
-              )}
+          /* Actions */
+          .actions-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+          }
 
-              <div style={{ position: "relative" }} ref={dropdownRef}>
-                <button
-                  onClick={() => setProfileOpen(!profileOpen)}
-                  style={styles.profileButton}
-                >
-                  <FiUser size={18} />
-                  <span className="hide-on-mobile">{firstName}</span>
+          /* Buttons */
+          .btn-base {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 44px;
+            border-radius: 9999px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            font-size: 14px;
+          }
+          .btn-lang {
+            background: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            padding: 0 14px;
+            color: #111827;
+          }
+          .btn-admin {
+            background: #2563EB;
+            border: none;
+            padding: 0 16px;
+            color: #FFFFFF;
+          }
+          .btn-profile {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            padding: 0 16px;
+            color: #2563EB;
+          }
+          .btn-cart {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            color: #2563EB;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.2s;
+          }
+          .cart-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #0066FF;
+            color: #FFFFFF;
+            font-size: 10px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #FFFFFF;
+          }
+
+          /* Utilities */
+          .show-mobile { display: none; }
+          .icon-md { font-size: 18px; }
+
+          /* Tablet Breakpoints */
+          @media (max-width: 768px) {
+            .nav-container { padding: 0 16px; }
+            .inner-container { height: 60px; }
+            .logo-img { width: 38px; height: 38px; border-radius: 10px; }
+            .logo-text { font-size: 18px; }
+            .btn-base { height: 40px; padding: 0 12px; gap: 6px; }
+            .btn-cart { width: 40px; height: 40px; border-radius: 10px; }
+            .icon-md { font-size: 16px; }
+          }
+
+          /* 🏆 THE FIX: Mobile Breakpoints (Catches iPhone 12, 13, 14, etc.) */
+          @media (max-width: 640px) {
+            .nav-container { padding: 0 12px; }
+            .actions-wrapper { gap: 8px; }
+            .btn-base { height: 38px; padding: 0 10px; font-size: 13px; }
+            .btn-cart { width: 38px; height: 38px; }
+            .logo-img { width: 36px; height: 36px; }
+            
+            /* Hide the brand text completely to save space for buttons */
+            .logo-text { display: none; }
+            
+            /* Aggressively hide non-essential text on mobile */
+            .hide-mobile { display: none !important; }
+            .show-mobile { display: inline-block !important; }
+            
+            /* Convert admin & profile to circle icons on mobile */
+            .btn-base.icon-only { 
+              padding: 0; 
+              width: 38px; 
+              justify-content: center; 
+              border-radius: 50%; 
+            }
+          }
+        `}
+      </style>
+
+      <nav className="nav-container">
+        <div className="inner-container">
+          {/* Logo */}
+          <div onClick={() => navigate("/")} className="logo-wrapper">
+            <img src="/Sophea Mart no1.png" alt="Logo" className="logo-img" />
+            <span className="logo-text">
+              SOPHEA <span style={{ color: "#0066FF" }}>MART</span>
+            </span>
+          </div>
+
+          {/* Actions Container */}
+          <div className="actions-wrapper">
+            {/* Global Language Switcher Button */}
+            <button
+              onClick={toggleLanguage}
+              className="btn-base btn-lang"
+              title="Change Language"
+            >
+              <FiGlobe className="icon-md" color="#0066FF" />
+              {/* Shows full text on Desktop */}
+              <span className="hide-mobile" style={{ fontWeight: 700 }}>
+                {i18n.language === "en" ? "🇺🇸 EN" : "🇰🇭 ខ្មែរ"}
+              </span>
+              {/* Shows minimal text on Mobile */}
+              <span
+                className="show-mobile"
+                style={{ fontWeight: 700, fontSize: 13, color: "#0066FF" }}
+              >
+                {i18n.language === "en" ? "EN" : "KM"}
+              </span>
+            </button>
+
+            {!user ? (
+              <>
+                <Button onClick={onLogin} variant="ghost" small>
+                  {t("navbar.sign_in", "Sign In")}
+                </Button>
+                <Button onClick={onRegister} small>
+                  {t("navbar.sign_up", "Sign Up")}
+                </Button>
+              </>
+            ) : (
+              <>
+                {isStaff && (
+                  <button
+                    onClick={() => navigate("/admin")}
+                    className="btn-base btn-admin icon-only"
+                    title={t("navbar.role_admin", "Admin")}
+                  >
+                    <FiSettings className="icon-md" />
+                    <span className="hide-mobile">
+                      {profile?.role === "admin"
+                        ? t("navbar.role_admin", "Admin")
+                        : t("navbar.role_cashier", "Cashier")}
+                    </span>
+                  </button>
+                )}
+
+                <div style={{ position: "relative" }} ref={dropdownRef}>
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="btn-base btn-profile icon-only"
+                  >
+                    <FiUser className="icon-md" />
+                    <span className="hide-mobile">{firstName}</span>
+                    <div
+                      className="hide-mobile"
+                      style={{
+                        display: "flex",
+                        transition: "transform 0.3s",
+                        transform: profileOpen
+                          ? "rotate(180deg)"
+                          : "rotate(0deg)",
+                      }}
+                    >
+                      <FiChevronDown size={16} />
+                    </div>
+                  </button>
+
+                  {/* Dropdown Menu */}
                   <div
                     style={{
-                      ...styles.chevron,
-                      transform: profileOpen
-                        ? "rotate(180deg)"
-                        : "rotate(0deg)",
+                      position: "absolute",
+                      top: "100%",
+                      right: 0,
+                      marginTop: "8px",
+                      width: "200px",
+                      background: "#FFFFFF",
+                      border: "1px solid #E5E7EB",
+                      borderRadius: "12px",
+                      boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+                      overflow: "hidden",
+                      transition: "all 0.2s",
+                      transformOrigin: "top right",
+                      opacity: profileOpen ? 1 : 0,
+                      pointerEvents: profileOpen ? "auto" : "none",
                     }}
                   >
-                    <FiChevronDown size={16} />
+                    <button
+                      onClick={() => handleNavigation("/order-history")}
+                      style={dropdownItemStyle}
+                    >
+                      <FiPackage size={16} />{" "}
+                      {t("navbar.my_orders", "My Orders")}
+                    </button>
+                    <button
+                      onClick={() => handleNavigation("/favorites")}
+                      style={dropdownItemStyle}
+                    >
+                      <FiHeart size={16} />{" "}
+                      {t("navbar.saved_items", "Saved Items")}
+                    </button>
+                    <button
+                      onClick={() => handleNavigation("/redeem")}
+                      style={{
+                        ...dropdownItemStyle,
+                        color: "#0066FF",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <FiAward size={16} /> {t("navbar.rewards", "Rewards")}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setProfileOpen(false);
+                        onRegister();
+                      }}
+                      style={dropdownItemStyle}
+                    >
+                      <FiPlus size={16} />{" "}
+                      {t("navbar.add_account", "Add Account")}
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
+                      style={{ ...dropdownItemStyle, color: "#DC2626" }}
+                    >
+                      {isLoggingOut ? (
+                        <FiLoader className="animate-spin" />
+                      ) : (
+                        <FiLogOut size={16} />
+                      )}
+                      {isLoggingOut ? "..." : t("navbar.log_out", "Log Out")}
+                    </button>
                   </div>
-                </button>
-
-                {/* Dropdown */}
-                <div
-                  style={{
-                    ...styles.dropdownBox,
-                    opacity: profileOpen ? 1 : 0,
-                    pointerEvents: profileOpen ? "auto" : "none",
-                  }}
-                >
-                  <button
-                    onClick={() => handleNavigation("/order-history")}
-                    style={styles.dropdownItem}
-                  >
-                    <FiPackage size={16} /> My Orders
-                  </button>
-                  <button
-                    onClick={() => handleNavigation("/favorites")}
-                    style={styles.dropdownItem}
-                  >
-                    <FiHeart size={16} /> Saved Items
-                  </button>
-                  <button
-                    onClick={() => handleNavigation("/redeem")}
-                    style={{
-                      ...styles.dropdownItem,
-                      color: "#0066FF",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <FiAward size={16} /> Rewards
-                  </button>
-                  <button
-                    onClick={() => {
-                      setProfileOpen(false);
-                      onRegister();
-                    }}
-                    style={styles.dropdownItem}
-                  >
-                    <FiPlus size={16} /> Add Account
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    disabled={isLoggingOut}
-                    style={{ ...styles.dropdownItem, color: "#DC2626" }}
-                  >
-                    {isLoggingOut ? (
-                      <FiLoader className="animate-spin" />
-                    ) : (
-                      <FiLogOut size={16} />
-                    )}
-                    {isLoggingOut ? "..." : "Log Out"}
-                  </button>
                 </div>
-              </div>
-            </>
-          )}
-
-          <button onClick={onCartOpen} style={styles.cartButton}>
-            <FiShoppingCart size={20} />
-            {count > 0 && (
-              <span style={styles.cartBadge}>{count > 99 ? "99+" : count}</span>
+              </>
             )}
-          </button>
+
+            {/* Shopping Cart Button */}
+            <button onClick={onCartOpen} className="btn-cart">
+              <FiShoppingCart className="icon-md" />
+              {count > 0 && (
+                <span className="cart-badge">{count > 99 ? "99+" : count}</span>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+    </>
   );
 }
 
-// --- STYLES ---
-const styles = {
-  navBar: {
-    position: "sticky",
-    top: 0,
-    zIndex: 300,
-    background: "#FFFFFF",
-    borderBottom: "1px solid #E5E7EB",
-    padding: "0 24px",
-  },
-  innerContainer: {
-    maxWidth: 1200,
-    margin: "0 auto",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    height: 70,
-  },
-  logoWrapper: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    cursor: "pointer",
-  },
-  logoImage: { width: 44, height: 44, borderRadius: 12, objectFit: "cover" },
-  logoText: { fontWeight: 700, fontSize: 20, color: "#111827" },
-  actionsWrapper: { display: "flex", alignItems: "center", gap: 12 },
-  adminButton: {
-    background: "#2563EB",
-    color: "white",
-    border: "none",
-    padding: "0 16px",
-    borderRadius: "9999px",
-    fontWeight: 600,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    height: 44,
-  },
-  profileButton: {
-    background: "#EFF6FF",
-    border: "1px solid #BFDBFE",
-    borderRadius: "9999px",
-    padding: "0 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    cursor: "pointer",
-    color: "#2563EB",
-    fontWeight: 600,
-    height: 44,
-  },
-  chevron: { display: "flex", transition: "transform 0.3s" },
-  dropdownBox: {
-    position: "absolute",
-    top: "100%",
-    right: 0,
-    marginTop: 8,
-    width: 200,
-    background: "#FFFFFF",
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-    overflow: "hidden",
-    transition: "all 0.2s",
-  },
-  dropdownItem: {
-    width: "100%",
-    padding: "12px 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    border: "none",
-    borderBottom: "1px solid #E5E7EB",
-    cursor: "pointer",
-    fontSize: 14,
-    background: "transparent",
-  },
-  cartButton: {
-    position: "relative",
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    background: "#EFF6FF",
-    border: "1px solid #BFDBFE",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cartBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    minWidth: 20,
-    height: 20,
-    borderRadius: "50%",
-    background: "#0066FF",
-    color: "#FFFFFF",
-    fontSize: 10,
-    fontWeight: 700,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+// Dropdown styles remain untouched to ensure the menu works perfectly
+const dropdownItemStyle = {
+  width: "100%",
+  padding: "12px 16px",
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  border: "none",
+  borderBottom: "1px solid #E5E7EB",
+  cursor: "pointer",
+  fontSize: "14px",
+  background: "transparent",
+  transition: "background 0.2s",
+  whiteSpace: "nowrap",
+  textAlign: "left",
 };

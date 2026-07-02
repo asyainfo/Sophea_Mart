@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { FiX, FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
-import { fmt, fmtKHR } from "../../utils/currency"; // Adjust path if needed
-import Modal from "../ui/Modal"; // Assuming you have your standard reusable Modal component
+import { fmt, fmtKHR } from "../../utils/currency";
+import Modal from "../ui/Modal";
+import { useTranslation } from "react-i18next";
 
 export default function QuickViewModal({
   open,
@@ -12,6 +13,7 @@ export default function QuickViewModal({
   isFavorite,
   onToggleFavorite,
 }) {
+  const { t } = useTranslation(); // 🏆 2. Initialized
   const [isJustAdded, setIsJustAdded] = useState(false);
 
   if (!product) return null;
@@ -30,19 +32,34 @@ export default function QuickViewModal({
 
   const getStockStatus = () => {
     if (product.stock > 10)
-      return { text: "In Stock", bg: "#DBEAFE", color: "#2563EB" };
+      return {
+        text: t("quick_view.in_stock", "In Stock"),
+        bg: "#DBEAFE",
+        color: "#2563EB",
+      };
     if (product.stock > 0)
       return {
-        text: `Only ${product.stock} left`,
+        // 🏆 Uses dynamic variable {{count}}
+        text: t("quick_view.only_left", "Only {{count}} left", {
+          count: product.stock,
+        }),
         bg: "#FEF3C7",
         color: "#92400E",
       };
-    return { text: "Out of Stock", bg: "#FEE2E2", color: "#991B1B" };
+    return {
+      text: t("quick_view.out_of_stock", "Out of Stock"),
+      bg: "#FEE2E2",
+      color: "#991B1B",
+    };
   };
   const stockStatus = getStockStatus();
 
   return (
-    <Modal open={open} onClose={onClose} title="Product Details">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("quick_view.modal_title", "Product Details")}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         {/* Top Section: Image Display */}
         <div
@@ -137,7 +154,7 @@ export default function QuickViewModal({
                   boxShadow: "0 4px 16px rgba(153, 27, 27, 0.3)",
                 }}
               >
-                SOLD OUT
+                {t("quick_view.sold_out", "SOLD OUT")}
               </span>
             </div>
           )}
@@ -191,7 +208,8 @@ export default function QuickViewModal({
                 fontWeight: 500,
               }}
             >
-              Category: {product.category || "General"}
+              {t("quick_view.category", "Category:")}{" "}
+              {product.category || t("quick_view.general", "General")}
             </span>
             {product.sizes && (
               <span
@@ -204,7 +222,7 @@ export default function QuickViewModal({
                   fontWeight: 500,
                 }}
               >
-                Size: {product.sizes}
+                {t("quick_view.size", "Size:")} {product.sizes}
               </span>
             )}
           </div>
@@ -218,7 +236,10 @@ export default function QuickViewModal({
             }}
           >
             {product.description ||
-              "No specific description available for this item."}
+              t(
+                "quick_view.no_desc",
+                "No specific description available for this item.",
+              )}
           </p>
 
           {/* Big Add to Cart Section */}
@@ -261,7 +282,10 @@ export default function QuickViewModal({
                 <span
                   style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}
                 >
-                  {product.quantityInCart} in Cart
+                  {/* 🏆 Uses dynamic variable {{count}} */}
+                  {t("quick_view.in_cart", "{{count}} in Cart", {
+                    count: product.quantityInCart,
+                  })}
                 </span>
                 <button
                   onClick={handleAddToCart}
@@ -319,10 +343,10 @@ export default function QuickViewModal({
                   <FiShoppingCart size={20} />
                 )}
                 {isJustAdded
-                  ? "Added!"
+                  ? t("quick_view.added", "Added!")
                   : isOutOfStock
-                    ? "Sold Out"
-                    : "Add to Cart"}
+                    ? t("quick_view.out_of_stock", "Sold Out")
+                    : t("quick_view.add_to_cart", "Add to Cart")}
               </button>
             )}
 
@@ -340,7 +364,7 @@ export default function QuickViewModal({
                 cursor: "pointer",
               }}
             >
-              Close
+              {t("quick_view.close", "Close")}
             </button>
           </div>
         </div>

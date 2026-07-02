@@ -10,20 +10,16 @@ import Hero from "../components/layout/Hero";
 import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
-import QuickViewModal from "../components/product/QuickViewModal"; // <-- 1. IMPORTED MODAL
+import QuickViewModal from "../components/product/QuickViewModal";
 import { Toast, useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
+import { useTranslation } from "react-i18next";
 
 const styles = {
   page: {
     minHeight: "100vh",
     background: "#f9fafb",
     fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
-  },
-  container: {
-    maxWidth: 1200,
-    margin: "0 auto",
-    padding: "0 24px 64px",
   },
   header: {
     display: "flex",
@@ -51,9 +47,10 @@ const styles = {
 };
 
 export default function HomePage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { products } = useStore();
-  const { dispatch, cart } = useCart(); // <-- Grabbed 'cart' here to check quantities
+  const { dispatch, cart } = useCart();
   const { toasts, show: toast } = useToast();
 
   const [search, setSearch] = useState("");
@@ -61,10 +58,7 @@ export default function HomePage() {
 
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
-
-  // <-- 2. NEW STATE FOR MODAL -->
   const [selectedProduct, setSelectedProduct] = useState(null);
-
   const [favoriteIds, setFavoriteIds] = useState(new Set());
 
   useEffect(() => {
@@ -101,18 +95,24 @@ export default function HomePage() {
 
   const handleAddToCart = (product) => {
     if (!user) {
-      toast("Sign in to add items to cart.", "error");
+      toast(t("store.sign_in_cart", "Sign in to add items to cart."), "error");
       setLoginOpen(true);
       return;
     }
 
     if (product.stock <= 0) {
-      toast("Sorry, this item is currently out of stock!", "error");
+      toast(
+        t(
+          "store.out_of_stock_toast",
+          "Sorry, this item is currently out of stock!",
+        ),
+        "error",
+      );
       return;
     }
 
     dispatch({ type: "ADD", product });
-    toast(`${product.name} added to cart!`);
+    toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
   };
 
   const handleRemoveFromCart = (product) => {
@@ -121,7 +121,10 @@ export default function HomePage() {
 
   const handleToggleFavorite = async (product) => {
     if (!user) {
-      toast("Please sign in to save favorites!", "error");
+      toast(
+        t("store.sign_in_favorite", "Please sign in to save favorites!"),
+        "error",
+      );
       setLoginOpen(true);
       return;
     }
@@ -149,7 +152,7 @@ export default function HomePage() {
     } catch (error) {
       console.error("Error updating favorite:", error.message);
       fetchFavorites();
-      toast("Failed to update favorite.", "error");
+      toast(t("store.fav_failed", "Failed to update favorite."), "error");
     }
   };
 
@@ -158,8 +161,6 @@ export default function HomePage() {
     setCategory("All");
   };
 
-  // <-- 3. DYNAMIC MODAL DATA -->
-  // This ensures the modal always knows exactly how many items are in the cart
   const safeCart = Array.isArray(cart) ? cart : [];
   const modalProduct = selectedProduct
     ? {
@@ -183,13 +184,23 @@ export default function HomePage() {
 
           .responsive-grid {
             display: grid;
-            gap: 20px;
-            grid-template-columns: repeat(2, 1fr); 
+            gap: 12px; 
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
           }
 
-          @media (min-width: 500px) {
+          .mobile-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 16px 64px; 
+          }
+
+          @media (min-width: 600px) {
             .responsive-grid {
+               gap: 20px;
                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            }
+            .mobile-container {
+              padding: 0 24px 64px;
             }
           }
         `}
@@ -202,18 +213,21 @@ export default function HomePage() {
         setCategory={setCategory}
       />
 
-      <main style={styles.container}>
+      <main className="mobile-container">
         <div style={styles.header}>
           <h2 style={styles.title}>
-            {category === "All" ? "All Products" : category}
-            <span style={styles.count}>({filteredProducts.length} items)</span>
+            {category === "All"
+              ? t("store.all_products", "All Products")
+              : category}
+            <span style={styles.count}>
+              ({filteredProducts.length} {t("store.items", "items")})
+            </span>
           </h2>
         </div>
 
         {filteredProducts.length ? (
           <div className="responsive-grid">
             {filteredProducts.map((product) => {
-              // Get cart quantity for the grid cards too!
               const cartItem = safeCart.find((item) => item.id === product.id);
               const quantityInCart = cartItem ? cartItem.quantity : 0;
               const productWithCartData = { ...product, quantityInCart };
@@ -226,7 +240,7 @@ export default function HomePage() {
                   onRemoveFromCart={handleRemoveFromCart}
                   isFavorite={favoriteIds.has(product.id)}
                   onToggleFavorite={handleToggleFavorite}
-                  onQuickView={() => setSelectedProduct(product)} // <-- 4. TRIGGER MODAL ON CLICK
+                  onQuickView={() => setSelectedProduct(product)}
                 />
               );
             })}
@@ -249,32 +263,17 @@ export default function HomePage() {
                 fontSize: "18px",
               }}
             >
-              No products found
+              {t("store.no_products", "No products found")}
             </h3>
             <p style={{ margin: "0 0 24px 0", fontSize: "14px" }}>
-              Try a different search or category.
+              {t("store.try_different", "Try a different search or category.")}
             </p>
             <Button variant="secondary" onClick={clearFilters}>
-              Clear filters
+              {t("store.clear_filters", "Clear filters")}
             </Button>
           </div>
         )}
       </main>
-
-      <footer
-        style={{
-          background: "#0066FF",
-          color: "#e5f0ff95",
-          textAlign: "center",
-          padding: "32px 24px",
-        }}
-      >
-        <h3 style={{ color: "#fff" }}>SOPHEA MART</h3>
-        <p>
-          © 2026 Small Mart · Phnom Penh, Cambodia · 1 USD ={" "}
-          {USD_TO_KHR.toLocaleString()} KHR
-        </p>
-      </footer>
 
       {/* --- MODALS --- */}
       <LoginModal
@@ -297,7 +296,6 @@ export default function HomePage() {
         toast={toast}
       />
 
-      {/* <-- 5. RENDER THE QUICK VIEW MODAL --> */}
       <QuickViewModal
         open={!!selectedProduct}
         onClose={() => setSelectedProduct(null)}

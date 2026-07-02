@@ -3,6 +3,7 @@ import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import Field from "../ui/Field";
 import Button from "../ui/Button";
+import { useTranslation } from "react-i18next"; // 🏆 1. Imported
 
 export default function ForgotPasswordModal({
   open,
@@ -10,26 +11,43 @@ export default function ForgotPasswordModal({
   onSwitchLogin,
   toast,
 }) {
+  const { t } = useTranslation(); // 🏆 2. Initialized
   const { sendPasswordReset } = useAuth();
   const [email, setEmail] = useState("");
 
   const submit = async () => {
     if (!email) {
-      toast("Please enter your email address first.", "error");
+      toast(
+        t(
+          "forgot_password.enter_email",
+          "Please enter your email address first.",
+        ),
+        "error",
+      );
       return;
     }
 
     const success = await sendPasswordReset(email);
     if (success) {
-      toast("Check your email for the reset link! ");
+      toast(
+        t(
+          "forgot_password.check_email",
+          "Check your email for the reset link!",
+        ),
+        "success",
+      );
       onClose();
     } else {
-      toast("Error sending reset link.", "error");
+      toast(t("forgot_password.error", "Error sending reset link."), "error");
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Forgot Password">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("forgot_password.title", "Forgot Password")}
+    >
       <p
         style={{
           fontSize: "14px",
@@ -38,12 +56,15 @@ export default function ForgotPasswordModal({
           marginTop: "-8px",
         }}
       >
-        Enter your account email and we will send you a reset link.
+        {t(
+          "forgot_password.instruction",
+          "Enter your account email and we will send you a reset link.",
+        )}
       </p>
 
       <div style={{ marginBottom: "24px" }}>
         <Field
-          label="Email address"
+          label={t("forgot_password.email_label", "Email address")}
           value={email}
           onChange={setEmail}
           type="email"
@@ -51,7 +72,7 @@ export default function ForgotPasswordModal({
       </div>
 
       <Button onClick={submit} full>
-        Send reset link
+        {t("forgot_password.send_link", "Send reset link")}
       </Button>
 
       <p
@@ -62,12 +83,12 @@ export default function ForgotPasswordModal({
           color: "#6b7280",
         }}
       >
-        Remember your password?{" "}
+        {t("forgot_password.remember", "Remember your password?")}{" "}
         <span
           onClick={onSwitchLogin}
           style={{ color: "#0066FF", cursor: "pointer", fontWeight: 600 }}
         >
-          Sign In
+          {t("forgot_password.sign_in", "Sign In")}
         </span>
       </p>
     </Modal>

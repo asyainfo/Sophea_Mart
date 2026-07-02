@@ -4,8 +4,10 @@ import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import ProductCard from "../components/product/ProductCard";
 import QuickViewModal from "../components/product/QuickViewModal";
+import { useTranslation } from "react-i18next";
 
 export default function Home() {
+  const { t } = useTranslation(); // 🏆 Initialized perfectly
   const { user } = useAuth();
   const { cartItems, addToCart, removeFromCart } = useCart();
 
@@ -30,7 +32,6 @@ export default function Home() {
 
   const fetchProducts = async () => {
     try {
-      // 🏆 UPGRADED: Added .eq("in_stock", true) to automatically hide disabled items
       const { data, error } = await supabase
         .from("products")
         .select("*")
@@ -66,7 +67,11 @@ export default function Home() {
       window.dispatchEvent(
         new CustomEvent("global-toast", {
           detail: {
-            message: "Please sign in to save favorites!",
+            // 🏆 FIXED: Translated the warning toast message!
+            message: t(
+              "store.sign_in_favorite",
+              "Please sign in to save favorites!",
+            ),
             type: "error",
           },
         }),
@@ -115,15 +120,19 @@ export default function Home() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">All Products</h1>
+      <h1 className="text-2xl font-bold mb-4">
+        {t("store.all_products", "All Products")}
+      </h1>
 
       {loading ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#6B7280" }}>
-          Loading products...
+          {/* 🏆 FIXED: Translated Loading state */}
+          {t("store.loading", "Loading products...")}
         </div>
       ) : products.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#6B7280" }}>
-          No products found.
+          {/* 🏆 FIXED: Translated Empty state */}
+          {t("store.no_products", "No products found.")}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">

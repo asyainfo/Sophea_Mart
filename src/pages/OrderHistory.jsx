@@ -5,8 +5,10 @@ import { useAuth } from "../hooks/useAuth";
 import { fmt, fmtKHR } from "../utils/currency";
 import OrderDetailsModal from "../components/order/OrderDetailsModal";
 import Button from "../components/ui/Button";
+import { useTranslation } from "react-i18next";
 
 export default function OrderHistory() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +47,6 @@ export default function OrderHistory() {
   }, [user]);
 
   // --- SILENT SUPABASE REALTIME LISTENER ---
-  // This updates the UI list immediately if an order status shifts on the server side.
   useEffect(() => {
     if (!user) return;
 
@@ -57,7 +58,7 @@ export default function OrderHistory() {
           event: "UPDATE",
           schema: "public",
           table: "Orders",
-          filter: `user_id=eq.${user.id}`, // Scope exclusively to this customer
+          filter: `user_id=eq.${user.id}`,
         },
         () => {
           fetchMyOrders();
@@ -68,7 +69,6 @@ export default function OrderHistory() {
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // --- RENDER: UN-AUTHENTICATED STATE ---
@@ -80,12 +80,16 @@ export default function OrderHistory() {
           color="#9CA3AF"
           style={{ margin: "0 auto 20px" }}
         />
-        <h2>Please Sign In</h2>
+
+        <h2>{t("orders.please_sign_in", "Please Sign In")}</h2>
         <p style={{ color: "#6B7280" }}>
-          You need to be logged in to view your order history.
+          {t(
+            "orders.sign_in_desc",
+            "You must log in to view your order history.",
+          )}
         </p>
         <Button onClick={() => (window.location.href = "/")}>
-          Return to Store
+          {t("orders.back_to_store", "Back to Store")}
         </Button>
       </div>
     );
@@ -116,21 +120,21 @@ export default function OrderHistory() {
               marginBottom: 20,
             }}
           >
-            <FiArrowLeft /> Back to Store
+            <FiArrowLeft /> {t("orders.back_to_store", "Back to Store")}
           </button>
           <h1
             style={{
               margin: 0,
-              fontSize: 28,
+              fontSize: 30,
               display: "flex",
               alignItems: "center",
               gap: 12,
             }}
           >
-            <FiPackage /> My Orders
+            <FiPackage /> {t("orders.my_orders", "My Orders")}
           </h1>
           <p style={{ margin: "8px 0 0", opacity: 0.8 }}>
-            Track and manage your past purchases.
+            {t("orders.track_manage", "Track and manage your past orders.")}
           </p>
         </div>
       </div>
@@ -139,7 +143,7 @@ export default function OrderHistory() {
       <div style={{ maxWidth: 800, margin: "-20px auto 0", padding: "0 20px" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 40 }}>
-            Loading your orders...
+            {t("orders.loading", "Loading your orders...")}
           </div>
         ) : orders.length === 0 ? (
           /* Empty State */
@@ -157,12 +161,17 @@ export default function OrderHistory() {
               color="#E5E7EB"
               style={{ margin: "0 auto 16px" }}
             />
-            <h3 style={{ margin: "0 0 8px" }}>No orders yet</h3>
+            <h3 style={{ margin: "0 0 8px" }}>
+              {t("orders.no_orders", "No orders yet")}
+            </h3>
             <p style={{ color: "#6B7280", margin: "0 0 24px" }}>
-              Looks like you haven't made any purchases.
+              {t(
+                "orders.no_orders_desc",
+                "Looks like you haven't made any purchases.",
+              )}
             </p>
             <Button onClick={() => (window.location.href = "/")}>
-              Start Shopping
+              {t("orders.start_shopping", "Start Shopping")}
             </Button>
           </div>
         ) : (
@@ -211,7 +220,7 @@ export default function OrderHistory() {
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>
                     {new Date(order.created_at).toLocaleDateString()} •{" "}
-                    {order.total_items} items
+                    {order.total_items} {t("store.items", "items")}
                   </div>
                 </div>
 
@@ -244,7 +253,7 @@ export default function OrderHistory() {
                       setShowOrderModal(true);
                     }}
                   >
-                    View Details
+                    {t("orders.view_details", "View Details")}
                   </Button>
                 </div>
               </div>
@@ -262,7 +271,7 @@ export default function OrderHistory() {
             setSelectedOrderId(null);
           }}
           orderId={selectedOrderId}
-          isAdmin={false} // Explicitly false for customer accounts
+          isAdmin={false}
         />
       )}
     </div>

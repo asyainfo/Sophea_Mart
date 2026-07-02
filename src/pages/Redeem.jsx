@@ -2,28 +2,21 @@ import { useState, useEffect } from "react";
 import { FiClock, FiGift, FiAward, FiX } from "react-icons/fi";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../services/supabase";
+import { useTranslation } from "react-i18next";
 
 // --- CONSTANTS ---
+// 🏆 Added 'key' so we can translate the titles dynamically
 const VOUCHERS = [
-  { id: 1, cost: 200, valueKhr: 5000, title: "Membership Voucher 5,000 Riel" },
-  {
-    id: 2,
-    cost: 800,
-    valueKhr: 20000,
-    title: "Membership Voucher 20,000 Riel",
-  },
-  {
-    id: 3,
-    cost: 2000,
-    valueKhr: 50000,
-    title: "Membership Voucher 50,000 Riel",
-  },
+  { id: 1, cost: 200, valueKhr: 5000, key: "voucher_5k" },
+  { id: 2, cost: 800, valueKhr: 20000, key: "voucher_20k" },
+  { id: 3, cost: 2000, valueKhr: 50000, key: "voucher_50k" },
 ];
 
 const BRAND_BLUE = "#2563EB";
 const BRAND_BLUE_LIGHT = "#60A5FA";
 
 export default function Redeem() {
+  const { t } = useTranslation();
   const { user } = useAuth();
 
   const [points, setPoints] = useState(0);
@@ -38,7 +31,6 @@ export default function Redeem() {
     async function fetchPoints() {
       if (!user) return;
       try {
-        // 🏆 FIX: Only fetch orders that are officially "completed"!
         const { data: orders } = await supabase
           .from("Orders")
           .select("total_usd")
@@ -85,14 +77,16 @@ export default function Redeem() {
   // --- HANDLERS ---
   const handleRedeem = async (voucher) => {
     if (points < voucher.cost) {
+      // 🏆 Translated Alert
       alert(
-        `You need ${voucher.cost - points} more points to redeem this voucher!`,
+        `${t("redeem.need_more_1", "You need")} ${voucher.cost - points} ${t("redeem.need_more_2", "more points to redeem this reward!")}`,
       );
       return;
     }
 
+    // 🏆 Translated Confirm Box
     const confirmRedeem = window.confirm(
-      `Redeem ${voucher.cost} points for ${voucher.title}?`,
+      `${t("redeem.confirm_1", "Redeem")} ${t(`redeem.${voucher.key}`)} ${t("redeem.confirm_2", "for")} ${voucher.cost} ${t("redeem.points", "points")}?`,
     );
     if (!confirmRedeem) return;
 
@@ -121,11 +115,14 @@ export default function Redeem() {
 
       setPoints(newPointBalance);
       alert(
-        "🎉 Voucher successfully redeemed! It has been added to your wallet.",
+        t(
+          "redeem.success",
+          "🎉 Voucher successfully redeemed! It has been added to your wallet.",
+        ),
       );
     } catch (error) {
       console.error("Error redeeming voucher:", error);
-      alert("Failed to redeem voucher. Please try again.");
+      alert(t("redeem.error", "Failed to redeem voucher. Please try again."));
     } finally {
       setIsRedeeming(false);
     }
@@ -136,7 +133,6 @@ export default function Redeem() {
     setIsLoadingHistory(true);
 
     try {
-      // 🏆 FIX: Only show "completed" orders in the history timeline!
       const { data: orders } = await supabase
         .from("Orders")
         .select("id, created_at, total_usd")
@@ -157,7 +153,8 @@ export default function Redeem() {
             timeline.push({
               id: `order-${order.id}`,
               date: new Date(order.created_at),
-              title: `Order ${order.id}`,
+              // 🏆 Translated Timeline Order
+              title: `${t("redeem.order", "Order")} ${order.id}`,
               amount: `+${earned}`,
               type: "earn",
             });
@@ -175,7 +172,8 @@ export default function Redeem() {
           timeline.push({
             id: `voucher-${voucher.id}`,
             date: new Date(voucher.created_at),
-            title: `Redeemed ${voucher.discount_khr.toLocaleString()}៛ Voucher`,
+            // 🏆 Translated Timeline Voucher
+            title: `${t("redeem.redeemed", "Redeemed")} ${voucher.discount_khr.toLocaleString()}៛ ${t("redeem.voucher_word", "Voucher")}`,
             amount: `-${spent}`,
             type: "spend",
           });
@@ -194,7 +192,7 @@ export default function Redeem() {
   return (
     <div style={styles.pageContainer}>
       <div style={styles.header}>
-        <h1 style={styles.headerTitle}>Redeem</h1>
+        <h1 style={styles.headerTitle}>{t("redeem.page_title", "Redeem")}</h1>
       </div>
 
       <div style={styles.contentContainer}>
@@ -204,10 +202,12 @@ export default function Redeem() {
             color="rgba(255,255,255,0.1)"
             style={styles.heroIcon}
           />
-          <div style={styles.heroLabel}>You have</div>
+          <div style={styles.heroLabel}>{t("redeem.you_have", "You have")}</div>
           <div style={styles.heroPointsContainer}>
             {isLoading ? "..." : points}{" "}
-            <span style={styles.heroPointsLabel}>points</span>
+            <span style={styles.heroPointsLabel}>
+              {t("redeem.points", "points")}
+            </span>
           </div>
           <button
             onClick={handleOpenHistory}
@@ -219,11 +219,13 @@ export default function Redeem() {
               (e.currentTarget.style.backgroundColor = "transparent")
             }
           >
-            <FiClock size={16} /> Point history
+            <FiClock size={16} /> {t("redeem.point_history", "Point history")}
           </button>
         </div>
 
-        <h2 style={styles.rewardsSectionTitle}>Available rewards</h2>
+        <h2 style={styles.rewardsSectionTitle}>
+          {t("redeem.available_rewards", "Available Rewards")}
+        </h2>
         <div style={styles.vouchersList}>
           {VOUCHERS.map((voucher) => {
             const canAfford = points >= voucher.cost;
@@ -249,9 +251,9 @@ export default function Redeem() {
                 <div style={styles.ticketLeft}>
                   <div style={styles.ticketLeftInner}>
                     <div style={styles.ticketLabel}>
-                      MEMBERSHIP
+                      {t("redeem.membership", "MEMBERSHIP")}
                       <br />
-                      VOUCHER
+                      {t("redeem.voucher_upper", "VOUCHER")}
                     </div>
                     <div style={styles.ticketCircle}>
                       {voucher.valueKhr.toLocaleString()}៛
@@ -259,13 +261,18 @@ export default function Redeem() {
                   </div>
                 </div>
 
-                <div style={styles.ticketMiddle}>{voucher.title}</div>
+                {/* 🏆 Translated Voucher Title */}
+                <div style={styles.ticketMiddle}>
+                  {t(`redeem.${voucher.key}`)}
+                </div>
 
                 <div style={styles.ticketRight}>
                   <span style={styles.ticketCost}>
                     {voucher.cost.toLocaleString()}
                   </span>
-                  <span style={styles.ticketCostLabel}>points required</span>
+                  <span style={styles.ticketCostLabel}>
+                    {t("redeem.points_required", "points required")}
+                  </span>
                 </div>
               </div>
             );
@@ -277,7 +284,9 @@ export default function Redeem() {
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
             <div style={styles.modalHeader}>
-              <h3 style={styles.modalTitle}>Point History</h3>
+              <h3 style={styles.modalTitle}>
+                {t("redeem.point_history", "Point history")}
+              </h3>
               <button
                 onClick={() => setHistoryOpen(false)}
                 style={styles.modalCloseButton}
@@ -287,14 +296,16 @@ export default function Redeem() {
             </div>
             <div style={styles.modalBody}>
               {isLoadingHistory ? (
-                <div style={styles.emptyState}>Loading history...</div>
+                <div style={styles.emptyState}>
+                  {t("redeem.loading_history", "Loading history...")}
+                </div>
               ) : historyData.length === 0 ? (
                 <div style={styles.emptyState}>
                   <FiClock
                     size={48}
                     style={{ opacity: 0.2, marginBottom: 12 }}
                   />
-                  <p>No point history found.</p>
+                  <p>{t("redeem.no_history", "No point history found.")}</p>
                 </div>
               ) : (
                 <div style={styles.historyList}>

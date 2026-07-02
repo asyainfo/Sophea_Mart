@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { FiUploadCloud } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
@@ -14,7 +15,7 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 
-// MASTER CATEGORY LIST: Matches your Supabase ENUM and Hero.jsx exactly
+// MASTER CATEGORY LIST: Matches your Supabase ENUM exactly
 const CATEGORIES = [
   "ភេសជ្ជៈ",
   "ជម្រើសល្អៗបំផុត",
@@ -42,10 +43,12 @@ const CATEGORIES = [
 ];
 
 export default function ProductFormModal({ open, onClose, product, onSave }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [sizes, setSizes] = useState("");
   const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState(null);
@@ -54,12 +57,12 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
 
   // Sync state when modal opens or product changes
   useEffect(() => {
-    // Safely check if product exists AND has keys (is not an empty object)
     if (product && Object.keys(product).length > 0) {
       setName(product.name || "");
       setCategory(product.category || CATEGORIES[0]);
       setPrice(product.price?.toString() || "");
       setStock(product.stock?.toString() || "");
+      setBarcode(product.barcode || "");
       setSizes(product.sizes || "");
       setDescription(product.description || "");
       setPreviewUrl(
@@ -73,6 +76,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
       setCategory(CATEGORIES[0]);
       setPrice("");
       setStock("");
+      setBarcode("");
       setSizes("");
       setDescription("");
       setPreviewUrl("");
@@ -91,10 +95,14 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // 1. Safe React Validation: Check if it's missing an ID to confirm it's a new product
     const isNewProduct = !product?.id;
     if (isNewProduct && !imageFile) {
-      alert("Please choose a product image before saving!");
+      alert(
+        t(
+          "product_form.alert_image_required",
+          "Please choose a product image before saving!",
+        ),
+      );
       return;
     }
 
@@ -103,7 +111,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     try {
       let finalImageUrl = product?.image || "";
 
-      // 2. Upload Image to Supabase
+      // Upload Image to Supabase
       if (imageFile) {
         const fileExt = imageFile.name.split(".").pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -121,21 +129,22 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         finalImageUrl = data.publicUrl;
       }
 
-      // 3. Send sanitized data to the parent component
-      // Using parseFloat(...) || 0 prevents Supabase 'NaN' crashes
       await onSave({
-        ...(product || {}), // Preserve the ID if editing
+        ...(product || {}),
         name: name.trim(),
         category,
         price: parseFloat(price) || 0,
         stock: parseInt(stock, 10) || 0,
+        barcode: barcode.trim(),
         sizes: sizes.trim(),
         description: description.trim(),
         image: finalImageUrl,
       });
     } catch (error) {
       console.error("Save Error:", error.message);
-      alert("Failed to save product: " + error.message);
+      alert(
+        `${t("product_form.alert_save_failed", "Failed to save product: ")} ${error.message}`,
+      );
     } finally {
       setIsUploading(false);
     }
@@ -145,12 +154,18 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     <Modal
       open={open}
       onClose={onClose}
-      title={product?.id ? "Edit Product" : "Add New Product"}
+      title={
+        product?.id
+          ? t("product_form.title_edit", "Edit Product")
+          : t("product_form.title_add", "Add New Product")
+      }
     >
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
         {/* --- Image Upload Area --- */}
         <div>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Product Image</label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            {t("product_form.lbl_product_image", "Product Image")}
+          </label>
           <div
             style={{
               marginTop: 6,
@@ -190,7 +205,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
                   cursor: "pointer",
                 }}
               >
-                {previewUrl ? "Change Photo" : "Choose a Photo"}
+                {previewUrl
+                  ? t("product_form.btn_change_photo", "Change Photo")
+                  : t("product_form.btn_choose_photo", "Choose a Photo")}
                 <input
                   type="file"
                   accept="image/*"
@@ -204,7 +221,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
 
         {/* --- Inputs --- */}
         <div>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Product Name</label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            {t("product_form.lbl_product_name", "Product Name")}
+          </label>
           <input
             required
             style={inputStyle}
@@ -217,7 +236,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
         >
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Category</label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>
+              {t("product_form.lbl_category", "Category")}
+            </label>
             <select
               style={inputStyle}
               value={category}
@@ -231,7 +252,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Price (USD)</label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>
+              {t("product_form.lbl_price", "Price (USD)")}
+            </label>
             <input
               required
               type="number"
@@ -249,7 +272,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         >
           <div>
             <label style={{ fontSize: 13, fontWeight: 600 }}>
-              Stock Quantity
+              {t("product_form.lbl_stock", "Stock Quantity")}
             </label>
             <input
               required
@@ -262,19 +285,34 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
           </div>
           <div>
             <label style={{ fontSize: 13, fontWeight: 600 }}>
-              Size (Optional)
+              {t("product_form.lbl_barcode", "Barcode (Optional)")}
             </label>
             <input
               style={inputStyle}
-              value={sizes}
-              onChange={(e) => setSizes(e.target.value)}
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder={t(
+                "product_form.placeholder_barcode",
+                "Scan or type...",
+              )}
             />
           </div>
         </div>
 
         <div>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
-            Description (Optional)
+            {t("product_form.lbl_size", "Size (Optional)")}
+          </label>
+          <input
+            style={inputStyle}
+            value={sizes}
+            onChange={(e) => setSizes(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            {t("product_form.lbl_description", "Description (Optional)")}
           </label>
           <textarea
             style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
@@ -286,10 +324,10 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         {/* --- Submit Button --- */}
         <Button full type="submit" disabled={isUploading}>
           {isUploading
-            ? "Saving..."
+            ? t("product_form.btn_saving", "Saving...")
             : product?.id
-              ? "Update Product"
-              : "Save Product"}
+              ? t("product_form.btn_update", "Update Product")
+              : t("product_form.btn_save", "Save Product")}
         </Button>
       </form>
     </Modal>

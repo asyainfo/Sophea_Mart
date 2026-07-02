@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
 import { fmt, fmtKHR } from "../../utils/currency";
+import { useTranslation } from "react-i18next";
 
 export default function ProductCard({
   product,
@@ -10,6 +11,7 @@ export default function ProductCard({
   onToggleFavorite,
   onQuickView,
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [isJustAdded, setIsJustAdded] = useState(false);
 
@@ -35,10 +37,25 @@ export default function ProductCard({
   // --- COMPUTED STYLES ---
   const getStockStatus = () => {
     if (product.stock > 10)
-      return { text: "In Stock", bg: "#DBEAFE", color: "#2563EB" };
+      return {
+        text: t("quick_view.in_stock", "In Stock"),
+        bg: "#DBEAFE",
+        color: "#2563EB",
+      };
     if (product.stock > 0)
-      return { text: `${product.stock} left`, bg: "#FEF3C7", color: "#92400E" };
-    return { text: "Out of Stock", bg: "#FEE2E2", color: "#991B1B" };
+      return {
+        // 🏆 Uses your verified dynamic layout syntax
+        text: t("quick_view.only_left", "Only {{count}} left", {
+          count: product.stock,
+        }),
+        bg: "#FEF3C7",
+        color: "#92400E",
+      };
+    return {
+      text: t("quick_view.out_of_stock", "Out of Stock"),
+      bg: "#FEE2E2",
+      color: "#991B1B",
+    };
   };
   const stockStatus = getStockStatus();
 
@@ -73,7 +90,7 @@ export default function ProductCard({
           justifyContent: "center",
           position: "relative",
           padding: 16,
-          cursor: "pointer", //
+          cursor: "pointer",
         }}
       >
         {/* Favorite Heart Button */}
@@ -138,7 +155,8 @@ export default function ProductCard({
                 boxShadow: "0 4px 12px rgba(153, 27, 27, 0.3)",
               }}
             >
-              SOLD OUT
+              {/* 🏆 Uses your root translation for consistency */}
+              {t("quick_view.sold_out", "SOLD OUT")}
             </span>
           </div>
         )}
