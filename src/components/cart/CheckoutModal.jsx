@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useTranslation } from "react-i18next"; // Added i18n hook
+import { useTranslation } from "react-i18next";
 import {
   FiCheckCircle,
   FiCreditCard,
@@ -14,7 +14,6 @@ import { useCart } from "../../hooks/useCart";
 import { useAuth } from "../../hooks/useAuth";
 import { fmt, fmtKHR } from "../../utils/currency";
 import Modal from "../ui/Modal";
-import Row from "../ui/Row";
 import Button from "../ui/Button";
 import { supabase } from "../../services/supabase";
 
@@ -24,7 +23,7 @@ export default function CheckoutModal({
   toast,
   appliedVoucher,
 }) {
-  const { t } = useTranslation(); // Initialize translation function
+  const { t } = useTranslation();
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
 
@@ -119,7 +118,7 @@ export default function CheckoutModal({
       const orderId = `ORD-${String(Date.now()).slice(-4)}`;
       let receiptUrl = null;
 
-      // 🏆 1. Fetch Customer Name for Notification
+      // 1. Fetch Customer Name for Notification
       const { data: profileData } = await supabase
         .from("profiles")
         .select("full_name")
@@ -169,13 +168,14 @@ export default function CheckoutModal({
         .insert([newOrder]);
       if (orderError) throw orderError;
 
-      // 4. Create Order Items
+      // 4. Create Order Items (Strictly mapped to Supabase Schema)
       const orderItemsToSave = items.map((item) => ({
         order_id: orderId,
         product_name: item.name,
         quantity: item.quantity || 1,
         price: item.price,
         product_id: item.isGift ? null : item.id,
+        // 🚫 REMOVED: image: item.image (This caused the 400 Schema Cache error!)
       }));
 
       const { error: itemsError } = await supabase
@@ -224,7 +224,7 @@ export default function CheckoutModal({
           console.error("Failed to mark voucher as used:", voucherError);
       }
 
-      // 🏆 7. TELEGRAM BOT NOTIFICATION
+      // 7. TELEGRAM BOT NOTIFICATION
       try {
         const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
         const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;

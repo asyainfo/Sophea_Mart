@@ -10,10 +10,10 @@ import { supabase } from "../../services/supabase";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { fmt, fmtKHR } from "../../utils/currency";
-import { useTranslation } from "react-i18next"; // 🏆 1. Imported
+import { useTranslation } from "react-i18next";
 
 export default function OrderDetailsModal({ open, onClose, orderId }) {
-  const { t } = useTranslation(); // 🏆 2. Initialized
+  const { t } = useTranslation();
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,6 +27,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
   const fetchOrderDetails = async () => {
     setIsLoading(true);
     try {
+      // 1. Fetch the Order details
       const { data: orderData, error: orderError } = await supabase
         .from("Orders")
         .select("*")
@@ -36,6 +37,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
       if (orderError) throw orderError;
       setOrder(orderData);
 
+      // 2. Fetch the Order Items
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
         .select("*")
@@ -45,24 +47,58 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
 
       let mergedItems = itemsData || [];
 
+      // 🏆 3. THE FIX: Smart Image Fetching for Products AND Free Gifts
       if (mergedItems.length > 0) {
+        // Separate standard items (have ID) and gifts (null ID)
         const productIds = mergedItems.map((i) => i.product_id).filter(Boolean);
+        const giftNames = mergedItems
+          .filter((i) => !i.product_id)
+          .map((i) => i.product_name);
 
+        let allProducts = [];
+        let allGifts = [];
+
+        // Fetch standard item images by ID
         if (productIds.length > 0) {
-          const { data: productsData } = await supabase
+          const { data: idData } = await supabase
             .from("products")
-            .select("id, image")
+            .select("id, name, image")
             .in("id", productIds);
-
-          if (productsData) {
-            mergedItems = mergedItems.map((item) => {
-              const matchedProduct = productsData.find(
-                (p) => p.id === item.product_id,
-              );
-              return { ...item, image: matchedProduct?.image || null };
-            });
-          }
+          if (idData) allProducts = idData;
         }
+
+        // Fetch gift images from the 'free_gifts' table matching the exact name
+        if (giftNames.length > 0) {
+          const { data: giftData } = await supabase
+            .from("free_gifts")
+            .select("name, image_url") // 🏆 Grabbing the correct column name!
+            .in("name", giftNames);
+          if (giftData) allGifts = giftData;
+        }
+
+        // Map the correct images back to the order items
+        mergedItems = mergedItems.map((item) => {
+          let matchedImage = null;
+
+          if (item.product_id) {
+            // It's a regular product
+            const matchedProduct = allProducts.find(
+              (p) => p.id === item.product_id,
+            );
+            if (matchedProduct) matchedImage = matchedProduct.image;
+          } else if (item.product_name) {
+            // It's a free gift - search case-insensitive
+            const matchedGift = allGifts.find(
+              (g) => g.name.toLowerCase() === item.product_name.toLowerCase(),
+            );
+            if (matchedGift) matchedImage = matchedGift.image_url; // 🏆 Assigning the image_url
+          }
+
+          return {
+            ...item,
+            image: matchedImage || item.image || item.product_image || null,
+          };
+        });
       }
 
       setItems(mergedItems);
@@ -135,7 +171,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
         <div className="r-center">
           <h2 style={{ margin: "10px 0 5px", fontSize: 18 }}>Sophea Mart</h2>
           <div>Phnom Penh, Cambodia</div>
-          <div>Tel: 012 345 678</div>
+          <div>Tel: +855 61 470 636</div>
           <div className="r-line"></div>
           <div className="r-bold">{t("order_modal.receipt", "RECEIPT")}</div>
           <div style={{ fontSize: 10, marginTop: 4 }}>

@@ -1,14 +1,11 @@
 import { useState, useEffect, Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { FiShoppingCart, FiLoader } from "react-icons/fi";
-import { useTranslation } from "react-i18next";
+import { FiLoader } from "react-icons/fi";
 
 // Contexts
 import { AuthProvider } from "./context/AuthContext";
 import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
-import { useAuth } from "./hooks/useAuth";
-import { useCart } from "./hooks/useCart";
 
 // Global Alerts & UI
 import GlobalAudioAlerts from "./components/GlobalAudioAlerts";
@@ -23,7 +20,7 @@ import CartDrawer from "./components/cart/CartDrawer";
 import CheckoutModal from "./components/cart/CheckoutModal";
 import Footer from "./components/layout/Footer";
 
-// 🏆 UPGRADE 1: Lazy Loading Pages for Maximum Performance
+// Lazy Loading Pages for Maximum Performance
 const HomePage = lazy(() => import("./pages/HomePage"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const Cart = lazy(() => import("./pages/Cart"));
@@ -34,17 +31,15 @@ const Redeem = lazy(() => import("./pages/Redeem"));
 
 // Simple Loader for Suspense
 const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-[50vh] text-blue-500">
-    <FiLoader className="animate-spin" size={32} />
+  <div className="flex flex-col items-center justify-center min-h-[60vh] text-blue-500 gap-4">
+    <FiLoader className="animate-spin" size={40} />
+    <span className="text-gray-500 font-medium">Loading...</span>
   </div>
 );
 
 function MainApp() {
-  const { t } = useTranslation();
-  const { profile } = useAuth();
   const { toasts, show: toast } = useToast();
   const location = useLocation();
-  const { count = 0 } = useCart();
 
   // --- UI STATE ---
   const [loginOpen, setLoginOpen] = useState(false);
@@ -83,13 +78,7 @@ function MainApp() {
       )}
 
       {/* Main Content Container */}
-      <main
-        className="max-w-7xl mx-auto px-4 pt-6 flex-grow w-full relative z-10"
-        style={{
-          paddingBottom: count > 0 && !isAdminPage ? "100px" : "24px",
-        }}
-      >
-        {/* 🏆 Suspense catches the lazy loaded pages while they fetch */}
+      <main className="max-w-7xl mx-auto px-4 pt-6 pb-12 flex-grow w-full relative z-10">
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -108,20 +97,6 @@ function MainApp() {
 
       {/* FOOTER */}
       {!isAdminPage && <Footer />}
-
-      {/* 🏆 UPGRADE 2: Converted Floating Button to pure Tailwind CSS */}
-      {!isAdminPage && count > 0 && (
-        <button
-          onClick={() => setCartOpen(true)}
-          className="fixed bottom-6 right-6 z-[99] bg-blue-600 text-white rounded-full px-6 py-4 flex items-center gap-3 text-base font-bold shadow-[0_10px_25px_rgba(37,99,235,0.35)] transition-all duration-300 hover:scale-105 hover:-translate-y-1"
-        >
-          <FiShoppingCart size={22} />
-          <span>{t("checkout.title", "Checkout")}</span>
-          <div className="bg-white text-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-sm font-semibold">
-            {count}
-          </div>
-        </button>
-      )}
 
       {/* MODALS */}
       <CartDrawer
@@ -185,7 +160,6 @@ export default function App() {
       <StoreProvider>
         <CartProvider>
           <BrowserRouter>
-            {/* 🏆 UPGRADE 3: overflow-x-hidden is the magic fix for the mobile white-gap bug! */}
             <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden w-full">
               <MainApp />
             </div>

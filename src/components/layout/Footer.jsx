@@ -5,9 +5,9 @@ import {
   FiPhone,
   FiMail,
   FiFacebook,
-  FiInstagram,
   FiSend,
   FiChevronRight,
+  FiRefreshCw, // 🏆 Imported a proper exchange icon
 } from "react-icons/fi";
 
 export default function Footer() {
@@ -21,7 +21,7 @@ export default function Footer() {
 
   return (
     <footer className="sophea-footer">
-      {/* 🏆 Pure CSS Styles: Guaranteed to work without Tailwind */}
+      {/* 🏆 Pure CSS Styles */}
       <style>
         {`
           .sophea-footer {
@@ -81,6 +81,7 @@ export default function Footer() {
           .footer-exchange {
             display: inline-flex;
             align-items: center;
+            gap: 10px; /* 🏆 Added gap for perfect spacing between icon and text */
             padding: 8px 16px;
             background: rgba(59, 130, 246, 0.1);
             border: 1px solid rgba(59, 130, 246, 0.2);
@@ -204,7 +205,9 @@ export default function Footer() {
               )}
             </p>
             <div className="footer-exchange">
-              💱 {t("footer.exchange_rate", "1 USD = 4,000 KHR")}
+              {/* 🏆 Replaced Emoji with beautifully styled React Icon */}
+              <FiRefreshCw size={16} />
+              <span>{t("footer.exchange_rate", "1 USD = 4,000 KHR")}</span>
             </div>
           </div>
 
@@ -274,13 +277,24 @@ export default function Footer() {
               {t("footer.follow_us", "Follow Us")}
             </h4>
             <div className="footer-social-flex">
-              <a href="#" className="footer-social-btn">
+              {/* Facebook Link */}
+              <a
+                href="https://www.facebook.com/share/1GeiqjKxJY/?mibextid=wwXIfr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-social-btn"
+                aria-label="Facebook"
+              >
                 <FiFacebook size={18} />
               </a>
-              <a href="#" className="footer-social-btn">
-                <FiInstagram size={18} />
-              </a>
-              <a href="#" className="footer-social-btn">
+              {/* Telegram Link */}
+              <a
+                href="https://www.facebook.com/share/1GeiqjKxJY/?mibextid=wwXIfr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-social-btn"
+                aria-label="Telegram"
+              >
                 <FiSend size={18} />
               </a>
             </div>
