@@ -17,6 +17,7 @@ import {
   FaMortarPestle,
   FaCalendarCheck,
   FaShoePrints,
+  FaOilCan,
 } from "react-icons/fa";
 import {
   BiSolidCoffeeBean,
@@ -30,9 +31,9 @@ import {
 } from "react-icons/bi";
 
 import { GiClothes, GiFlour } from "react-icons/gi";
-import { GiNoodles } from "react-icons/gi";
-import { PiCowFill } from "react-icons/pi";
-import { FaIceCream, FaKitchenSet } from "react-icons/fa6";
+import { GiNoodles, GiSoap } from "react-icons/gi";
+import { PiCowFill, PiWashingMachine } from "react-icons/pi";
+import { FaIceCream, FaKitchenSet, FaSprayCanSparkles } from "react-icons/fa6";
 import { useTranslation } from "react-i18next";
 
 // 🏆 UPGRADED: Added "dbValue" (for Supabase) and "key" (for Translations)
@@ -59,9 +60,9 @@ const CATEGORIES = [
     icon: <BiSolidSpa size={16} />,
   },
   {
-    key: "beauty_care",
-    dbValue: "ថែរក្សាសម្រស់",
-    icon: <BiSolidMagicWand size={16} />,
+    key: "fragrances",
+    dbValue: "គ្រឿងក្រអូប",
+    icon: <FaSprayCanSparkles size={16} />,
   },
   { key: "shampoo", dbValue: "សាប៊ូកក់សក់", icon: <FaShower size={16} /> },
   {
@@ -80,6 +81,21 @@ const CATEGORIES = [
     icon: <FiScissors size={16} />,
   },
   {
+    key: "washing_soap",
+    dbValue: "សាប៊ូបោកខោអាវ",
+    icon: <PiWashingMachine size={16} />,
+  },
+  {
+    key: "beauty_care",
+    dbValue: "ថែរក្សាសម្រស់",
+    icon: <BiSolidMagicWand size={16} />,
+  },
+  {
+    key: "washing_body",
+    dbValue: "សាប៊ូដុះខ្លួន",
+    icon: <GiSoap size={16} />,
+  },
+  {
     key: "electronics",
     dbValue: "អេឡិចត្រូនិក",
     icon: <BiSolidBolt size={16} />,
@@ -92,6 +108,11 @@ const CATEGORIES = [
   { key: "construction", dbValue: "គ្រឿងសំណង់", icon: <FaTools size={16} /> },
   { key: "wholesale", dbValue: "ផលិតផលលក់ដុំ", icon: <FiLayers size={16} /> },
   { key: "flour", dbValue: "ម្សៅ", icon: <GiFlour size={16} /> },
+  {
+    key: "frying_oil",
+    dbValue: "ប្រេងឆា",
+    icon: <FaOilCan size={16} />,
+  },
   {
     key: "kitchenware",
     dbValue: "បរិក្ខារផ្ទះបាយ",
