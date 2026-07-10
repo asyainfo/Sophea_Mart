@@ -3,11 +3,13 @@
     "fill_fields": "Please fill in all fields.",
     "welcome_back": "Welcome back!",
     "invalid_credentials": "Invalid email or password.",
+    "system_error": "An unexpected error occurred.",
     "title": "Sign in to Sophea Mart",
     "email_label": "Email",
     "password_label": "Password",
     "password_placeholder": "Password",
     "forgot_password": "Forgot Password?",
+    "signing_in": "Signing in...",
     "sign_in": "Sign In",
     "no_account": "No account?",
     "register": "Register"

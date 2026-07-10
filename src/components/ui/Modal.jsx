@@ -1,13 +1,28 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
 export default function Modal({ open, onClose, children, title, wide }) {
+  // 🏆 UX BONUS: Prevents the background page from scrolling when the modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div onClick={onClose} style={styles.overlay}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           ...styles.modalBox,
-          maxWidth: wide ? 720 : 480, // Dynamically changes width based on props
+          maxWidth: wide ? 720 : 480,
         }}
       >
         {/* --- HEADER --- */}
@@ -21,7 +36,8 @@ export default function Modal({ open, onClose, children, title, wide }) {
         {/* --- SCROLLABLE CONTENT --- */}
         <div style={styles.content}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -31,21 +47,21 @@ export default function Modal({ open, onClose, children, title, wide }) {
 const styles = {
   overlay: {
     position: "fixed",
-    inset: 0, // Shorthand for top, right, bottom, left: 0
+    inset: 0,
     background: "rgba(0,0,0,0.45)",
-    zIndex: 1000,
+    zIndex: 999999,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 16, // Ensures the modal never touches the absolute edge of tiny phones
+    padding: 16,
   },
   modalBox: {
     background: "#fff",
     borderRadius: 20,
     width: "100%",
-    maxHeight: "85dvh", // 🏆 Dynamic Viewport Height: Perfect for mobile browsers
+    maxHeight: "85dvh",
     display: "flex",
-    flexDirection: "column", // Stacks the header on top of the content
+    flexDirection: "column",
     boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
   },
   header: {
@@ -53,8 +69,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "20px 24px",
-    borderBottom: "1px solid #f3f4f6", // Adds a clean divider line
-    flexShrink: 0, // Prevents the header from getting squished when scrolling
+    borderBottom: "1px solid #f3f4f6",
+    flexShrink: 0,
   },
   title: {
     margin: 0,
@@ -78,7 +94,7 @@ const styles = {
   },
   content: {
     padding: "20px 24px",
-    overflowY: "auto", // 🏆 Tells the content inside to scroll independently
-    flex: 1, // Fills the remaining space left by the header
+    overflowY: "auto",
+    flex: 1,
   },
 };

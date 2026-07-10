@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 🏆 1. LOGIN FUNCTION: Now safely returns the success state and error message
   const login = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -55,24 +56,24 @@ export function AuthProvider({ children }) {
     return { success: !error, error: error?.message };
   };
 
+  // 🏆 2. REGISTER FUNCTION: Force the customer's Name into the profiles table immediately
   const register = async (name, email, password) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    // 1. If Supabase rejects it (e.g., email taken, weak password), return the REAL error!
+    // If Supabase rejects it (e.g., email taken, weak password), return the REAL error!
     if (error) {
       return { success: false, error: error.message };
     }
 
-    // 🏆 2. FIX: Force the customer's Name into the profiles table immediately!
     if (data?.user) {
       await supabase.from("profiles").upsert([
         {
           id: data.user.id,
           email: email,
-          full_name: name, // Saving to our new column!
+          full_name: name,
         },
       ]);
     }
@@ -86,7 +87,6 @@ export function AuthProvider({ children }) {
     setProfile(null);
   };
 
-  // Forget Password
   const sendPasswordReset = async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/update-password`,

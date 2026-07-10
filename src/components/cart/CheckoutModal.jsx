@@ -236,7 +236,7 @@ export default function CheckoutModal({
             timeStyle: "short",
           });
 
-          const telegramMessage = `🚨 *NEW ORDER RECEIVED!* 🚨\n----------------------------------------\n🆔 *Order ID:* \`${orderId}\`\n👤 *Customer:* ${customerName}\n📅 *Date:* ${formattedDate}\n\n💵 *Total Amount:* $${finalTotalUsd.toFixed(2)} (${totalKhrValue.toLocaleString()}៛)\n📦 *Total Items:* ${totalItemsCount} items\n----------------------------------------\n🛒 *Check your Admin Dashboard to process this order.*`;
+          const telegramMessage = `🚨 *មានការបញ្ជាទិញថ្មី!* 🚨\n----------------------------------------\n🆔 *លេខកូដបញ្ជាទិញ:* \`${orderId}\`\n👤 *អតិថិជន:* ${customerName}\n📅 *កាលបរិច្ឆេទ:* ${formattedDate}\n\n💵 *តម្លៃសរុប:* $${finalTotalUsd.toFixed(2)} (${totalKhrValue.toLocaleString()}៛)\n📦 *ចំនួនទំនិញ:* ${totalItemsCount} items\n----------------------------------------\n🛒 *សូមពិនិត្យមើល Admin Dashboard ដើម្បីដំណើរការការបញ្ជាទិញនេះ។*`;
 
           await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: "POST",

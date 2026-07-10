@@ -7,7 +7,7 @@ import {
   FiFacebook,
   FiSend,
   FiChevronRight,
-  FiRefreshCw, // 🏆 Imported a proper exchange icon
+  FiRefreshCw,
 } from "react-icons/fi";
 
 export default function Footer() {
@@ -21,11 +21,10 @@ export default function Footer() {
 
   return (
     <footer className="sophea-footer">
-      {/* 🏆 Pure CSS Styles */}
       <style>
         {`
           .sophea-footer {
-            background-color: #003D99; /* Deep Slate */
+            background-color: #003D99;
             color: #aab3bfff;
             padding: 64px 24px 32px;
             border-top: 1px solid #3d4c62ff;
@@ -41,7 +40,7 @@ export default function Footer() {
             transform: translateX(-50%);
             width: 800px;
             height: 400px;
-            background-color: rgba(37, 99, 235, 0.08); /* Soft blue glow */
+            background-color: rgba(37, 99, 235, 0.08); 
             filter: blur(100px);
             border-radius: 50%;
             pointer-events: none;
@@ -81,7 +80,7 @@ export default function Footer() {
           .footer-exchange {
             display: inline-flex;
             align-items: center;
-            gap: 10px; /* 🏆 Added gap for perfect spacing between icon and text */
+            gap: 10px; 
             padding: 8px 16px;
             background: rgba(59, 130, 246, 0.1);
             border: 1px solid rgba(59, 130, 246, 0.2);
@@ -193,7 +192,6 @@ export default function Footer() {
 
       <div className="footer-container">
         <div className="footer-grid">
-          {/* Column 1: Brand & Info */}
           <div>
             <h3 className="footer-brand" onClick={() => handleNavigation("/")}>
               SOPHEA <span>MART</span>
@@ -205,13 +203,11 @@ export default function Footer() {
               )}
             </p>
             <div className="footer-exchange">
-              {/* 🏆 Replaced Emoji with beautifully styled React Icon */}
               <FiRefreshCw size={16} />
               <span>{t("footer.exchange_rate", "1 USD = 4,000 KHR")}</span>
             </div>
           </div>
 
-          {/* Column 2: Quick Links */}
           <div>
             <h4 className="footer-title">
               {t("footer.quick_links", "Quick Links")}
@@ -242,7 +238,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Column 3: Contact Us */}
           <div>
             <h4 className="footer-title">
               {t("footer.contact_us", "Contact Us")}
@@ -271,13 +266,11 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Column 4: Social Media */}
           <div>
             <h4 className="footer-title">
               {t("footer.follow_us", "Follow Us")}
             </h4>
             <div className="footer-social-flex">
-              {/* Facebook Link */}
               <a
                 href="https://www.facebook.com/share/1GeiqjKxJY/?mibextid=wwXIfr"
                 target="_blank"
@@ -287,9 +280,9 @@ export default function Footer() {
               >
                 <FiFacebook size={18} />
               </a>
-              {/* Telegram Link */}
+              {/* 🏆 REPLACE THIS LINK WITH YOUR ACTUAL TELEGRAM LINK */}
               <a
-                href="https://www.facebook.com/share/1GeiqjKxJY/?mibextid=wwXIfr"
+                href="https://t.me/+nQq97lWrFwowODc1"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="footer-social-btn"
@@ -301,7 +294,6 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright */}
         <div className="footer-bottom">
           <p>
             © {new Date().getFullYear()} Sophea Mart.{" "}

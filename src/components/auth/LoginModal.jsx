@@ -3,8 +3,8 @@ import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import Field from "../ui/Field";
 import Button from "../ui/Button";
-import { FiEye, FiEyeOff } from "react-icons/fi";
-import { useTranslation } from "react-i18next"; // 🏆 1. Imported
+import { FiEye, FiEyeOff, FiLoader } from "react-icons/fi";
+import { useTranslation } from "react-i18next";
 
 export default function LoginModal({
   open,
@@ -13,30 +13,43 @@ export default function LoginModal({
   onSwitchForgot,
   toast,
 }) {
-  const { t } = useTranslation(); // 🏆 2. Initialized
+  const { t } = useTranslation();
   const { login } = useAuth();
+
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const submit = async () => {
-    // 🏆 NEW: Strict validation check
-    // If email or password is blank (or just spaces), stop and show an error
+    // Prevent empty submissions
     if (!email.trim() || !pw.trim()) {
       toast(t("login.fill_fields", "Please fill in all fields."), "error");
-      return; // This strictly stops the login process right here
+      return;
     }
 
-    const success = await login(email, pw);
+    setIsLoading(true);
 
-    if (success) {
-      toast(t("login.welcome_back", "Welcome back!"), "success");
-      onClose();
-    } else {
-      toast(
-        t("login.invalid_credentials", "Invalid email or password."),
-        "error",
-      );
+    try {
+      // 🏆 Fetch the result object from AuthContext
+      const result = await login(email, pw);
+
+      // 🏆 Check if the login was actually successful
+      if (result.success) {
+        toast(t("login.welcome_back", "Welcome back!"), "success");
+        onClose();
+      } else {
+        // 🏆 THE FIX: Force the system to use YOUR translated text,
+        // completely ignoring the English error from Supabase.
+        toast(
+          t("login.invalid_credentials", "Invalid email or password."),
+          "error",
+        );
+      }
+    } catch (err) {
+      toast(t("login.system_error", "An unexpected error occurred."), "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -132,8 +145,22 @@ export default function LoginModal({
         </span>
       </div>
 
-      <Button onClick={submit} full>
-        {t("login.sign_in", "Sign In")}
+      <Button onClick={submit} full disabled={isLoading}>
+        {isLoading ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+            }}
+          >
+            <FiLoader className="animate-spin" />{" "}
+            {t("login.signing_in", "Signing in...")}
+          </div>
+        ) : (
+          t("login.sign_in", "Sign In")
+        )}
       </Button>
 
       <p

@@ -1,15 +1,17 @@
 {
   "login": {
-    "fill_fields": "សូមបំពេញព័ត៌មានទាំងអស់។",
-    "welcome_back": "សូមស្វាគមន៍ការត្រឡប់មកវិញ!",
-    "invalid_credentials": "អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវទេ។",
+    "fill_fields": "សូមបំពេញព័ត៌មានឱ្យបានគ្រប់ជ្រុងជ្រោយ។",
+    "welcome_back": "សូមស្វាគមន៍ត្រលប់មកវិញ!",
+    "invalid_credentials": "អ៊ីមែល ឬលេខសម្ងាត់មិនត្រឹមត្រូវទេ។",
+    "system_error": "មានបញ្ហាមិនរំពឹងទុកបានកើតឡើង។",
     "title": "ចូលគណនី Sophea Mart",
     "email_label": "អ៊ីមែល",
-    "password_label": "ពាក្យសម្ងាត់",
-    "password_placeholder": "បញ្ចូលពាក្យសម្ងាត់",
-    "forgot_password": "ភ្លេចពាក្យសម្ងាត់មែនទេ?",
+    "password_label": "លេខសម្ងាត់",
+    "password_placeholder": "លេខសម្ងាត់",
+    "forgot_password": "ភ្លេចលេខសម្ងាត់មែនទេ?",
+    "signing_in": "កំពុងចូលគណនី...",
     "sign_in": "ចូលគណនី",
-    "no_account": "មិនទាន់មានគណនីមែនទេ?",
+    "no_account": "មិនទាន់មានគណនី?",
     "register": "ចុះឈ្មោះ"
   },
   "register": {

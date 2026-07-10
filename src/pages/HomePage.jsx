@@ -17,7 +17,8 @@ import { useTranslation } from "react-i18next";
 
 const styles = {
   page: {
-    minHeight: "100vh",
+    // 🏆 THE FIX: Removed minHeight: "100vh" so it flows naturally and pushes the footer down!
+    width: "100%",
     background: "#f9fafb",
     fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
   },
@@ -191,7 +192,7 @@ export default function HomePage() {
           .mobile-container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 16px 64px; 
+            padding: 0 16px 40px; /* Reduced bottom padding slightly to fit snugly above footer */
           }
 
           @media (min-width: 600px) {
@@ -200,7 +201,7 @@ export default function HomePage() {
                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
             }
             .mobile-container {
-              padding: 0 24px 64px;
+              padding: 0 24px 40px;
             }
           }
         `}
