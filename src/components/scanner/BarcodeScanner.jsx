@@ -1,115 +1,110 @@
 import { useEffect, useState } from "react";
-import { Html5QrcodeScanner } from "html5-qrcode";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../../services/supabase"; // Adjust this path if needed
+// 🏆 Notice we are importing Html5Qrcode (the raw camera API), NOT Html5QrcodeScanner
+import { Html5Qrcode } from "html5-qrcode";
 import { FiX, FiLoader } from "react-icons/fi";
 
-export default function BarcodeScanner({ onClose, toast }) {
-  const navigate = useNavigate();
+const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    // 1. Initialize the scanner with a clean rectangle target
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 150 },
-        showTorchButtonIfSupported: true, // Adds a flashlight button if phone supports it
-      },
-      false,
-    );
+    // 🏆 Initialize the headless scanner. No ugly default UI!
+    const html5QrCode = new Html5Qrcode("reader");
 
-    const onScanSuccess = async (decodedText) => {
-      // Prevent scanning multiple times in a row
-      if (isProcessing) return;
-
-      // 2. Stop the camera immediately and show loading state
-      setIsProcessing(true);
-      scanner.clear();
-
-      // 3. Haptic feedback: Vibrate phone for 200ms
-      if (navigator.vibrate) {
-        navigator.vibrate(200);
-      }
-
+    const startScanner = async () => {
       try {
-        // 4. Query Supabase directly to verify the product exists
-        const { data, error } = await supabase
-          .from("products")
-          .select("barcode")
-          .eq("barcode", decodedText)
-          .maybeSingle();
+        await html5QrCode.start(
+          { facingMode: "environment" }, // Forces the back camera on smartphones
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 150 }, // Standard barcode shape
+          },
+          (decodedText) => {
+            // What happens on a successful scan
+            if (isProcessing) return;
+            setIsProcessing(true);
 
-        if (data) {
-          // Success! Redirect to the beautiful ProductDetail page
-          navigate(`/product/${decodedText}`);
-          onClose();
-        } else {
-          // Fail: Product not found in database
-          toast("រកមិនឃើញផលិតផលនេះទេ! (Product not found)", "error");
-          onClose(); // Close scanner so they can try again or browse
-        }
+            // Trigger physical phone vibration
+            if (navigator.vibrate) navigator.vibrate(200);
+
+            // Stop the camera, then run the success function (redirect or search)
+            html5QrCode
+              .stop()
+              .then(() => {
+                if (onScanSuccess) {
+                  onScanSuccess(decodedText);
+                }
+              })
+              .catch(console.error);
+          },
+          (errorMessage) => {
+            // We ignore parse errors here. The scanner runs 10 times a second and
+            // will throw an error every frame it DOESN'T see a barcode.
+          },
+        );
       } catch (err) {
-        toast("មានបញ្ហាក្នុងការស្កេន (Scanning error)", "error");
-        onClose();
+        console.error("Failed to start scanner:", err);
+        setHasError(true);
       }
     };
 
-    // Render the scanner UI
-    scanner.render(onScanSuccess, (error) => {
-      // Ignore background scanning errors (it errors continuously until it finds a barcode)
-    });
+    startScanner();
 
-    // Cleanup camera when closed
+    // 🏆 Cleanup function: Safely turns off the camera when you close the modal
     return () => {
-      scanner.clear().catch(console.error);
+      if (html5QrCode.isScanning) {
+        html5QrCode.stop().catch(console.error);
+      }
     };
-  }, [navigate, onClose, isProcessing, toast]);
+  }, [onScanSuccess, isProcessing]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm">
-      {/* Top Navigation Bar */}
+    // 🏆 Strict Full-Screen Dark Overlay with High Z-Index
+    <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center">
+      {/* Top Navbar */}
       <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
-        <h2 className="text-white font-bold text-lg">ស្កេនបាកូដផលិតផល</h2>
+        <h2 className="text-white font-bold text-lg">Scan Barcode</h2>
         <button
           onClick={onClose}
-          className="p-3 bg-white/20 text-white rounded-full hover:bg-white/30 backdrop-blur-md transition-all"
+          className="p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
         >
           <FiX size={24} />
         </button>
       </div>
 
-      {/* Main Scanner Area */}
+      {/* Main Content Area */}
       {isProcessing ? (
-        <div className="flex flex-col items-center gap-5 text-white animate-in fade-in zoom-in duration-300">
-          <FiLoader size={56} className="animate-spin text-blue-500" />
-          <p className="font-bold text-lg">កំពុងស្វែងរកផលិតផល...</p>
+        <div className="flex flex-col items-center gap-4 text-white">
+          <FiLoader size={48} className="animate-spin text-blue-500" />
+          <p className="font-medium text-lg">Loading product...</p>
+        </div>
+      ) : hasError ? (
+        <div className="text-center px-6">
+          <p className="text-red-400 font-bold mb-2 text-lg">Camera Error</p>
+          <p className="text-gray-400 text-sm mb-6">
+            Please allow camera permissions in your browser to scan products.
+          </p>
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white text-black rounded-xl font-bold"
+          >
+            Go Back
+          </button>
         </div>
       ) : (
-        <div className="w-full max-w-sm px-6 flex flex-col items-center animate-in fade-in duration-300">
-          {/* Custom CSS to hide ugly default HTML5-QRCode buttons and borders */}
-          <style>
-            {`
-              #reader { border: none !important; border-radius: 24px; overflow: hidden; }
-              #reader video { object-fit: cover; border-radius: 24px; }
-              #reader__dashboard_section_csr span { color: white !important; font-family: 'Inter', sans-serif; }
-              #reader__dashboard_section_swaplink { color: #3b82f6 !important; text-decoration: none; margin-top: 10px; display: inline-block; }
-            `}
-          </style>
-
+        <div className="w-full max-w-sm px-6">
+          {/* 🏆 Clean Camera Feed Container */}
           <div
             id="reader"
-            className="w-full bg-black rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(37,99,235,0.4)] border-2 border-blue-500/50"
+            className="w-full rounded-[24px] overflow-hidden border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-gray-900 min-h-[250px]"
           ></div>
-
-          <p className="text-gray-400 text-center mt-8 text-[15px] font-medium leading-relaxed">
-            សូមដាក់កាមេរ៉ារបស់អ្នកឱ្យចំកូដ
-            <br />
-            នៅលើសំបកផលិតផល
+          <p className="text-gray-400 text-center mt-6 text-sm">
+            Point your camera directly at the product barcode sticker.
           </p>
         </div>
       )}
     </div>
   );
-}
+};
+
+export default BarcodeScanner;

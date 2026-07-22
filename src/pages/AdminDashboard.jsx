@@ -14,6 +14,7 @@ import {
   FiAward,
   FiGift,
   FiUploadCloud,
+  FiMaximize, // 🏆 Imported for the scanner icon
 } from "react-icons/fi";
 import {
   LineChart,
@@ -36,6 +37,7 @@ import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
 import ProductsTable from "../components/admin/ProductsTable";
 import CustomerDebts from "../components/admin/CustomerCredits";
+import BarcodeScanner from "../components/scanner/BarcodeScanner"; // 🏆 Imported Scanner
 import { useTranslation } from "react-i18next";
 
 const COLORS = {
@@ -71,12 +73,13 @@ export default function AdminDashboard() {
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
 
-  // Modals State
+  // Modals & Scanner State
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [receiptImage, setReceiptImage] = useState(null);
+  const [showAdminScanner, setShowAdminScanner] = useState(false); // 🏆 Added Scanner State
 
   // Database State
   const [dbOrders, setDbOrders] = useState([]);
@@ -1183,24 +1186,42 @@ export default function AdminDashboard() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: 20,
+                flexWrap: "wrap",
+                gap: 16,
               }}
             >
               <h2 style={{ margin: 0 }}>
                 {t("admin.products_tab.title", "Products")} ({dbProducts.length}
                 )
               </h2>
-              {isAdmin && (
+
+              <div
+                style={{ display: "flex", gap: "12px", alignItems: "center" }}
+              >
+                {/* 🏆 THE NEW SCAN BUTTON */}
                 <Button
-                  onClick={() => {
-                    setEditingProduct(null);
-                    setShowAddModal(true);
-                  }}
+                  variant="secondary"
+                  onClick={() => setShowAdminScanner(true)}
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
                 >
-                  <FiPlus size={14} />{" "}
-                  {t("admin.products_tab.add_product", "Add Product")}
+                  <FiMaximize size={16} />
+                  {t("admin.products_tab.scan", "Scan Barcode")}
                 </Button>
-              )}
+
+                {isAdmin && (
+                  <Button
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <FiPlus size={14} />{" "}
+                    {t("admin.products_tab.add_product", "Add Product")}
+                  </Button>
+                )}
+              </div>
             </div>
+
             <ProductsTable
               products={dbProducts}
               isAdmin={isAdmin}
@@ -1792,6 +1813,32 @@ export default function AdminDashboard() {
           }}
           orderId={selectedOrderId}
           isAdmin={true}
+        />
+      )}
+
+      {/* 🏆 THE NEW SCANNER MODAL & LOOKUP LOGIC */}
+      {showAdminScanner && (
+        <BarcodeScanner
+          onClose={() => setShowAdminScanner(false)}
+          onScanSuccess={(scannedText) => {
+            setShowAdminScanner(false); // Close camera
+
+            // Automatically find the product based on scanned barcode
+            const foundProduct = dbProducts.find(
+              (p) => p.barcode === scannedText,
+            );
+
+            if (foundProduct) {
+              // Open the Edit Modal so you can see price/details!
+              setEditingProduct(foundProduct);
+              setShowAddModal(true);
+            } else {
+              triggerGlobalToast(
+                `រកមិនឃើញផលិតផល / Product not found: ${scannedText}`,
+                "error",
+              );
+            }
+          }}
         />
       )}
 
