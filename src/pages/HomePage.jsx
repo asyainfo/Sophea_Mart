@@ -3,24 +3,24 @@ import { useAuth } from "../hooks/useAuth";
 import { useStore } from "../hooks/useStore";
 import { useCart } from "../hooks/useCart";
 import { supabase } from "../services/supabase";
-import { USD_TO_KHR } from "../utils/currency";
-import { FiSearch } from "react-icons/fi";
+import { FiSearch, FiMaximize } from "react-icons/fi"; // 🏆 Grouped icons together
 
 import Hero from "../components/layout/Hero";
 import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
 import QuickViewModal from "../components/product/QuickViewModal";
+import BarcodeScanner from "../components/scanner/BarcodeScanner"; // 🏆 Scanner imported
 import { Toast, useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
 import { useTranslation } from "react-i18next";
 
 const styles = {
   page: {
-    // 🏆 THE FIX: Removed minHeight: "100vh" so it flows naturally and pushes the footer down!
     width: "100%",
     background: "#f9fafb",
     fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
+    position: "relative", // 🏆 Ensures the floating button positions correctly
   },
   header: {
     display: "flex",
@@ -60,6 +60,7 @@ export default function HomePage() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showScanner, setShowScanner] = useState(false); // 🏆 Scanner state
   const [favoriteIds, setFavoriteIds] = useState(new Set());
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function HomePage() {
       const { data, error } = await supabase
         .from("favorites")
         .select("product_id")
-        .eq("user_id", user.id);
+        .eq("user_id", user?.id);
 
       if (error) throw error;
       setFavoriteIds(new Set(data.map((fav) => fav.product_id)));
@@ -192,7 +193,7 @@ export default function HomePage() {
           .mobile-container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 16px 40px; /* Reduced bottom padding slightly to fit snugly above footer */
+            padding: 0 16px 80px; /* 🏆 Increased bottom padding so products aren't hidden behind the floating button */
           }
 
           @media (min-width: 600px) {
@@ -201,7 +202,7 @@ export default function HomePage() {
                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
             }
             .mobile-container {
-              padding: 0 24px 40px;
+              padding: 0 24px 80px;
             }
           }
         `}
@@ -260,7 +261,7 @@ export default function HomePage() {
             <h3
               style={{
                 margin: "0 0 8px 0",
-                color: "#616162ff",
+                color: "#616162",
                 fontSize: "18px",
               }}
             >
@@ -276,7 +277,24 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* --- MODALS --- */}
+      {/* 🏆 FLOATING SCANNER BUTTON */}
+      <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-40">
+        <button
+          onClick={() => setShowScanner(true)}
+          className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3.5 rounded-full shadow-lg shadow-blue-500/40 hover:bg-blue-700 hover:-translate-y-1 transition-all duration-300 font-bold border-2 border-white"
+        >
+          <FiMaximize size={20} />
+          <span>{t("scanner.scan_price", "ស្កេនតម្លៃ")}</span>
+        </button>
+      </div>
+
+      {/* --- MODALS & OVERLAYS --- */}
+
+      {/* 🏆 SCANNER OVERLAY */}
+      {showScanner && (
+        <BarcodeScanner onClose={() => setShowScanner(false)} toast={toast} />
+      )}
+
       <LoginModal
         open={loginOpen}
         onClose={() => setLoginOpen(false)}

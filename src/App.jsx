@@ -28,6 +28,8 @@ const OrderHistory = lazy(() => import("./pages/OrderHistory"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Redeem = lazy(() => import("./pages/Redeem"));
+// 1. ADDED LAZY IMPORT FOR PRODUCT DETAIL PAGE
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 
 // Simple Loader for Suspense
 const PageLoader = () => (
@@ -90,6 +92,8 @@ function MainApp() {
               path="/cart"
               element={<Cart onCheckout={() => setCheckoutOpen(true)} />}
             />
+            {/* 2. ADDED DYNAMIC BARCODE ROUTE */}
+            <Route path="/product/:barcode" element={<ProductDetail />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
           </Routes>
         </Suspense>
