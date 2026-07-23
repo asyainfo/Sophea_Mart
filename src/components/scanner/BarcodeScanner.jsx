@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode } from "html5-qrcode";
-import { FiX, FiLoader } from "react-icons/fi";
+import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
 
-// Module-level lock (not component state) — survives React StrictMode's
-// double-invoke of effects in development, so two getUserMedia() calls
-// never fire at the same instant and race each other.
 let cameraOperationChain = Promise.resolve();
 
-// html5-qrcode's clear() is SYNCHRONOUS (no Promise returned), unlike
-// stop() which is async. Calling .catch() on clear()'s return value
-// throws "Cannot read properties of undefined (reading 'catch')".
-// This helper safely handles that.
 const safeClear = (scanner) => {
   try {
     scanner.clear();
   } catch (e) {
-    // ignore — element may already be torn down
+    // ignore teardown errors
   }
 };
 
@@ -30,13 +23,11 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const onScanSuccessRef = useRef(onScanSuccess);
   const isMountedRef = useRef(true);
 
-  // Keep the latest callback without restarting the camera effect
   useEffect(() => {
     onScanSuccessRef.current = onScanSuccess;
   }, [onScanSuccess]);
 
-  // Lock background scroll while the scanner is open (prevents iOS Safari's
-  // rubber-band scroll from shifting the "fixed" overlay)
+  // Lock background scroll when modal is open
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     const originalPosition = document.body.style.position;
@@ -50,99 +41,79 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     };
   }, []);
 
+  const startScanner = async (html5QrCode) => {
+    let cameraConfig = { facingMode: "environment" };
+    try {
+      const cameras = await Html5Qrcode.getCameras();
+      const backCamera = cameras.find((c) =>
+        /back|rear|environment/i.test(c.label),
+      );
+      if (backCamera) {
+        cameraConfig = { deviceId: { exact: backCamera.id } };
+      } else if (cameras.length > 0) {
+        cameraConfig = { deviceId: { exact: cameras[0].id } };
+      }
+    } catch (e) {
+      // Fallback to facingMode if permissions aren't granted yet
+    }
+
+    await html5QrCode.start(
+      cameraConfig,
+      {
+        fps: 15,
+        // 🏆 REMOVED `qrbox` configuration.
+        // The library will no longer generate its own ugly UI elements.
+        // It will scan the whole screen, making detection much faster.
+      },
+      (decodedText) => {
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+        setIsProcessing(true);
+
+        if (navigator.vibrate) navigator.vibrate(200);
+
+        html5QrCode
+          .stop()
+          .then(() => {
+            safeClear(html5QrCode);
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (isMountedRef.current && onScanSuccessRef.current) {
+              onScanSuccessRef.current(decodedText);
+            }
+          });
+      },
+      () => {},
+    );
+  };
+
   useEffect(() => {
     isMountedRef.current = true;
     let cancelled = false;
     const html5QrCode = new Html5Qrcode("reader", { verbose: false });
     scannerRef.current = html5QrCode;
 
-    // Scan box sized relative to the actual viewfinder, not a fixed pixel
-    // value — keeps the overlay aligned regardless of screen/camera size
-    const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
-      const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      const boxSize = Math.floor(minEdge * 0.7);
-      return { width: boxSize, height: Math.floor(boxSize * 0.6) };
-    };
-
-    const startScanner = async () => {
-      let cameraConfig = { facingMode: "environment" };
-      try {
-        const cameras = await Html5Qrcode.getCameras();
-        const backCamera = cameras.find((c) =>
-          /back|rear|environment/i.test(c.label),
-        );
-        if (backCamera) {
-          cameraConfig = { deviceId: { exact: backCamera.id } };
-        } else if (cameras.length > 0) {
-          // Desktop/laptop fallback — no rear camera exists
-          cameraConfig = { deviceId: { exact: cameras[0].id } };
-        }
-      } catch (e) {
-        // getCameras() can fail before permission is granted on some
-        // browsers — fall back to facingMode and let start() prompt
-      }
-
-      if (cancelled) return;
-
-      await html5QrCode.start(
-        cameraConfig,
-        {
-          fps: 10,
-          qrbox: qrboxFunction,
-          aspectRatio: 1.777778, // 16:9 — matches most rear cameras (iOS + Android)
-        },
-        (decodedText) => {
-          if (isProcessingRef.current) return;
-          isProcessingRef.current = true;
-          setIsProcessing(true);
-
-          if (navigator.vibrate) navigator.vibrate(200);
-
-          html5QrCode
-            .stop()
-            .then(() => {
-              safeClear(html5QrCode);
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (isMountedRef.current && onScanSuccessRef.current) {
-                onScanSuccessRef.current(decodedText);
-              }
-            });
-        },
-        () => {
-          // Ignore per-frame "no barcode found" noise — fires ~10x/sec
-        },
-      );
-
-      // If cleanup already ran while start() was still in flight
-      // (StrictMode's first pass), stop this session immediately
-      if (cancelled) {
-        await html5QrCode.stop().catch(() => {});
-        safeClear(html5QrCode);
-      }
-    };
-
-    // Chain onto the shared lock so overlapping start attempts run in
-    // strict sequence instead of firing getUserMedia() simultaneously
     cameraOperationChain = cameraOperationChain
       .catch(() => {})
-      .then(startScanner)
+      .then(async () => {
+        if (!cancelled) {
+          await startScanner(html5QrCode);
+        }
+      })
       .catch((err) => {
         console.error("Failed to start scanner:", err);
         if (isMountedRef.current && !cancelled) {
           setHasError(true);
           if (err?.name === "NotAllowedError") {
             setErrorMessage(
-              "Camera access was denied. Please allow camera permission in your browser settings.",
+              "Camera permission was denied. Please allow camera access in your browser settings.",
             );
           } else if (err?.name === "NotFoundError") {
-            setErrorMessage("No camera was found on this device.");
-          } else if (err?.name === "NotReadableError") {
-            setErrorMessage("Camera is already in use by another app or tab.");
+            setErrorMessage("No camera hardware found on this device.");
           } else {
             setErrorMessage(
-              "Please allow camera permissions in your browser to scan products.",
+              "Could not access camera. Please check your browser permissions.",
             );
           }
         }
@@ -163,80 +134,199 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   }, []);
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center">
-      {/* Forces html5-qrcode's internally-injected <video> to fill and
-          center inside our container instead of using its own
-          native-resolution inline sizing — this is what fixes the
-          "camera looks offset / hidden" layout bug on phones */}
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 999999,
+        backgroundColor: "#000000",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
       <style>{`
-        #reader {
+        /* Force raw video feed to cover the entire viewport cleanly */
+        #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; }
+        #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; }
+        
+        /* Ensure no stray library elements ever render */
+        #reader > *:not(video) { display: none !important; }
+        
+        /* 🏆 ABA-Style Cutout frame */
+        .scanner-cutout {
           position: relative;
-          width: 100%;
-        }
-        #reader video {
-          width: 100% !important;
-          height: 100% !important;
-          object-fit: cover !important;
+          width: 250px;
+          height: 250px;
+          /* Softer, more transparent shadow to match ABA */
+          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
           border-radius: 20px;
-          display: block;
         }
-        #reader__scan_region {
-          position: absolute !important;
-          inset: 0 !important;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        @media (min-width: 640px) {
+          .scanner-cutout { width: 300px; height: 300px; }
         }
-        #reader__scan_region > img { display: none !important; }
-        #reader__dashboard { display: none !important; }
+        
+        /* 🏆 Refined, Thinner White Brackets */
+        .corner { position: absolute; width: 40px; height: 40px; border-color: #ffffff; border-style: solid; }
+        .corner-tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-top-left-radius: 20px; }
+        .corner-tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-top-right-radius: 20px; }
+        .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-bottom-left-radius: 20px; }
+        .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-bottom-right-radius: 20px; }
+
+        /* Header Navigation */
+        .scanner-header-wrapper {
+          position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px;
+          display: flex; justify-content: space-between; align-items: center; z-index: 10;
+          box-sizing: border-box;
+        }
+        
+        /* Clean invisible close button area */
+        .close-btn {
+          padding: 8px; background: transparent;
+          color: white; border-radius: 50%; border: none; cursor: pointer; display: flex;
+          transition: background 0.2s;
+        }
       `}</style>
 
-      <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
-        <h2 className="text-white font-bold text-lg">Scan Barcode</h2>
-        <button
-          onClick={onClose}
-          className="p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
-          aria-label="Close scanner"
+      {/* Full-Screen Camera Video Feed */}
+      <div id="reader"></div>
+
+      {/* Pure Visual Guide (No functional restrictions) */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div className="scanner-cutout">
+          <div className="corner corner-tl"></div>
+          <div className="corner corner-tr"></div>
+          <div className="corner corner-bl"></div>
+          <div className="corner corner-br"></div>
+        </div>
+      </div>
+
+      {/* Top Bar */}
+      <div className="scanner-header-wrapper">
+        <h2
+          style={{
+            color: "white",
+            fontWeight: 700,
+            fontSize: "18px",
+            margin: 0,
+            letterSpacing: "0.5px",
+          }}
         >
-          <FiX size={24} />
+          SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
+        </h2>
+        <button onClick={onClose} className="close-btn" aria-label="Close">
+          <FiX size={28} />
         </button>
       </div>
 
-      {isProcessing ? (
-        <div className="flex flex-col items-center gap-4 text-white">
-          <FiLoader size={48} className="animate-spin text-blue-500" />
-          <p className="font-medium text-lg">Loading product...</p>
-        </div>
-      ) : hasError ? (
-        <div className="text-center px-6">
-          <p className="text-red-400 font-bold mb-2 text-lg">Camera Error</p>
-          <p className="text-gray-400 text-sm mb-6">{errorMessage}</p>
-          <button
-            onClick={onClose}
-            className="px-6 py-3 bg-white text-black rounded-xl font-bold"
-          >
-            Go Back
-          </button>
-        </div>
-      ) : (
-        <div className="w-full max-w-sm px-6">
-          {/* Fixed aspect ratio — container never resizes after the video
-              attaches, so the scan overlay stays aligned with what you see */}
-          <div
-            id="reader"
-            className="w-full aspect-[4/3] rounded-[24px] overflow-hidden border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-gray-900"
-          ></div>
-          <p className="text-gray-400 text-center mt-6 text-sm">
-            Point your camera directly at the product barcode sticker.
-          </p>
+      {/* Loading & Error Overlays */}
+      {(isProcessing || hasError) && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 20,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.85)",
+            padding: "24px",
+            textAlign: "center",
+            boxSizing: "border-box",
+          }}
+        >
+          {isProcessing ? (
+            <>
+              <FiLoader
+                size={48}
+                style={{
+                  color: "#3b82f6",
+                  marginBottom: "16px",
+                  animation: "spin 1s linear infinite",
+                }}
+              />
+              <p
+                style={{
+                  color: "white",
+                  fontSize: "18px",
+                  margin: 0,
+                  fontWeight: "600",
+                }}
+              >
+                Loading product...
+              </p>
+              <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+            </>
+          ) : (
+            <>
+              <FiCameraOff
+                size={52}
+                style={{ color: "#ef4444", marginBottom: "16px" }}
+              />
+              <p
+                style={{
+                  color: "#f87171",
+                  fontWeight: "bold",
+                  fontSize: "20px",
+                  margin: "0 0 8px 0",
+                }}
+              >
+                Camera Access Blocked
+              </p>
+              <p
+                style={{
+                  color: "#9ca3af",
+                  fontSize: "14px",
+                  marginBottom: "28px",
+                  maxWidth: "320px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {errorMessage}
+              </p>
+              <button
+                onClick={onClose}
+                style={{
+                  padding: "14px 36px",
+                  backgroundColor: "#3b82f6",
+                  color: "white",
+                  borderRadius: "999px",
+                  fontWeight: "bold",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                }}
+              >
+                Close Scanner
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 
-  // Portal straight to <body> — bypasses whatever parent renders this
-  // component, so no parent layout, transform, or overflow rule can ever
-  // affect its position
   return createPortal(modalContent, document.body);
 };
 
