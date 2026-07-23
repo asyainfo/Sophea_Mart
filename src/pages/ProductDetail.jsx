@@ -6,7 +6,6 @@ import { supabase } from "../services/supabase";
 import QuickViewModal from "../components/product/QuickViewModal";
 import { useToast } from "../components/ui/Toast";
 import { useTranslation } from "react-i18next";
-import { FiAlertCircle } from "react-icons/fi";
 
 export default function ProductDetail({ barcode, onClose }) {
   const { products } = useStore();
@@ -22,7 +21,22 @@ export default function ProductDetail({ barcode, onClose }) {
     return products.find((p) => p.barcode === barcode);
   }, [products, barcode]);
 
-  // 2. Fetch favorites just like HomePage does so the Heart icon works
+  // 2. 🏆 Native Browser Alert for "Not Found"
+  useEffect(() => {
+    if (!foundProduct) {
+      // Small timeout ensures the UI updates smoothly before the alert blocks the screen
+      setTimeout(() => {
+        const message = t(
+          "scanner.not_found_desc",
+          "Sorry, this barcode does not exist in our system yet.",
+        );
+        window.alert(`${message}\n\n${barcode}`);
+        onClose(); // Close the scanner after the user clicks "OK"
+      }, 50);
+    }
+  }, [foundProduct, barcode, onClose, t]);
+
+  // 3. Fetch favorite status
   useEffect(() => {
     if (user && foundProduct) {
       const fetchFavorite = async () => {
@@ -50,13 +64,15 @@ export default function ProductDetail({ barcode, onClose }) {
       toast(t("store.sign_in_cart", "Sign in to add items to cart."), "error");
       return;
     }
-    if (product.stock <= 0) {
+
+    if (product.stock <= 0 || product.in_stock === false) {
       toast(t("store.out_of_stock_toast", "Out of stock!"), "error");
       return;
     }
+
     dispatch({ type: "ADD", product });
     toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
-    onClose(); // Optional: Close modal after adding to cart
+    onClose();
   };
 
   const handleRemoveFromCart = (product) => {
@@ -72,7 +88,6 @@ export default function ProductDetail({ barcode, onClose }) {
 
     const isCurrentlyFavorited = favoriteIds.has(product.id);
 
-    // Optimistic UI update
     setFavoriteIds((prev) => {
       const newFavs = new Set(prev);
       isCurrentlyFavorited
@@ -97,7 +112,7 @@ export default function ProductDetail({ barcode, onClose }) {
     }
   };
 
-  // 3. Prepare product with cart quantity (same as HomePage logic)
+  // 4. Prepare product with cart quantity
   const safeCart = Array.isArray(cart) ? cart : [];
   const modalProduct = foundProduct
     ? {
@@ -107,31 +122,12 @@ export default function ProductDetail({ barcode, onClose }) {
       }
     : null;
 
-  // 4. Handle "Product Not Found" scenario
+  // 5. If product is NOT found, render nothing (the window.alert handles it)
   if (!foundProduct) {
-    return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-xl">
-          <FiAlertCircle size={48} className="mx-auto text-red-500 mb-4" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
-            Product Not Found
-          </h3>
-          <p className="text-gray-500 text-sm mb-6">
-            No product matches the barcode:{" "}
-            <span className="font-bold text-gray-800">{barcode}</span>
-          </p>
-          <button
-            onClick={onClose}
-            className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
-  // 5. If found, render your beautiful QuickViewModal!
+  // 6. If found, render QuickViewModal
   return (
     <QuickViewModal
       open={true}

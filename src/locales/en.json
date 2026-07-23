@@ -58,6 +58,7 @@
     "my_orders": "My Orders",
     "saved_items": "Saved Items",
     "rewards": "Rewards",
+    "scan_barcode": "Scan Barcode",
     "add_account": "Add Account",
     "log_out": "Log Out",
     "logout_confirm": "Are you sure you want to log out?",
@@ -420,26 +421,6 @@
       "credits": "Credits",
       "settings": "Settings"
     },
-    "product_form": {
-      "title_add": "Add New Product",
-      "title_edit": "Edit Product",
-      "lbl_product_image": "Product Image",
-      "btn_change_photo": "Change Photo",
-      "btn_choose_photo": "Choose a Photo",
-      "lbl_product_name": "Product Name",
-      "lbl_category": "Category",
-      "lbl_price": "Price (USD)",
-      "lbl_stock": "Stock Quantity",
-      "lbl_barcode": "Barcode (Optional)",
-      "placeholder_barcode": "Scan or type...",
-      "lbl_size": "Size (Optional)",
-      "lbl_description": "Description (Optional)",
-      "btn_saving": "Saving...",
-      "btn_update": "Update Product",
-      "btn_save": "Save Product",
-      "alert_image_required": "Please choose a product image before saving!",
-      "alert_save_failed": "Failed to save product: "
-    },
     "stats": {
       "total_products": "Total Products",
       "total_orders": "Total Orders",
@@ -532,5 +513,35 @@
     "misc": {
       "close": "Close"
     }
+  },
+  "product_form": {
+    "title_add": "Add New Product",
+    "title_edit": "Edit Product",
+    "lbl_product_image": "Product Image",
+    "btn_change_photo": "Change Photo",
+    "btn_choose_photo": "Choose a Photo",
+    "lbl_product_name": "Product Name",
+    "lbl_category": "Category",
+    "lbl_price": "Price (USD)",
+    "lbl_stock": "Stock Quantity",
+    "lbl_barcode": "Barcode (Optional)",
+    "placeholder_barcode": "Scan or type...",
+    "lbl_size": "Size (Optional)",
+    "lbl_description": "Description (Optional)",
+    "btn_saving": "Saving...",
+    "btn_update": "Update Product",
+    "btn_save": "Save Product",
+    "alert_image_required": "Please choose a product image before saving!",
+    "alert_save_failed": "Failed to save product: "
+  },
+  "scanner": {
+    "title": "Scan Barcode",
+    "loading": "Loading product...",
+    "camera_blocked": "Camera Access Blocked",
+    "error_permission": "Camera permission was denied. Please allow camera access in your browser settings.",
+    "error_no_camera": "No camera hardware found on this device.",
+    "error_generic": "Could not access camera. Please check your browser permissions.",
+    "close": "Close Scanner",
+    "not_found_desc": "Sorry, this barcode does not exist in our system yet."
   }
 }

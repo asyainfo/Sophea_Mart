@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
+import { useTranslation } from "react-i18next";
 
 let cameraOperationChain = Promise.resolve();
 
@@ -14,9 +15,11 @@ const safeClear = (scanner) => {
 };
 
 const BarcodeScanner = ({ onClose, onScanSuccess }) => {
+  const { t } = useTranslation();
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorType, setErrorType] = useState("");
 
   const scannerRef = useRef(null);
   const isProcessingRef = useRef(false);
@@ -27,7 +30,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     onScanSuccessRef.current = onScanSuccess;
   }, [onScanSuccess]);
 
-  // Lock background scroll when modal is open
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     const originalPosition = document.body.style.position;
@@ -59,12 +61,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
 
     await html5QrCode.start(
       cameraConfig,
-      {
-        fps: 15,
-        // 🏆 REMOVED `qrbox` configuration.
-        // The library will no longer generate its own ugly UI elements.
-        // It will scan the whole screen, making detection much faster.
-      },
+      { fps: 15 },
       (decodedText) => {
         if (isProcessingRef.current) return;
         isProcessingRef.current = true;
@@ -105,17 +102,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         console.error("Failed to start scanner:", err);
         if (isMountedRef.current && !cancelled) {
           setHasError(true);
-          if (err?.name === "NotAllowedError") {
-            setErrorMessage(
-              "Camera permission was denied. Please allow camera access in your browser settings.",
-            );
-          } else if (err?.name === "NotFoundError") {
-            setErrorMessage("No camera hardware found on this device.");
-          } else {
-            setErrorMessage(
-              "Could not access camera. Please check your browser permissions.",
-            );
-          }
+          setErrorType(err?.name || "GenericError");
         }
       });
 
@@ -132,6 +119,24 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         });
     };
   }, []);
+
+  // 🏆 Clean Translation Helper relying strictly on JSON
+  const getErrorMessage = () => {
+    if (errorType === "NotAllowedError")
+      return t(
+        "scanner.error_permission",
+        "Camera permission was denied. Please allow camera access in your browser settings.",
+      );
+    if (errorType === "NotFoundError")
+      return t(
+        "scanner.error_no_camera",
+        "No camera hardware found on this device.",
+      );
+    return t(
+      "scanner.error_generic",
+      "Could not access camera. Please check your browser permissions.",
+    );
+  };
 
   const modalContent = (
     <div
@@ -151,52 +156,22 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       }}
     >
       <style>{`
-        /* Force raw video feed to cover the entire viewport cleanly */
         #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; }
         #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; }
-        
-        /* Ensure no stray library elements ever render */
         #reader > *:not(video) { display: none !important; }
-        
-        /* 🏆 ABA-Style Cutout frame */
-        .scanner-cutout {
-          position: relative;
-          width: 250px;
-          height: 250px;
-          /* Softer, more transparent shadow to match ABA */
-          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
-          border-radius: 20px;
-        }
-        @media (min-width: 640px) {
-          .scanner-cutout { width: 300px; height: 300px; }
-        }
-        
-        /* 🏆 Refined, Thinner White Brackets */
+        .scanner-cutout { position: relative; width: 250px; height: 250px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); border-radius: 20px; }
+        @media (min-width: 640px) { .scanner-cutout { width: 300px; height: 300px; } }
         .corner { position: absolute; width: 40px; height: 40px; border-color: #ffffff; border-style: solid; }
         .corner-tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-top-left-radius: 20px; }
         .corner-tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-top-right-radius: 20px; }
         .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-bottom-left-radius: 20px; }
         .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-bottom-right-radius: 20px; }
-
-        /* Header Navigation */
-        .scanner-header-wrapper {
-          position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px;
-          display: flex; justify-content: space-between; align-items: center; z-index: 10;
-          box-sizing: border-box;
-        }
-        
-        /* Clean invisible close button area */
-        .close-btn {
-          padding: 8px; background: transparent;
-          color: white; border-radius: 50%; border: none; cursor: pointer; display: flex;
-          transition: background 0.2s;
-        }
+        .scanner-header-wrapper { position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px; display: flex; justify-content: space-between; align-items: center; z-index: 10; box-sizing: border-box; }
+        .close-btn { padding: 8px; background: transparent; color: white; border-radius: 50%; border: none; cursor: pointer; display: flex; transition: background 0.2s; }
       `}</style>
 
-      {/* Full-Screen Camera Video Feed */}
       <div id="reader"></div>
 
-      {/* Pure Visual Guide (No functional restrictions) */}
       <div
         style={{
           position: "absolute",
@@ -218,7 +193,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         </div>
       </div>
 
-      {/* Top Bar */}
       <div className="scanner-header-wrapper">
         <h2
           style={{
@@ -236,7 +210,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         </button>
       </div>
 
-      {/* Loading & Error Overlays */}
       {(isProcessing || hasError) && (
         <div
           style={{
@@ -274,7 +247,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
                   fontWeight: "600",
                 }}
               >
-                Loading product...
+                {t("scanner.loading", "Loading product...")}
               </p>
               <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
             </>
@@ -292,7 +265,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
                   margin: "0 0 8px 0",
                 }}
               >
-                Camera Access Blocked
+                {t("scanner.camera_blocked", "Camera Access Blocked")}
               </p>
               <p
                 style={{
@@ -303,7 +276,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
                   lineHeight: 1.5,
                 }}
               >
-                {errorMessage}
+                {getErrorMessage()}
               </p>
               <button
                 onClick={onClose}
@@ -318,7 +291,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
                   fontSize: "15px",
                 }}
               >
-                Close Scanner
+                {t("scanner.close", "Close Scanner")}
               </button>
             </>
           )}

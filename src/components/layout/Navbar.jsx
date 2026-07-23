@@ -19,7 +19,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import Button from "../ui/Button";
 import { useTranslation } from "react-i18next";
-import BarcodeScanner from "../scanner/BarcodeScanner"; // 🏆 Import the Scanner
+import BarcodeScanner from "../scanner/BarcodeScanner";
 
 export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showScanner, setShowScanner] = useState(false); // 🏆 Scanner State
+  const [showScanner, setShowScanner] = useState(false);
   const dropdownRef = useRef(null);
 
   const displayName = profile?.full_name || user?.email || "User";
@@ -235,17 +235,19 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                       <FiAward size={16} /> {t("navbar.rewards", "Rewards")}
                     </button>
 
-                    {/* 🏆 SCAN BARCODE BUTTON */}
-                    <button
-                      onClick={() => {
-                        setProfileOpen(false);
-                        setShowScanner(true);
-                      }}
-                      style={{ ...dropdownItemStyle, fontWeight: 600 }}
-                    >
-                      <FiMaximize size={16} />{" "}
-                      {t("navbar.scan_barcode", "Scan Barcode")}
-                    </button>
+                    {/* 🏆 Cleanly relies on i18next JSON for translation */}
+                    {isStaff && (
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setShowScanner(true);
+                        }}
+                        style={{ ...dropdownItemStyle, fontWeight: 600 }}
+                      >
+                        <FiMaximize size={16} />{" "}
+                        {t("navbar.scan_barcode", "Scan Barcode")}
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
