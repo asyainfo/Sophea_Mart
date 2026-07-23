@@ -12,12 +12,14 @@ import {
   FiHeart,
   FiAward,
   FiGlobe,
+  FiMaximize, // 🏆 Scanner Icon
 } from "react-icons/fi";
 
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import Button from "../ui/Button";
 import { useTranslation } from "react-i18next";
+import BarcodeScanner from "../scanner/BarcodeScanner"; // 🏆 Import the Scanner
 
 export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   const navigate = useNavigate();
@@ -28,6 +30,7 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showScanner, setShowScanner] = useState(false); // 🏆 Scanner State
   const dropdownRef = useRef(null);
 
   const displayName = profile?.full_name || user?.email || "User";
@@ -77,124 +80,21 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
     <>
       <style>
         {`
-          /* Base Styles */
-          .nav-container {
-            position: sticky;
-            top: 0;
-            z-index: 300;
-            background: #FFFFFF;
-            border-bottom: 1px solid #E5E7EB;
-            padding: 0 24px;
-          }
-          .inner-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            height: 70px;
-          }
-          
-          /* Logo */
-          .logo-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            min-width: 0; 
-          }
-          .logo-img {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            object-fit: cover;
-            flex-shrink: 0;
-          }
-          .logo-text {
-            font-weight: 900;
-            font-size: 20px;
-            color: #111827;
-            letter-spacing: -0.5px;
-            white-space: nowrap;
-          }
-
-          /* Actions */
-          .actions-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-shrink: 0;
-          }
-
-          /* Buttons */
-          .btn-base {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            height: 44px;
-            border-radius: 9999px;
-            font-weight: 600;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all 0.2s;
-            font-size: 14px;
-          }
-          .btn-lang {
-            background: #FFFFFF;
-            border: 1px solid #E5E7EB;
-            padding: 0 14px;
-            color: #111827;
-          }
-          .btn-admin {
-            background: #2563EB;
-            border: none;
-            padding: 0 16px;
-            color: #FFFFFF;
-          }
-          .btn-profile {
-            background: #EFF6FF;
-            border: 1px solid #BFDBFE;
-            padding: 0 16px;
-            color: #2563EB;
-          }
-          .btn-cart {
-            position: relative;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: #EFF6FF;
-            border: 1px solid #BFDBFE;
-            color: #2563EB;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            flex-shrink: 0;
-            transition: all 0.2s;
-          }
-          .cart-badge {
-            position: absolute;
-            top: -6px;
-            right: -6px;
-            min-width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #0066FF;
-            color: #FFFFFF;
-            font-size: 10px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid #FFFFFF;
-          }
-
-          /* Utilities */
+          .nav-container { position: sticky; top: 0; z-index: 300; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; padding: 0 24px; }
+          .inner-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; height: 70px; }
+          .logo-wrapper { display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
+          .logo-img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex-shrink: 0; }
+          .logo-text { font-weight: 900; font-size: 20px; color: #111827; letter-spacing: -0.5px; white-space: nowrap; }
+          .actions-wrapper { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+          .btn-base { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: 9999px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s; font-size: 14px; }
+          .btn-lang { background: #FFFFFF; border: 1px solid #E5E7EB; padding: 0 14px; color: #111827; }
+          .btn-admin { background: #2563EB; border: none; padding: 0 16px; color: #FFFFFF; }
+          .btn-profile { background: #EFF6FF; border: 1px solid #BFDBFE; padding: 0 16px; color: #2563EB; }
+          .btn-cart { position: relative; width: 44px; height: 44px; border-radius: 12px; background: #EFF6FF; border: 1px solid #BFDBFE; color: #2563EB; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; }
+          .cart-badge { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 50%; background: #0066FF; color: #FFFFFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid #FFFFFF; }
           .show-mobile { display: none; }
           .icon-md { font-size: 18px; }
 
-          /* Tablet Breakpoints */
           @media (max-width: 768px) {
             .nav-container { padding: 0 16px; }
             .inner-container { height: 60px; }
@@ -204,36 +104,22 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
             .btn-cart { width: 40px; height: 40px; border-radius: 10px; }
             .icon-md { font-size: 16px; }
           }
-
-          /* 🏆 THE FIX: Mobile Breakpoints (Catches iPhone 12, 13, 14, etc.) */
           @media (max-width: 640px) {
             .nav-container { padding: 0 12px; }
             .actions-wrapper { gap: 8px; }
             .btn-base { height: 38px; padding: 0 10px; font-size: 13px; }
             .btn-cart { width: 38px; height: 38px; }
             .logo-img { width: 36px; height: 36px; }
-            
-            /* Hide the brand text completely to save space for buttons */
             .logo-text { display: none; }
-            
-            /* Aggressively hide non-essential text on mobile */
             .hide-mobile { display: none !important; }
             .show-mobile { display: inline-block !important; }
-            
-            /* Convert admin & profile to circle icons on mobile */
-            .btn-base.icon-only { 
-              padding: 0; 
-              width: 38px; 
-              justify-content: center; 
-              border-radius: 50%; 
-            }
+            .btn-base.icon-only { padding: 0; width: 38px; justify-content: center; border-radius: 50%; }
           }
         `}
       </style>
 
       <nav className="nav-container">
         <div className="inner-container">
-          {/* Logo */}
           <div onClick={() => navigate("/")} className="logo-wrapper">
             <img src="/Sophea Mart no1.png" alt="Logo" className="logo-img" />
             <span className="logo-text">
@@ -241,20 +127,16 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
             </span>
           </div>
 
-          {/* Actions Container */}
           <div className="actions-wrapper">
-            {/* Global Language Switcher Button */}
             <button
               onClick={toggleLanguage}
               className="btn-base btn-lang"
               title="Change Language"
             >
               <FiGlobe className="icon-md" color="#0066FF" />
-              {/* Shows full text on Desktop */}
               <span className="hide-mobile" style={{ fontWeight: 700 }}>
                 {i18n.language === "en" ? "🇺🇸 EN" : "🇰🇭 ខ្មែរ"}
               </span>
-              {/* Shows minimal text on Mobile */}
               <span
                 className="show-mobile"
                 style={{ fontWeight: 700, fontSize: 13, color: "#0066FF" }}
@@ -310,7 +192,6 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                     </div>
                   </button>
 
-                  {/* Dropdown Menu */}
                   <div
                     style={{
                       position: "absolute",
@@ -353,6 +234,19 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                     >
                       <FiAward size={16} /> {t("navbar.rewards", "Rewards")}
                     </button>
+
+                    {/* 🏆 SCAN BARCODE BUTTON */}
+                    <button
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setShowScanner(true);
+                      }}
+                      style={{ ...dropdownItemStyle, fontWeight: 600 }}
+                    >
+                      <FiMaximize size={16} />{" "}
+                      {t("navbar.scan_barcode", "Scan Barcode")}
+                    </button>
+
                     <button
                       onClick={() => {
                         setProfileOpen(false);
@@ -380,7 +274,6 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
               </>
             )}
 
-            {/* Shopping Cart Button */}
             <button onClick={onCartOpen} className="btn-cart">
               <FiShoppingCart className="icon-md" />
               {count > 0 && (
@@ -390,11 +283,23 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
           </div>
         </div>
       </nav>
+
+      {/* 🏆 CAMERA MOUNTS HERE & DISPATCHES EVENT */}
+      {showScanner && (
+        <BarcodeScanner
+          onClose={() => setShowScanner(false)}
+          onScanSuccess={(barcode) => {
+            setShowScanner(false);
+            window.dispatchEvent(
+              new CustomEvent("store-barcode-scanned", { detail: barcode }),
+            );
+          }}
+        />
+      )}
     </>
   );
 }
 
-// Dropdown styles remain untouched to ensure the menu works perfectly
 const dropdownItemStyle = {
   width: "100%",
   padding: "12px 16px",
