@@ -56,26 +56,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     scannerRef.current = html5QrCode;
 
     const startScanner = async () => {
-      // 1. Hardware Configuration
-      let cameraConfig = {
-        facingMode: "environment",
-        advanced: [{ focusMode: "continuous" }],
-      };
-
-      try {
-        const cameras = await Html5Qrcode.getCameras();
-        const backCamera = cameras.find((c) =>
-          /back|rear|environment/i.test(c.label),
-        );
-        if (backCamera) {
-          cameraConfig = {
-            deviceId: { exact: backCamera.id },
-            advanced: [{ focusMode: "continuous" }],
-          };
-        }
-      } catch (e) {
-        // Fallback to facingMode if enumeration fails
-      }
+      // 🏆 BUG FIX: Removed 'advanced' focusMode and specific resolutions.
+      // This guarantees the camera will open on iOS Safari and strict Android browsers
+      // without throwing an OverconstrainedError.
+      const cameraConfig = { facingMode: "environment" };
 
       if (cancelled) return;
 
@@ -83,8 +67,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       await html5QrCode.start(
         cameraConfig,
         {
-          fps: 15, // 15 FPS is the sweet spot for mobile CPU balance
-          qrbox: 250, // CRITICAL: Matches the visual CSS box to limit processing area!
+          fps: 15,
+          qrbox: 250,
           disableFlip: true,
           formatsToSupport: [
             Html5QrcodeSupportedFormats.CODE_128,
@@ -158,6 +142,13 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         "scanner.error_no_camera",
         "No camera hardware found on this device.",
       );
+    // Added specific text so you know if it's an OverconstrainedError in the future
+    if (errorType === "OverconstrainedError")
+      return t(
+        "scanner.error_generic",
+        "Your device does not support the requested camera settings.",
+      );
+
     return t(
       "scanner.error_generic",
       "Could not access camera. Please check your browser permissions.",
