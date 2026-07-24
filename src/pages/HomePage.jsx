@@ -10,7 +10,8 @@ import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
 import QuickViewModal from "../components/product/QuickViewModal";
-import { Toast, useToast } from "../components/ui/Toast";
+// 🏆 FIX 1: Removed 'Toast' from the import, only kept 'useToast'
+import { useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
 import { useTranslation } from "react-i18next";
 
@@ -50,7 +51,8 @@ export default function HomePage() {
   const { user } = useAuth();
   const { products } = useStore();
   const { dispatch, cart } = useCart();
-  const { toasts, show: toast } = useToast();
+  // 🏆 FIX 2: Only extracting 'show: toast', no longer need 'toasts'
+  const { show: toast } = useToast();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -303,7 +305,7 @@ export default function HomePage() {
         onToggleFavorite={handleToggleFavorite}
       />
 
-      <Toast toasts={toasts} />
+      {/* 🏆 FIX 3: Removed <Toast toasts={toasts} /> from here */}
     </div>
   );
 }

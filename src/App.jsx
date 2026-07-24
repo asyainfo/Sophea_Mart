@@ -7,7 +7,8 @@ import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 
 import GlobalAudioAlerts from "./components/GlobalAudioAlerts";
-import { Toast, useToast } from "./components/ui/Toast";
+// 🏆 FIX: Import ToastProvider instead of Toast
+import { ToastProvider, useToast } from "./components/ui/Toast";
 
 import Navbar from "./components/layout/Navbar";
 import LoginModal from "./components/auth/LoginModal";
@@ -18,6 +19,7 @@ import CheckoutModal from "./components/cart/CheckoutModal";
 import Footer from "./components/layout/Footer";
 
 import ProductDetail from "./pages/ProductDetail";
+import FloatingCartButton from "./components/cart/FloatingCartButton";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
@@ -35,7 +37,8 @@ const PageLoader = () => (
 );
 
 function MainApp() {
-  const { toasts, show: toast } = useToast();
+  // 🏆 FIX: Only extract 'show' (aliased as 'toast'). The 'toasts' array is managed by the Provider now.
+  const { show: toast } = useToast();
   const location = useLocation();
 
   const [loginOpen, setLoginOpen] = useState(false);
@@ -48,18 +51,9 @@ function MainApp() {
 
   const isAdminPage = location.pathname.startsWith("/admin");
 
-  useEffect(() => {
-    const handleGlobalToast = (e) => {
-      if (toast && e.detail) {
-        toast(e.detail.message, e.detail.type);
-      }
-    };
-    window.addEventListener("global-toast", handleGlobalToast);
-    return () => window.removeEventListener("global-toast", handleGlobalToast);
-  }, [toast]);
+  // 🏆 FIX: Removed the redundant global-toast event listener here!
 
-  // 🏆 Isolated barcode listener — empty deps, never re-subscribes,
-  // permanent diagnostic log so you can always see it fire in the console
+  // Isolated barcode listener
   useEffect(() => {
     const handleStoreScan = (e) => {
       console.log("[App] store-barcode-scanned event received:", e.detail);
@@ -86,7 +80,9 @@ function MainApp() {
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 pt-6 pb-12 flex-grow w-full relative z-10">
+      <main
+        className={`max-w-7xl mx-auto px-4 pt-6 flex-grow w-full relative z-10 ${!isAdminPage ? "pb-28 md:pb-12" : "pb-12"}`}
+      >
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -105,6 +101,8 @@ function MainApp() {
 
       {!isAdminPage && <Footer />}
 
+      {!isAdminPage && <FloatingCartButton onOpen={() => setCartOpen(true)} />}
+
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
@@ -114,6 +112,7 @@ function MainApp() {
           setCheckoutOpen(true);
         }}
       />
+
       <LoginModal
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
@@ -127,6 +126,7 @@ function MainApp() {
           setForgotOpen(true);
         }}
       />
+
       <RegisterModal
         open={registerOpen}
         onClose={() => setRegisterOpen(false)}
@@ -136,6 +136,7 @@ function MainApp() {
           setLoginOpen(true);
         }}
       />
+
       <ForgotPasswordModal
         open={forgotOpen}
         onClose={() => setForgotOpen(false)}
@@ -145,6 +146,7 @@ function MainApp() {
           setLoginOpen(true);
         }}
       />
+
       <CheckoutModal
         open={checkoutOpen}
         onClose={() => {
@@ -162,23 +164,26 @@ function MainApp() {
         />
       )}
 
-      <Toast toasts={toasts} />
+      {/* 🏆 FIX: Removed the manual <Toast /> component here since the Provider handles it */}
     </>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StoreProvider>
-        <CartProvider>
-          <BrowserRouter>
-            <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden w-full">
-              <MainApp />
-            </div>
-          </BrowserRouter>
-        </CartProvider>
-      </StoreProvider>
-    </AuthProvider>
+    // 🏆 FIX: Added ToastProvider at the very top of the tree!
+    <ToastProvider>
+      <AuthProvider>
+        <StoreProvider>
+          <CartProvider>
+            <BrowserRouter>
+              <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden w-full">
+                <MainApp />
+              </div>
+            </BrowserRouter>
+          </CartProvider>
+        </StoreProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
