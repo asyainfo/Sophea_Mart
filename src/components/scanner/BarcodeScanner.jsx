@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
+import {
+  FiX,
+  FiLoader,
+  FiCameraOff,
+  FiZoomIn,
+  FiZoomOut,
+} from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
 // --- CONFIGURATION ---
@@ -59,6 +65,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
 
+  // 🏆 Universal Zoom State (Always available: 1x to 3x)
+  const [zoom, setZoom] = useState(1);
+  const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
+
   const scannerRef = useRef(null);
   const isProcessingRef = useRef(false);
   const onScanSuccessRef = useRef(onScanSuccess);
@@ -68,7 +78,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     onScanSuccessRef.current = onScanSuccess;
   }, [onScanSuccess]);
 
-  // Lock body scroll
+  // Lock body scroll while scanner is active
   useEffect(() => {
     const { overflow, position, width } = document.body.style;
     document.body.style.overflow = "hidden";
@@ -81,6 +91,37 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       document.body.style.width = width;
     };
   }, []);
+
+  // 🏆 The Universal Zoom Function
+  const applyZoom = async (zoomValue) => {
+    const videoElement = document.querySelector("#reader video");
+    if (!videoElement) return;
+
+    // 1. Digital CSS Zoom (Works on EVERY device and browser)
+    videoElement.style.transform = `scale(${zoomValue})`;
+    videoElement.style.transformOrigin = "center center";
+
+    // 2. Hardware Lens Zoom (Enhancement if the phone allows it)
+    try {
+      if (videoElement.srcObject) {
+        const track = videoElement.srcObject.getVideoTracks()[0];
+        if (track && track.getCapabilities) {
+          const caps = track.getCapabilities();
+          if (caps.zoom) {
+            await track.applyConstraints({ advanced: [{ zoom: zoomValue }] });
+          }
+        }
+      }
+    } catch (err) {
+      // Hardware zoom denied (like on iOS Safari), CSS zoom will silently handle it!
+    }
+  };
+
+  const handleZoomChange = (e) => {
+    const newZoom = parseFloat(e.target.value);
+    setZoom(newZoom);
+    applyZoom(newZoom);
+  };
 
   // Camera Initialization Logic
   useEffect(() => {
@@ -120,8 +161,24 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
               }
             });
         },
-        () => {}, // Ignore read errors
+        () => {},
       );
+
+      // Check if we can expand the slider beyond 3x using hardware limits
+      setTimeout(() => {
+        try {
+          const videoElement = document.querySelector("#reader video");
+          if (videoElement && videoElement.srcObject) {
+            const track = videoElement.srcObject.getVideoTracks()[0];
+            if (track.getCapabilities) {
+              const caps = track.getCapabilities();
+              if (caps.zoom && caps.zoom.max > 3) {
+                setZoomRange((prev) => ({ ...prev, max: caps.zoom.max }));
+              }
+            }
+          }
+        } catch (err) {}
+      }, 500);
     };
 
     cameraOperationChain = cameraOperationChain
@@ -176,6 +233,27 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     );
   };
 
+  const renderZoomControl = () => {
+    // Slider always renders now as long as we aren't loading or broken
+    if (isProcessing || hasError) return null;
+
+    return (
+      <div className="zoom-slider-container">
+        <FiZoomOut size={20} color="white" style={{ opacity: 0.8 }} />
+        <input
+          type="range"
+          min={zoomRange.min}
+          max={zoomRange.max}
+          step={zoomRange.step}
+          value={zoom}
+          onChange={handleZoomChange}
+          className="zoom-slider"
+        />
+        <FiZoomIn size={20} color="white" style={{ opacity: 0.8 }} />
+      </div>
+    );
+  };
+
   const renderStatusOverlay = () => (
     <div style={styles.statusOverlay}>
       {isProcessing ? (
@@ -222,7 +300,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         <p style={styles.instructionText}>Point camera at a barcode to scan</p>
       </div>
 
-      {/* 3. Navigation Header */}
+      {/* 3. Universal Zoom Controls */}
+      {renderZoomControl()}
+
+      {/* 4. Navigation Header */}
       <div className="scanner-header-wrapper">
         <h2 style={styles.logo}>
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
@@ -236,7 +317,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         </button>
       </div>
 
-      {/* 4. Loading / Error Screen */}
+      {/* 5. Loading / Error Screen */}
       {(isProcessing || hasError) && renderStatusOverlay()}
     </div>
   );
@@ -350,8 +431,8 @@ const styles = {
 };
 
 const CSS_STYLES = `
-  #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; }
-  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; }
+  #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; overflow: hidden; }
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.1s ease-out; }
   #reader > *:not(video) { display: none !important; }
   .scanner-cutout { position: relative; width: 250px; height: 250px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
   .corner { position: absolute; width: 40px; height: 40px; border-color: #3b82f6; border-style: solid; }
@@ -362,6 +443,31 @@ const CSS_STYLES = `
   .scanner-header-wrapper { position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px; display: flex; justify-content: space-between; align-items: center; z-index: 10; box-sizing: border-box; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%); }
   .header-close-btn { padding: 8px; background: rgba(255,255,255,0.1); color: white; border-radius: 50%; border: none; cursor: pointer; display: flex; transition: background 0.2s; backdrop-filter: blur(4px); }
   .header-close-btn:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
+  
+  .zoom-slider-container {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 85%;
+    max-width: 320px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.65);
+    padding: 10px 20px;
+    border-radius: 999px;
+    z-index: 30;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    pointer-events: auto;
+  }
+  .zoom-slider {
+    flex: 1;
+    accent-color: #3b82f6;
+    cursor: pointer;
+  }
+
   @keyframes spin { 100% { transform: rotate(360deg); } }
 `;
 

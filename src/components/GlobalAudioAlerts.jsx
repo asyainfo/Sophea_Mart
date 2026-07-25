@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
 
@@ -6,50 +6,51 @@ const adminSound = new Audio("/admin-alert.wav");
 const customerSound = new Audio("/customer-alert.mp3");
 let isAudioUnlocked = false;
 
-// --- THE FIX: Send a custom event to App.jsx to trigger the visual Toast! ---
-const triggerGlobalToast = (message, type) => {
+const triggerGlobalToast = (message, type = "success") => {
   window.dispatchEvent(
     new CustomEvent("global-toast", { detail: { message, type } }),
   );
 };
 
+// Centralized helper to play sound safely
+const playSound = (audioElement) => {
+  audioElement.currentTime = 0;
+  audioElement
+    .play()
+    .catch((err) => console.warn("Audio blocked by browser:", err));
+};
+
 export default function GlobalAudioAlerts() {
   const { user, profile } = useAuth();
+  const notifiedOrders = useRef(new Set());
 
-  // Safe Audio Unlocker
+  const isStaff = profile?.role === "admin" || profile?.role === "cashier";
+
+  // 1. Safe Audio Unlocker
   useEffect(() => {
     const unlockAudio = () => {
       if (isAudioUnlocked) return;
 
-      adminSound.volume = 0;
-      customerSound.volume = 0;
+      adminSound.muted = true;
+      customerSound.muted = true;
 
-      adminSound
-        .play()
-        .then(() => {
-          adminSound.pause();
-          adminSound.currentTime = 0;
-          adminSound.volume = 1;
-        })
-        .catch(() => {
-          adminSound.volume = 1;
-        });
+      Promise.all([
+        adminSound.play().catch(() => {}),
+        customerSound.play().catch(() => {}),
+      ]).then(() => {
+        adminSound.pause();
+        adminSound.currentTime = 0;
+        adminSound.muted = false;
 
-      customerSound
-        .play()
-        .then(() => {
-          customerSound.pause();
-          customerSound.currentTime = 0;
-          customerSound.volume = 1;
-        })
-        .catch(() => {
-          customerSound.volume = 1;
-        });
+        customerSound.pause();
+        customerSound.currentTime = 0;
+        customerSound.muted = false;
+      });
 
       isAudioUnlocked = true;
     };
 
-    const events = ["click", "touchstart"];
+    const events = ["click", "touchstart", "keydown"];
     events.forEach((event) =>
       document.addEventListener(event, unlockAudio, { once: true }),
     );
@@ -61,49 +62,33 @@ export default function GlobalAudioAlerts() {
     };
   }, []);
 
-  // Supabase Realtime Subscriptions
+  // 2. Supabase Realtime Subscriptions
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
+
     let activeChannel;
 
-    const handleAdminAlert = (payload) => {
-      triggerGlobalToast(
-        `🚨 New Order Received! ID: ${payload.new.id}`,
-        "success",
-      );
-      adminSound.currentTime = 0;
-      adminSound.play().catch((e) => console.warn("Admin audio blocked", e));
-    };
+    if (isStaff) {
+      // --- STAFF SUBSCRIPTION (Admins & Cashiers) ---
+      console.log("[AudioAlerts] Initializing Staff Broadcast Channel...");
 
-    const handleCustomerAlert = (payload) => {
-      console.log("Realtime packet captured for customer:", payload.new);
-
-      if (payload.new?.status === "completed") {
-        triggerGlobalToast(
-          `🎉 Good news! Order ${payload.new.id} is ready for pick-up!`,
-          "success",
-        );
-        customerSound.currentTime = 0;
-        customerSound
-          .play()
-          .catch((e) => console.warn("Customer audio blocked", e));
-      }
-    };
-
-    if (profile?.role === "admin") {
-      console.log("Initializing Global Admin Broadcast Channel...");
       activeChannel = supabase
-        .channel("global-admin-listener")
+        .channel("global-staff-listener")
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "Orders" },
-          handleAdminAlert,
+          (payload) => {
+            triggerGlobalToast(`🚨 New Order Received! ID: ${payload.new.id}`);
+            playSound(adminSound);
+          },
         )
         .subscribe();
     } else {
+      // --- CUSTOMER SUBSCRIPTION ---
       console.log(
-        `Initializing Global Customer Stream for User UID: ${user.id}`,
+        `[AudioAlerts] Initializing Customer Stream for UID: ${user.id}`,
       );
+
       activeChannel = supabase
         .channel(`global-customer-${user.id}`)
         .on(
@@ -114,18 +99,35 @@ export default function GlobalAudioAlerts() {
             table: "Orders",
             filter: `user_id=eq.${user.id}`,
           },
-          handleCustomerAlert,
+          (payload) => {
+            const orderId = payload.new.id;
+            const status = payload.new.status;
+
+            // Strict check: Status must be completed AND not already notified
+            if (
+              status === "completed" &&
+              !notifiedOrders.current.has(orderId)
+            ) {
+              notifiedOrders.current.add(orderId);
+
+              triggerGlobalToast(
+                `🎉 Good news! Order ${orderId} is ready for pick-up!`,
+              );
+              playSound(customerSound);
+            }
+          },
         )
         .subscribe();
     }
 
+    // Cleanup function when user logs out or role changes
     return () => {
       if (activeChannel) {
-        console.log("De-allocating active real-time channels.");
+        console.log("[AudioAlerts] De-allocating active real-time channels.");
         supabase.removeChannel(activeChannel);
       }
     };
-  }, [user, profile]);
+  }, [user?.id, isStaff]);
 
   return null;
 }
