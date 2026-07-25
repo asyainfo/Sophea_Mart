@@ -12,8 +12,8 @@ import { useTranslation } from "react-i18next";
 
 // --- CONFIGURATION ---
 const SCANNER_CONFIG = {
-  fps: 15,
-  qrbox: 250,
+  fps: 20, // 🏆 Increased for faster frame checks
+  qrbox: { width: 320, height: 150 }, // 🏆 WIDE RECTANGLE for 1D product barcodes
   formats: [
     Html5QrcodeSupportedFormats.CODE_128,
     Html5QrcodeSupportedFormats.EAN_13,
@@ -128,11 +128,22 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     isMountedRef.current = true;
     let cancelled = false;
 
-    const html5QrCode = new Html5Qrcode("reader", { verbose: false });
+    // 🏆 Hardware Machine Learning Detection Enabled
+    const html5QrCode = new Html5Qrcode("reader", {
+      verbose: false,
+      useBarCodeDetectorIfSupported: true,
+    });
     scannerRef.current = html5QrCode;
 
     const startScanner = async () => {
-      const cameraConfig = { facingMode: "environment" };
+      // 🏆 Request Maximum 4K Resolution for crisp long-distance scanning
+      const cameraConfig = {
+        facingMode: "environment",
+        advanced: [{ focusMode: "continuous" }],
+        width: { min: 1280, ideal: 3840 },
+        height: { min: 720, ideal: 2160 },
+      };
+
       if (cancelled) return;
 
       await html5QrCode.start(
@@ -434,7 +445,10 @@ const CSS_STYLES = `
   #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; overflow: hidden; }
   #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.1s ease-out; }
   #reader > *:not(video) { display: none !important; }
-  .scanner-cutout { position: relative; width: 250px; height: 250px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
+  
+  /* 🏆 UPDATED: Rectangular Box to fit 1D Barcodes */
+  .scanner-cutout { position: relative; width: 320px; height: 150px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
+  
   .corner { position: absolute; width: 40px; height: 40px; border-color: #3b82f6; border-style: solid; }
   .corner-tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 20px; }
   .corner-tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 20px; }
