@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 const SCANNER_CONFIG = {
-  fps: 20,
+  fps: 30, // 🏆 UPGRADED: Increased from 20 to 30 for faster frame analysis
   qrbox: { width: 320, height: 150 },
   formats: [
     Html5QrcodeSupportedFormats.CODE_128,
@@ -23,43 +23,35 @@ const SCANNER_CONFIG = {
   ],
 };
 
-let cameraOperationChain = Promise.resolve();
 let globalAudioCtx = null;
-
-const safeClear = (scanner) => {
-  if (!scanner) return;
-  try {
-    scanner.clear();
-  } catch (e) {}
-};
 
 const playBeepSound = () => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-
-    if (!globalAudioCtx) {
-      globalAudioCtx = new AudioContext();
-    }
-
-    if (globalAudioCtx.state === "suspended") {
-      globalAudioCtx.resume();
-    }
+    if (!globalAudioCtx) globalAudioCtx = new AudioContext();
+    if (globalAudioCtx.state === "suspended") globalAudioCtx.resume();
 
     const oscillator = globalAudioCtx.createOscillator();
     const gainNode = globalAudioCtx.createGain();
-
     oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(1200, globalAudioCtx.currentTime);
     gainNode.gain.setValueAtTime(0.2, globalAudioCtx.currentTime);
-
     oscillator.connect(gainNode);
     gainNode.connect(globalAudioCtx.destination);
-
     oscillator.start();
     oscillator.stop(globalAudioCtx.currentTime + 0.12);
   } catch (err) {
-    console.warn("Audio feedback skipped:", err);
+    console.warn("Audio feedback skipped");
+  }
+};
+
+const stopScannerSafe = async (scanner) => {
+  if (!scanner) return;
+  try {
+    await scanner.stop();
+  } catch (err) {
+    // Silently ignore if already stopped
   }
 };
 
@@ -67,14 +59,15 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const { t } = useTranslation();
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
   const [facingMode, setFacingMode] = useState("environment");
-
   const [zoom, setZoom] = useState(1);
   const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
 
   const scannerRef = useRef(null);
+  const facingModeRef = useRef(facingMode);
   const isProcessingRef = useRef(false);
   const onScanSuccessRef = useRef(onScanSuccess);
   const isMountedRef = useRef(true);
@@ -91,14 +84,145 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     };
   }, []);
 
-  const toggleCamera = () => {
-    if (isProcessing) return;
-    setHasError(false);
-    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
-    setZoom(1);
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    const scanner = new Html5Qrcode("reader", {
+      verbose: false,
+      useBarCodeDetectorIfSupported: true,
+    });
+    scannerRef.current = scanner;
+
+    const initScanner = async () => {
+      await new Promise((r) => setTimeout(r, 150));
+      if (!isMountedRef.current) return;
+
+      try {
+        await startCamera(facingModeRef.current);
+      } catch (err) {
+        if (isMountedRef.current) {
+          setHasError(true);
+          setErrorType(err?.name || "GenericError");
+        }
+      } finally {
+        if (isMountedRef.current) setIsSwitching(false);
+      }
+    };
+
+    initScanner();
+
+    return () => {
+      isMountedRef.current = false;
+      stopScannerSafe(scanner).then(() => {
+        try {
+          scanner.clear();
+        } catch (e) {}
+      });
+    };
+  }, []);
+
+  const handleScan = (decodedText) => {
+    if (isProcessingRef.current || isSwitching) return;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
+    playBeepSound();
+    if (navigator.vibrate) navigator.vibrate(200);
+
+    stopScannerSafe(scannerRef.current).finally(() => {
+      if (isMountedRef.current && onScanSuccessRef.current) {
+        onScanSuccessRef.current(decodedText);
+      }
+    });
   };
 
-  const applyHardwareSettings = async (zoomValue) => {
+  const startCamera = async (mode) => {
+    const scanner = scannerRef.current;
+    if (!scanner) return;
+
+    const config = {
+      fps: SCANNER_CONFIG.fps,
+      qrbox: SCANNER_CONFIG.qrbox,
+      // 🏆 FIX 1: ALWAYS disable flip. No more backwards "pulling right" feeling!
+      disableFlip: true,
+      videoConstraints: {
+        // 🏆 FIX 2: Lower resolution to 720p for drastically faster scanning processing
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        // 🏆 FIX 3: Request focus immediately on start, not 500ms later
+        advanced: [{ focusMode: "continuous" }],
+      },
+    };
+
+    try {
+      await scanner.start(
+        { facingMode: { exact: mode } },
+        config,
+        handleScan,
+        () => {},
+      );
+    } catch (e1) {
+      try {
+        await scanner.start({ facingMode: mode }, config, handleScan, () => {});
+      } catch (e2) {
+        await scanner.start(
+          { facingMode: "environment" },
+          { ...config, videoConstraints: undefined },
+          handleScan,
+          () => {},
+        );
+      }
+    }
+
+    // Still fetch zoom capabilities safely
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+      try {
+        const videoElement = document.querySelector("#reader video");
+        if (videoElement && videoElement.srcObject) {
+          const track = videoElement.srcObject.getVideoTracks()[0];
+          if (track.getCapabilities) {
+            const caps = track.getCapabilities();
+            if (caps.zoom && caps.zoom.max > 3) {
+              setZoomRange((prev) => ({ ...prev, max: caps.zoom.max }));
+            }
+          }
+        }
+      } catch (err) {}
+    }, 500);
+  };
+
+  const toggleCamera = async () => {
+    if (isProcessing || isSwitching) return;
+    setIsSwitching(true);
+    setHasError(false);
+
+    const nextMode = facingMode === "environment" ? "user" : "environment";
+    const scanner = scannerRef.current;
+
+    await stopScannerSafe(scanner);
+    if (!isMountedRef.current) return;
+
+    await new Promise((r) => setTimeout(r, 400));
+    if (!isMountedRef.current) return;
+
+    setFacingMode(nextMode);
+    facingModeRef.current = nextMode;
+    setZoom(1);
+
+    try {
+      await startCamera(nextMode);
+    } catch (err) {
+      if (isMountedRef.current) {
+        setHasError(true);
+        setErrorType(err?.name || "GenericError");
+      }
+    } finally {
+      if (isMountedRef.current) setIsSwitching(false);
+    }
+  };
+
+  const applyHardwareZoom = async (zoomValue) => {
     const videoElement = document.querySelector("#reader video");
     if (!videoElement) return;
 
@@ -110,16 +234,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         const track = videoElement.srcObject.getVideoTracks()[0];
         if (track && track.getCapabilities) {
           const caps = track.getCapabilities();
-          const constraintsToApply = {};
-
-          if (caps.zoom) constraintsToApply.zoom = zoomValue;
-
-          if (caps.focusMode && caps.focusMode.includes("continuous")) {
-            constraintsToApply.focusMode = "continuous";
-          }
-
-          if (Object.keys(constraintsToApply).length > 0) {
-            await track.applyConstraints({ advanced: [constraintsToApply] });
+          if (caps.zoom) {
+            await track.applyConstraints({ advanced: [{ zoom: zoomValue }] });
           }
         }
       }
@@ -129,144 +245,9 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const handleZoomChange = (e) => {
     const newZoom = parseFloat(e.target.value);
     setZoom(newZoom);
-    applyHardwareSettings(newZoom);
+    applyHardwareZoom(newZoom);
   };
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    let cancelled = false;
-    let html5QrCode = null; // 🏆 FIX: Instantiated locally to prevent memory leaks
-    let zoomCheckTimeout = null;
-
-    const startScanner = async () => {
-      if (cancelled) return;
-
-      // 🏆 FIX: Safe initialization inside the promise chain
-      html5QrCode = new Html5Qrcode("reader", {
-        verbose: false,
-        useBarCodeDetectorIfSupported: true,
-      });
-      scannerRef.current = html5QrCode;
-
-      const config = {
-        fps: SCANNER_CONFIG.fps,
-        qrbox: SCANNER_CONFIG.qrbox,
-        disableFlip: facingMode === "environment",
-        videoConstraints: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-      };
-
-      const handleScan = (decodedText) => {
-        if (isProcessingRef.current) return;
-        isProcessingRef.current = true;
-        setIsProcessing(true);
-
-        playBeepSound();
-        if (navigator.vibrate) navigator.vibrate(200);
-
-        try {
-          html5QrCode
-            .stop()
-            .then(() => safeClear(html5QrCode))
-            .catch(() => {})
-            .finally(() => {
-              if (isMountedRef.current && onScanSuccessRef.current) {
-                onScanSuccessRef.current(decodedText);
-              }
-            });
-        } catch (e) {
-          if (isMountedRef.current && onScanSuccessRef.current) {
-            onScanSuccessRef.current(decodedText);
-          }
-        }
-      };
-
-      try {
-        await html5QrCode.start(
-          { facingMode: { exact: facingMode } },
-          config,
-          handleScan,
-          () => {},
-        );
-      } catch (err1) {
-        if (cancelled) return;
-        try {
-          await html5QrCode.start(
-            { facingMode: facingMode },
-            config,
-            handleScan,
-            () => {},
-          );
-        } catch (err2) {
-          if (cancelled) return;
-          await html5QrCode.start(
-            { facingMode: "environment" },
-            { ...config, videoConstraints: undefined },
-            handleScan,
-            () => {},
-          );
-        }
-      }
-
-      // 🏆 FIX: Clean up timeout to prevent unmounted state updates on fast camera swaps
-      zoomCheckTimeout = setTimeout(() => {
-        if (!isMountedRef.current || cancelled) return;
-        try {
-          const videoElement = document.querySelector("#reader video");
-          if (videoElement && videoElement.srcObject) {
-            const track = videoElement.srcObject.getVideoTracks()[0];
-            if (track.getCapabilities) {
-              const caps = track.getCapabilities();
-
-              if (caps.focusMode && caps.focusMode.includes("continuous")) {
-                track
-                  .applyConstraints({ advanced: [{ focusMode: "continuous" }] })
-                  .catch(() => {});
-              }
-
-              if (caps.zoom && caps.zoom.max > 3) {
-                setZoomRange((prev) => ({ ...prev, max: caps.zoom.max }));
-              }
-            }
-          }
-        } catch (err) {}
-      }, 500);
-    };
-
-    cameraOperationChain = cameraOperationChain
-      .catch(() => {})
-      .then(async () => {
-        if (!cancelled) await startScanner();
-      })
-      .catch((err) => {
-        console.error("Failed to start scanner:", err);
-        if (isMountedRef.current && !cancelled) {
-          setHasError(true);
-          setErrorType(err?.name || "GenericError");
-        }
-      });
-
-    return () => {
-      isMountedRef.current = false;
-      cancelled = true;
-      if (zoomCheckTimeout) clearTimeout(zoomCheckTimeout);
-
-      cameraOperationChain = cameraOperationChain
-        .catch(() => {})
-        .then(async () => {
-          if (html5QrCode) {
-            try {
-              await html5QrCode.stop();
-            } catch (e) {}
-            safeClear(html5QrCode);
-          }
-        });
-    };
-  }, [facingMode]);
-
-  // --- RENDER HELPERS ---
   const getErrorMessage = () => {
     const errors = {
       NotAllowedError: t(
@@ -279,7 +260,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       ),
       OverconstrainedError: t(
         "scanner.error_generic",
-        "Your device does not support the requested camera settings.",
+        "Device does not support requested settings.",
       ),
     };
     return (
@@ -288,8 +269,54 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     );
   };
 
+  const renderStatusOverlay = () => {
+    if (isProcessing) {
+      return (
+        <div style={styles.statusOverlay}>
+          <div style={styles.loaderIconWrapper}>
+            <FiLoader size={40} style={styles.loaderIcon} />
+          </div>
+          <p style={styles.statusText}>
+            {t("scanner.loading", "Loading product...")}
+          </p>
+        </div>
+      );
+    }
+
+    if (isSwitching) {
+      return (
+        <div style={styles.statusOverlay}>
+          <div style={styles.loaderIconWrapper}>
+            <FiRefreshCcw size={40} style={styles.loaderIcon} />
+          </div>
+          <p style={styles.statusText}>
+            {t("scanner.switching", "Switching camera...")}
+          </p>
+        </div>
+      );
+    }
+
+    if (hasError) {
+      return (
+        <div style={styles.statusOverlay}>
+          <div style={styles.errorIconWrapper}>
+            <FiCameraOff size={40} style={{ color: "#ef4444" }} />
+          </div>
+          <p style={styles.errorTitle}>
+            {t("scanner.camera_blocked", "Camera Access Blocked")}
+          </p>
+          <p style={styles.errorSubtitle}>{getErrorMessage()}</p>
+          <button onClick={onClose} style={styles.closeButton}>
+            {t("scanner.close", "Close Scanner")}
+          </button>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const renderZoomControl = () => {
-    if (isProcessing || hasError) return null;
+    if (isProcessing || isSwitching || hasError) return null;
 
     return (
       <div className="zoom-slider-container">
@@ -307,34 +334,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       </div>
     );
   };
-
-  const renderStatusOverlay = () => (
-    <div style={styles.statusOverlay}>
-      {isProcessing ? (
-        <>
-          <div style={styles.loaderIconWrapper}>
-            <FiLoader size={40} style={styles.loaderIcon} />
-          </div>
-          <p style={styles.statusText}>
-            {t("scanner.loading", "Loading product...")}
-          </p>
-        </>
-      ) : (
-        <>
-          <div style={styles.errorIconWrapper}>
-            <FiCameraOff size={40} style={{ color: "#ef4444" }} />
-          </div>
-          <p style={styles.errorTitle}>
-            {t("scanner.camera_blocked", "Camera Access Blocked")}
-          </p>
-          <p style={styles.errorSubtitle}>{getErrorMessage()}</p>
-          <button onClick={onClose} style={styles.closeButton}>
-            {t("scanner.close", "Close Scanner")}
-          </button>
-        </>
-      )}
-    </div>
-  );
 
   const modalContent = (
     <div style={styles.container}>
@@ -374,7 +373,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         </div>
       </div>
 
-      {(isProcessing || hasError) && renderStatusOverlay()}
+      {renderStatusOverlay()}
     </div>
   );
 
