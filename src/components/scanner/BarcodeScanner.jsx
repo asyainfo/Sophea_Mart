@@ -24,10 +24,10 @@ const SCANNER_CONFIG = {
 };
 
 let cameraOperationChain = Promise.resolve();
-// Global audio context for iOS compatibility
 let globalAudioCtx = null;
 
 const safeClear = (scanner) => {
+  if (!scanner) return;
   try {
     scanner.clear();
   } catch (e) {}
@@ -38,12 +38,10 @@ const playBeepSound = () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
 
-    // Reuse context to bypass iOS Safari restrictions
     if (!globalAudioCtx) {
       globalAudioCtx = new AudioContext();
     }
 
-    // iOS requires context to be resumed if suspended
     if (globalAudioCtx.state === "suspended") {
       globalAudioCtx.resume();
     }
@@ -104,7 +102,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     const videoElement = document.querySelector("#reader video");
     if (!videoElement) return;
 
-    // Always apply universal digital zoom
     videoElement.style.transform = `scale(${zoomValue})`;
     videoElement.style.transformOrigin = "center center";
 
@@ -115,10 +112,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           const caps = track.getCapabilities();
           const constraintsToApply = {};
 
-          // Apply hardware zoom if supported
           if (caps.zoom) constraintsToApply.zoom = zoomValue;
 
-          // Force continuous autofocus via track application rather than strict init
           if (caps.focusMode && caps.focusMode.includes("continuous")) {
             constraintsToApply.focusMode = "continuous";
           }
@@ -128,9 +123,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           }
         }
       }
-    } catch (err) {
-      // Silently fall back to digital zoom if hardware denies it
-    }
+    } catch (err) {}
   };
 
   const handleZoomChange = (e) => {
@@ -142,61 +135,84 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   useEffect(() => {
     isMountedRef.current = true;
     let cancelled = false;
-
-    const html5QrCode = new Html5Qrcode("reader", {
-      verbose: false,
-      useBarCodeDetectorIfSupported: true,
-    });
-    scannerRef.current = html5QrCode;
+    let html5QrCode = null; // 🏆 FIX: Instantiated locally to prevent memory leaks
+    let zoomCheckTimeout = null;
 
     const startScanner = async () => {
-      const cameraConfig = { facingMode: facingMode };
-
       if (cancelled) return;
 
-      await html5QrCode.start(
-        cameraConfig,
-        {
-          fps: SCANNER_CONFIG.fps,
-          qrbox: SCANNER_CONFIG.qrbox,
-          disableFlip: true,
-          formatsToSupport: SCANNER_CONFIG.formats,
-          // 🏆 FIX: Replaced strict 'min' with 'ideal' for universal compatibility
-          videoConstraints: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
+      // 🏆 FIX: Safe initialization inside the promise chain
+      html5QrCode = new Html5Qrcode("reader", {
+        verbose: false,
+        useBarCodeDetectorIfSupported: true,
+      });
+      scannerRef.current = html5QrCode;
+
+      const config = {
+        fps: SCANNER_CONFIG.fps,
+        qrbox: SCANNER_CONFIG.qrbox,
+        disableFlip: facingMode === "environment",
+        videoConstraints: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
-        (decodedText) => {
-          if (isProcessingRef.current) return;
-          isProcessingRef.current = true;
-          setIsProcessing(true);
+      };
 
-          playBeepSound();
-          if (navigator.vibrate) navigator.vibrate(200);
+      const handleScan = (decodedText) => {
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+        setIsProcessing(true);
 
-          try {
-            html5QrCode
-              .stop()
-              .then(() => safeClear(html5QrCode))
-              .catch(() => {})
-              .finally(() => {
-                if (isMountedRef.current && onScanSuccessRef.current) {
-                  onScanSuccessRef.current(decodedText);
-                }
-              });
-          } catch (e) {
-            if (isMountedRef.current && onScanSuccessRef.current) {
-              onScanSuccessRef.current(decodedText);
-            }
+        playBeepSound();
+        if (navigator.vibrate) navigator.vibrate(200);
+
+        try {
+          html5QrCode
+            .stop()
+            .then(() => safeClear(html5QrCode))
+            .catch(() => {})
+            .finally(() => {
+              if (isMountedRef.current && onScanSuccessRef.current) {
+                onScanSuccessRef.current(decodedText);
+              }
+            });
+        } catch (e) {
+          if (isMountedRef.current && onScanSuccessRef.current) {
+            onScanSuccessRef.current(decodedText);
           }
-        },
-        () => {},
-      );
+        }
+      };
 
-      // Attempt to upgrade to hardware zoom/focus after 500ms
-      setTimeout(() => {
-        if (!isMountedRef.current) return;
+      try {
+        await html5QrCode.start(
+          { facingMode: { exact: facingMode } },
+          config,
+          handleScan,
+          () => {},
+        );
+      } catch (err1) {
+        if (cancelled) return;
+        try {
+          await html5QrCode.start(
+            { facingMode: facingMode },
+            config,
+            handleScan,
+            () => {},
+          );
+        } catch (err2) {
+          if (cancelled) return;
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            { ...config, videoConstraints: undefined },
+            handleScan,
+            () => {},
+          );
+        }
+      }
+
+      // 🏆 FIX: Clean up timeout to prevent unmounted state updates on fast camera swaps
+      zoomCheckTimeout = setTimeout(() => {
+        if (!isMountedRef.current || cancelled) return;
         try {
           const videoElement = document.querySelector("#reader video");
           if (videoElement && videoElement.srcObject) {
@@ -204,7 +220,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
             if (track.getCapabilities) {
               const caps = track.getCapabilities();
 
-              // Try to set continuous focus manually
               if (caps.focusMode && caps.focusMode.includes("continuous")) {
                 track
                   .applyConstraints({ advanced: [{ focusMode: "continuous" }] })
@@ -236,13 +251,17 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     return () => {
       isMountedRef.current = false;
       cancelled = true;
+      if (zoomCheckTimeout) clearTimeout(zoomCheckTimeout);
+
       cameraOperationChain = cameraOperationChain
         .catch(() => {})
         .then(async () => {
-          try {
-            await html5QrCode.stop();
-          } catch (e) {}
-          safeClear(html5QrCode);
+          if (html5QrCode) {
+            try {
+              await html5QrCode.stop();
+            } catch (e) {}
+            safeClear(html5QrCode);
+          }
         });
     };
   }, [facingMode]);
