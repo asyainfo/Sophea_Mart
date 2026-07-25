@@ -7,14 +7,13 @@ import {
   FiCameraOff,
   FiZoomIn,
   FiZoomOut,
-  FiRefreshCcw,
 } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
 const SCANNER_CONFIG = {
-  fps: 30,
-  qrbox: { width: 320, height: 150 },
-  formats: [
+  fps: 30, // Max frame rate for instant detection
+  qrbox: { width: 300, height: 140 }, // Optimized for standard retail barcodes
+  formatsToSupport: [
     Html5QrcodeSupportedFormats.CODE_128,
     Html5QrcodeSupportedFormats.EAN_13,
     Html5QrcodeSupportedFormats.EAN_8,
@@ -54,14 +53,10 @@ const stopScannerSafe = async (scanner) => {
 const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const { t } = useTranslation();
 
+  const [isInitializing, setIsInitializing] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSwitching, setIsSwitching] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
-
-  // 🏆 FIX 1: Store actual physical camera devices instead of "facingMode" text
-  const [cameras, setCameras] = useState([]);
-  const [activeCameraIndex, setActiveCameraIndex] = useState(0);
 
   const [zoom, setZoom] = useState(1);
   const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
@@ -86,38 +81,128 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   useEffect(() => {
     isMountedRef.current = true;
 
-    const initScannerFlow = async () => {
+    const initScanner = async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      if (!isMountedRef.current) return;
+
+      const scanner = new Html5Qrcode("reader", {
+        verbose: false,
+        useBarCodeDetectorIfSupported: true, // 🚀 Uses native phone GPU for instant scanning
+      });
+      scannerRef.current = scanner;
+
+      const handleScan = (decodedText) => {
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+        setIsProcessing(true);
+
+        playBeepSound();
+        if (navigator.vibrate) navigator.vibrate(200);
+
+        stopScannerSafe(scannerRef.current).finally(() => {
+          if (isMountedRef.current && onScanSuccessRef.current) {
+            onScanSuccessRef.current(decodedText);
+          }
+        });
+      };
+
       try {
-        // 🏆 FIX 2: Ask the phone for a list of all physical cameras first
+        // 🏆 STEP 1: Query exact hardware devices instead of guessing "environment"
         const devices = await Html5Qrcode.getCameras();
+        let selectedCameraId = null;
 
         if (devices && devices.length > 0) {
-          if (!isMountedRef.current) return;
-          setCameras(devices);
-
-          // Try to automatically find the back camera to start with
-          let startIndex = devices.findIndex(
+          // Find all back-facing cameras
+          const backCameras = devices.filter(
             (c) =>
               c.label.toLowerCase().includes("back") ||
+              c.label.toLowerCase().includes("rear") ||
               c.label.toLowerCase().includes("environment"),
           );
-          if (startIndex === -1) startIndex = 0; // Fallback to first camera
 
-          setActiveCameraIndex(startIndex);
-          await bootScannerWithId(devices[startIndex].id);
+          if (backCameras.length > 0) {
+            // 🚀 SMART SELECTION: The last back camera in the list is usually the
+            // primary Auto-Focus lens. The first one is often the Ultra-Wide (which cannot focus).
+            selectedCameraId = backCameras[backCameras.length - 1].id;
+          } else {
+            // Fallback to the last camera overall
+            selectedCameraId = devices[devices.length - 1].id;
+          }
         } else {
           throw new Error("No cameras found");
         }
+
+        const baseConfig = {
+          fps: SCANNER_CONFIG.fps,
+          qrbox: SCANNER_CONFIG.qrbox,
+          disableFlip: true,
+          formatsToSupport: SCANNER_CONFIG.formatsToSupport,
+        };
+
+        // Start scanner with our specifically chosen Auto-Focus lens
+        await scanner.start(selectedCameraId, baseConfig, handleScan, () => {});
+
+        // 🏆 STEP 2: The "Pull Toward Focus" Magic
+        // Give the video stream 800ms to mount, then hack the video track directly
+        setTimeout(async () => {
+          if (!isMountedRef.current) return;
+          try {
+            const videoElement = document.querySelector("#reader video");
+            if (videoElement && videoElement.srcObject) {
+              const track = videoElement.srcObject.getVideoTracks()[0];
+              const capabilities = track.getCapabilities
+                ? track.getCapabilities()
+                : {};
+
+              const constraints = { advanced: [] };
+
+              // Force the hardware lens to continuously hunt for focus
+              if (
+                capabilities.focusMode &&
+                capabilities.focusMode.includes("continuous")
+              ) {
+                constraints.advanced.push({ focusMode: "continuous" });
+              }
+
+              // Apply a default 1.5x zoom. This makes the barcode larger, keeping the phone
+              // further away so the lens can actually achieve minimum focal distance.
+              let defaultZoom = 1;
+              if (capabilities.zoom) {
+                const idealZoom = 1.5;
+                defaultZoom = Math.min(idealZoom, capabilities.zoom.max);
+                constraints.advanced.push({ zoom: defaultZoom });
+                setZoomRange({
+                  min: capabilities.zoom.min,
+                  max: capabilities.zoom.max,
+                  step: 0.1,
+                });
+                setZoom(defaultZoom);
+              }
+
+              // Apply the strict focus and zoom constraints directly to the hardware
+              if (constraints.advanced.length > 0) {
+                await track.applyConstraints(constraints);
+              }
+
+              // Ensure the video element scales visually to match
+              videoElement.style.transform = `scale(${defaultZoom})`;
+              videoElement.style.transformOrigin = "center center";
+            }
+          } catch (err) {
+            console.warn("Could not apply hardware constraints:", err);
+          }
+        }, 800);
       } catch (err) {
         if (isMountedRef.current) {
           setHasError(true);
           setErrorType(err?.name || "GenericError");
-          setIsSwitching(false);
         }
+      } finally {
+        if (isMountedRef.current) setIsInitializing(false);
       }
     };
 
-    initScannerFlow();
+    initScanner();
 
     return () => {
       isMountedRef.current = false;
@@ -130,117 +215,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       }
     };
   }, []);
-
-  const handleScan = (decodedText) => {
-    if (isProcessingRef.current || isSwitching) return;
-    isProcessingRef.current = true;
-    setIsProcessing(true);
-
-    playBeepSound();
-    if (navigator.vibrate) navigator.vibrate(200);
-
-    stopScannerSafe(scannerRef.current).finally(() => {
-      if (isMountedRef.current && onScanSuccessRef.current) {
-        onScanSuccessRef.current(decodedText);
-      }
-    });
-  };
-
-  // 🏆 FIX 3: Start the camera using the strict Hardware ID
-  const bootScannerWithId = async (cameraId) => {
-    if (scannerRef.current) {
-      await stopScannerSafe(scannerRef.current);
-      try {
-        scannerRef.current.clear();
-      } catch (e) {}
-    }
-
-    if (!isMountedRef.current) return;
-
-    scannerRef.current = new Html5Qrcode("reader", {
-      verbose: false,
-      useBarCodeDetectorIfSupported: true,
-    });
-
-    const config = {
-      fps: SCANNER_CONFIG.fps,
-      qrbox: SCANNER_CONFIG.qrbox,
-      disableFlip: true,
-      videoConstraints: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        advanced: [{ focusMode: "continuous" }],
-      },
-    };
-
-    try {
-      // Pass the hardware ID directly instead of facingMode
-      await scannerRef.current.start(cameraId, config, handleScan, () => {});
-    } catch (err) {
-      // Ultimate fallback if strict config fails
-      await scannerRef.current.start(
-        cameraId,
-        { fps: 30, qrbox: config.qrbox, disableFlip: true },
-        handleScan,
-        () => {},
-      );
-    }
-
-    if (isMountedRef.current) {
-      setIsSwitching(false);
-    }
-
-    // Zoom setup
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-      try {
-        const videoElement = document.querySelector("#reader video");
-        if (videoElement && videoElement.srcObject) {
-          const track = videoElement.srcObject.getVideoTracks()[0];
-          if (track.getCapabilities) {
-            const caps = track.getCapabilities();
-            if (caps.zoom && caps.zoom.max > 3) {
-              setZoomRange((prev) => ({ ...prev, max: caps.zoom.max }));
-            }
-          }
-        }
-      } catch (err) {}
-    }, 500);
-  };
-
-  const toggleCamera = async () => {
-    if (isProcessing || isSwitching || cameras.length <= 1) return;
-    setIsSwitching(true);
-    setHasError(false);
-
-    // Cycle through available hardware cameras
-    const nextIndex = (activeCameraIndex + 1) % cameras.length;
-    setActiveCameraIndex(nextIndex);
-    const nextCameraId = cameras[nextIndex].id;
-
-    if (scannerRef.current) {
-      await stopScannerSafe(scannerRef.current);
-      try {
-        scannerRef.current.clear();
-      } catch (e) {}
-    }
-
-    if (!isMountedRef.current) return;
-    await new Promise((r) => setTimeout(r, 400)); // Hardware lock release delay
-    if (!isMountedRef.current) return;
-
-    setZoom(1);
-
-    try {
-      await bootScannerWithId(nextCameraId);
-    } catch (err) {
-      if (isMountedRef.current) {
-        setHasError(true);
-        setErrorType(err?.name || "GenericError");
-        setIsSwitching(false);
-      }
-    }
-  };
 
   const applyHardwareZoom = async (zoomValue) => {
     const videoElement = document.querySelector("#reader video");
@@ -278,10 +252,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         "scanner.error_no_camera",
         "No camera hardware found on this device.",
       ),
-      OverconstrainedError: t(
-        "scanner.error_generic",
-        "Device does not support requested settings.",
-      ),
     };
     return (
       errors[errorType] ||
@@ -303,14 +273,14 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       );
     }
 
-    if (isSwitching) {
+    if (isInitializing) {
       return (
         <div style={styles.statusOverlay}>
           <div style={styles.loaderIconWrapper}>
-            <FiRefreshCcw size={40} style={styles.loaderIcon} />
+            <FiLoader size={40} style={styles.loaderIcon} />
           </div>
           <p style={styles.statusText}>
-            {t("scanner.switching", "Switching camera...")}
+            {t("scanner.starting", "Starting camera...")}
           </p>
         </div>
       );
@@ -336,7 +306,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   };
 
   const renderZoomControl = () => {
-    if (isProcessing || isSwitching || hasError) return null;
+    if (isProcessing || isInitializing || hasError) return null;
 
     return (
       <div className="zoom-slider-container">
@@ -375,25 +345,13 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         <h2 style={styles.logo}>
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
         </h2>
-        <div style={{ display: "flex", gap: "12px" }}>
-          {/* Hide swap button entirely if phone only has 1 camera */}
-          {cameras.length > 1 && (
-            <button
-              onClick={toggleCamera}
-              className="header-icon-btn"
-              aria-label="Switch Camera"
-            >
-              <FiRefreshCcw size={20} />
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            className="header-icon-btn"
-            aria-label="Close"
-          >
-            <FiX size={24} />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="header-icon-btn"
+          aria-label="Close"
+        >
+          <FiX size={24} />
+        </button>
       </div>
 
       {renderStatusOverlay()}
@@ -508,10 +466,10 @@ const styles = {
 
 const CSS_STYLES = `
   #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; overflow: hidden; }
-  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.1s ease-out; }
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
   #reader > *:not(video) { display: none !important; }
   
-  .scanner-cutout { position: relative; width: 320px; height: 150px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
+  .scanner-cutout { position: relative; width: 300px; height: 140px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; transition: transform 0.2s ease-out; }
   
   .corner { position: absolute; width: 40px; height: 40px; border-color: #3b82f6; border-style: solid; }
   .corner-tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 20px; }
