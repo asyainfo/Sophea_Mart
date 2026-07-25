@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 const SCANNER_CONFIG = {
-  fps: 30, // 🏆 UPGRADED: Increased from 20 to 30 for faster frame analysis
+  fps: 30,
   qrbox: { width: 320, height: 150 },
   formats: [
     Html5QrcodeSupportedFormats.CODE_128,
@@ -50,9 +50,7 @@ const stopScannerSafe = async (scanner) => {
   if (!scanner) return;
   try {
     await scanner.stop();
-  } catch (err) {
-    // Silently ignore if already stopped
-  }
+  } catch (err) {}
 };
 
 const BarcodeScanner = ({ onClose, onScanSuccess }) => {
@@ -87,11 +85,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   useEffect(() => {
     isMountedRef.current = true;
 
-    const scanner = new Html5Qrcode("reader", {
+    scannerRef.current = new Html5Qrcode("reader", {
       verbose: false,
       useBarCodeDetectorIfSupported: true,
     });
-    scannerRef.current = scanner;
 
     const initScanner = async () => {
       await new Promise((r) => setTimeout(r, 150));
@@ -113,11 +110,13 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
 
     return () => {
       isMountedRef.current = false;
-      stopScannerSafe(scanner).then(() => {
-        try {
-          scanner.clear();
-        } catch (e) {}
-      });
+      if (scannerRef.current) {
+        stopScannerSafe(scannerRef.current).then(() => {
+          try {
+            scannerRef.current.clear();
+          } catch (e) {}
+        });
+      }
     };
   }, []);
 
@@ -143,17 +142,15 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     const config = {
       fps: SCANNER_CONFIG.fps,
       qrbox: SCANNER_CONFIG.qrbox,
-      // 🏆 FIX 1: ALWAYS disable flip. No more backwards "pulling right" feeling!
       disableFlip: true,
       videoConstraints: {
-        // 🏆 FIX 2: Lower resolution to 720p for drastically faster scanning processing
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        // 🏆 FIX 3: Request focus immediately on start, not 500ms later
         advanced: [{ focusMode: "continuous" }],
       },
     };
 
+    // 🏆 FIX 1: The Fallback Chain now respects the requested `mode` entirely.
     try {
       await scanner.start(
         { facingMode: { exact: mode } },
@@ -165,16 +162,16 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       try {
         await scanner.start({ facingMode: mode }, config, handleScan, () => {});
       } catch (e2) {
+        // Last resort: Strip video constraints, but KEEP the requested mode
         await scanner.start(
-          { facingMode: "environment" },
-          { ...config, videoConstraints: undefined },
+          { facingMode: mode },
+          { fps: 30, qrbox: config.qrbox, disableFlip: true },
           handleScan,
           () => {},
         );
       }
     }
 
-    // Still fetch zoom capabilities safely
     setTimeout(() => {
       if (!isMountedRef.current) return;
       try {
@@ -198,13 +195,24 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     setHasError(false);
 
     const nextMode = facingMode === "environment" ? "user" : "environment";
-    const scanner = scannerRef.current;
 
-    await stopScannerSafe(scanner);
+    // 🏆 FIX 2: Completely destroy the old scanner engine and clear the DOM
+    if (scannerRef.current) {
+      await stopScannerSafe(scannerRef.current);
+      try {
+        scannerRef.current.clear();
+      } catch (e) {}
+    }
+
     if (!isMountedRef.current) return;
-
     await new Promise((r) => setTimeout(r, 400));
     if (!isMountedRef.current) return;
+
+    // 🏆 FIX 3: Rebuild a brand new scanner engine for the new lens
+    scannerRef.current = new Html5Qrcode("reader", {
+      verbose: false,
+      useBarCodeDetectorIfSupported: true,
+    });
 
     setFacingMode(nextMode);
     facingModeRef.current = nextMode;
