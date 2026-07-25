@@ -41,9 +41,7 @@ const playBeepSound = () => {
     gainNode.connect(globalAudioCtx.destination);
     oscillator.start();
     oscillator.stop(globalAudioCtx.currentTime + 0.12);
-  } catch (err) {
-    console.warn("Audio feedback skipped");
-  }
+  } catch (err) {}
 };
 
 const stopScannerSafe = async (scanner) => {
@@ -60,12 +58,15 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const [isSwitching, setIsSwitching] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
-  const [facingMode, setFacingMode] = useState("environment");
+
+  // 🏆 FIX 1: Store actual physical camera devices instead of "facingMode" text
+  const [cameras, setCameras] = useState([]);
+  const [activeCameraIndex, setActiveCameraIndex] = useState(0);
+
   const [zoom, setZoom] = useState(1);
   const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
 
   const scannerRef = useRef(null);
-  const facingModeRef = useRef(facingMode);
   const isProcessingRef = useRef(false);
   const onScanSuccessRef = useRef(onScanSuccess);
   const isMountedRef = useRef(true);
@@ -85,28 +86,38 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   useEffect(() => {
     isMountedRef.current = true;
 
-    scannerRef.current = new Html5Qrcode("reader", {
-      verbose: false,
-      useBarCodeDetectorIfSupported: true,
-    });
-
-    const initScanner = async () => {
-      await new Promise((r) => setTimeout(r, 150));
-      if (!isMountedRef.current) return;
-
+    const initScannerFlow = async () => {
       try {
-        await startCamera(facingModeRef.current);
+        // 🏆 FIX 2: Ask the phone for a list of all physical cameras first
+        const devices = await Html5Qrcode.getCameras();
+
+        if (devices && devices.length > 0) {
+          if (!isMountedRef.current) return;
+          setCameras(devices);
+
+          // Try to automatically find the back camera to start with
+          let startIndex = devices.findIndex(
+            (c) =>
+              c.label.toLowerCase().includes("back") ||
+              c.label.toLowerCase().includes("environment"),
+          );
+          if (startIndex === -1) startIndex = 0; // Fallback to first camera
+
+          setActiveCameraIndex(startIndex);
+          await bootScannerWithId(devices[startIndex].id);
+        } else {
+          throw new Error("No cameras found");
+        }
       } catch (err) {
         if (isMountedRef.current) {
           setHasError(true);
           setErrorType(err?.name || "GenericError");
+          setIsSwitching(false);
         }
-      } finally {
-        if (isMountedRef.current) setIsSwitching(false);
       }
     };
 
-    initScanner();
+    initScannerFlow();
 
     return () => {
       isMountedRef.current = false;
@@ -135,9 +146,21 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     });
   };
 
-  const startCamera = async (mode) => {
-    const scanner = scannerRef.current;
-    if (!scanner) return;
+  // 🏆 FIX 3: Start the camera using the strict Hardware ID
+  const bootScannerWithId = async (cameraId) => {
+    if (scannerRef.current) {
+      await stopScannerSafe(scannerRef.current);
+      try {
+        scannerRef.current.clear();
+      } catch (e) {}
+    }
+
+    if (!isMountedRef.current) return;
+
+    scannerRef.current = new Html5Qrcode("reader", {
+      verbose: false,
+      useBarCodeDetectorIfSupported: true,
+    });
 
     const config = {
       fps: SCANNER_CONFIG.fps,
@@ -150,28 +173,24 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       },
     };
 
-    // 🏆 FIX 1: The Fallback Chain now respects the requested `mode` entirely.
     try {
-      await scanner.start(
-        { facingMode: { exact: mode } },
-        config,
+      // Pass the hardware ID directly instead of facingMode
+      await scannerRef.current.start(cameraId, config, handleScan, () => {});
+    } catch (err) {
+      // Ultimate fallback if strict config fails
+      await scannerRef.current.start(
+        cameraId,
+        { fps: 30, qrbox: config.qrbox, disableFlip: true },
         handleScan,
         () => {},
       );
-    } catch (e1) {
-      try {
-        await scanner.start({ facingMode: mode }, config, handleScan, () => {});
-      } catch (e2) {
-        // Last resort: Strip video constraints, but KEEP the requested mode
-        await scanner.start(
-          { facingMode: mode },
-          { fps: 30, qrbox: config.qrbox, disableFlip: true },
-          handleScan,
-          () => {},
-        );
-      }
     }
 
+    if (isMountedRef.current) {
+      setIsSwitching(false);
+    }
+
+    // Zoom setup
     setTimeout(() => {
       if (!isMountedRef.current) return;
       try {
@@ -190,13 +209,15 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   };
 
   const toggleCamera = async () => {
-    if (isProcessing || isSwitching) return;
+    if (isProcessing || isSwitching || cameras.length <= 1) return;
     setIsSwitching(true);
     setHasError(false);
 
-    const nextMode = facingMode === "environment" ? "user" : "environment";
+    // Cycle through available hardware cameras
+    const nextIndex = (activeCameraIndex + 1) % cameras.length;
+    setActiveCameraIndex(nextIndex);
+    const nextCameraId = cameras[nextIndex].id;
 
-    // 🏆 FIX 2: Completely destroy the old scanner engine and clear the DOM
     if (scannerRef.current) {
       await stopScannerSafe(scannerRef.current);
       try {
@@ -205,28 +226,19 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     }
 
     if (!isMountedRef.current) return;
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 400)); // Hardware lock release delay
     if (!isMountedRef.current) return;
 
-    // 🏆 FIX 3: Rebuild a brand new scanner engine for the new lens
-    scannerRef.current = new Html5Qrcode("reader", {
-      verbose: false,
-      useBarCodeDetectorIfSupported: true,
-    });
-
-    setFacingMode(nextMode);
-    facingModeRef.current = nextMode;
     setZoom(1);
 
     try {
-      await startCamera(nextMode);
+      await bootScannerWithId(nextCameraId);
     } catch (err) {
       if (isMountedRef.current) {
         setHasError(true);
         setErrorType(err?.name || "GenericError");
+        setIsSwitching(false);
       }
-    } finally {
-      if (isMountedRef.current) setIsSwitching(false);
     }
   };
 
@@ -343,7 +355,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     );
   };
 
-  const modalContent = (
+  return createPortal(
     <div style={styles.container}>
       <style>{CSS_STYLES}</style>
       <div id="reader"></div>
@@ -364,13 +376,16 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
         </h2>
         <div style={{ display: "flex", gap: "12px" }}>
-          <button
-            onClick={toggleCamera}
-            className="header-icon-btn"
-            aria-label="Switch Camera"
-          >
-            <FiRefreshCcw size={20} />
-          </button>
+          {/* Hide swap button entirely if phone only has 1 camera */}
+          {cameras.length > 1 && (
+            <button
+              onClick={toggleCamera}
+              className="header-icon-btn"
+              aria-label="Switch Camera"
+            >
+              <FiRefreshCcw size={20} />
+            </button>
+          )}
           <button
             onClick={onClose}
             className="header-icon-btn"
@@ -382,10 +397,9 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       </div>
 
       {renderStatusOverlay()}
-    </div>
+    </div>,
+    document.body,
   );
-
-  return createPortal(modalContent, document.body);
 };
 
 const styles = {
@@ -527,12 +541,7 @@ const CSS_STYLES = `
     border: 1px solid rgba(255,255,255,0.15);
     pointer-events: auto;
   }
-  .zoom-slider {
-    flex: 1;
-    accent-color: #3b82f6;
-    cursor: pointer;
-  }
-
+  .zoom-slider { flex: 1; accent-color: #3b82f6; cursor: pointer; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
 `;
 
