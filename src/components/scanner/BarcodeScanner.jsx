@@ -12,8 +12,8 @@ import { useTranslation } from "react-i18next";
 
 // --- CONFIGURATION ---
 const SCANNER_CONFIG = {
-  fps: 20, // 🏆 Increased for faster frame checks
-  qrbox: { width: 320, height: 150 }, // 🏆 WIDE RECTANGLE for 1D product barcodes
+  fps: 20,
+  qrbox: { width: 320, height: 150 },
   formats: [
     Html5QrcodeSupportedFormats.CODE_128,
     Html5QrcodeSupportedFormats.EAN_13,
@@ -65,7 +65,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
 
-  // 🏆 Universal Zoom State (Always available: 1x to 3x)
   const [zoom, setZoom] = useState(1);
   const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
 
@@ -80,28 +79,21 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
 
   // Lock body scroll while scanner is active
   useEffect(() => {
-    const { overflow, position, width } = document.body.style;
+    const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.width = "100%";
 
     return () => {
-      document.body.style.overflow = overflow;
-      document.body.style.position = position;
-      document.body.style.width = width;
+      document.body.style.overflow = originalStyle;
     };
   }, []);
 
-  // 🏆 The Universal Zoom Function
   const applyZoom = async (zoomValue) => {
     const videoElement = document.querySelector("#reader video");
     if (!videoElement) return;
 
-    // 1. Digital CSS Zoom (Works on EVERY device and browser)
     videoElement.style.transform = `scale(${zoomValue})`;
     videoElement.style.transformOrigin = "center center";
 
-    // 2. Hardware Lens Zoom (Enhancement if the phone allows it)
     try {
       if (videoElement.srcObject) {
         const track = videoElement.srcObject.getVideoTracks()[0];
@@ -113,7 +105,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         }
       }
     } catch (err) {
-      // Hardware zoom denied (like on iOS Safari), CSS zoom will silently handle it!
+      // Hardware zoom denied, CSS zoom will silently handle it
     }
   };
 
@@ -123,12 +115,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     applyZoom(newZoom);
   };
 
-  // Camera Initialization Logic
   useEffect(() => {
     isMountedRef.current = true;
     let cancelled = false;
 
-    // 🏆 Hardware Machine Learning Detection Enabled
     const html5QrCode = new Html5Qrcode("reader", {
       verbose: false,
       useBarCodeDetectorIfSupported: true,
@@ -136,13 +126,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     scannerRef.current = html5QrCode;
 
     const startScanner = async () => {
-      // 🏆 Request Maximum 4K Resolution for crisp long-distance scanning
-      const cameraConfig = {
-        facingMode: "environment",
-        advanced: [{ focusMode: "continuous" }],
-        width: { min: 1280, ideal: 3840 },
-        height: { min: 720, ideal: 2160 },
-      };
+      const cameraConfig = { facingMode: "environment" };
 
       if (cancelled) return;
 
@@ -153,6 +137,11 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           qrbox: SCANNER_CONFIG.qrbox,
           disableFlip: true,
           formatsToSupport: SCANNER_CONFIG.formats,
+          videoConstraints: {
+            width: { min: 1280, ideal: 3840 },
+            height: { min: 720, ideal: 2160 },
+            advanced: [{ focusMode: "continuous" }],
+          },
         },
         (decodedText) => {
           if (isProcessingRef.current) return;
@@ -162,21 +151,30 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           playBeepSound();
           if (navigator.vibrate) navigator.vibrate(200);
 
-          html5QrCode
-            .stop()
-            .then(() => safeClear(html5QrCode))
-            .catch(() => {})
-            .finally(() => {
-              if (isMountedRef.current && onScanSuccessRef.current) {
-                onScanSuccessRef.current(decodedText);
-              }
-            });
+          // Always try to catch stop() errors securely
+          try {
+            html5QrCode
+              .stop()
+              .then(() => safeClear(html5QrCode))
+              .catch(() => {})
+              .finally(() => {
+                if (isMountedRef.current && onScanSuccessRef.current) {
+                  onScanSuccessRef.current(decodedText);
+                }
+              });
+          } catch (e) {
+            if (isMountedRef.current && onScanSuccessRef.current) {
+              onScanSuccessRef.current(decodedText);
+            }
+          }
         },
         () => {},
       );
 
-      // Check if we can expand the slider beyond 3x using hardware limits
+      // Check for hardware zoom after init
       setTimeout(() => {
+        // FIX: Prevent state update if component unmounted rapidly
+        if (!isMountedRef.current) return;
         try {
           const videoElement = document.querySelector("#reader video");
           if (videoElement && videoElement.srcObject) {
@@ -205,14 +203,19 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         }
       });
 
+    // Cleanup phase
     return () => {
       isMountedRef.current = false;
       cancelled = true;
       cameraOperationChain = cameraOperationChain
         .catch(() => {})
         .then(async () => {
-          if (html5QrCode.isScanning) {
-            await html5QrCode.stop().catch(() => {});
+          // FIX: Blindly try to stop and catch the error.
+          // Do not rely on undefined .isScanning properties.
+          try {
+            await html5QrCode.stop();
+          } catch (e) {
+            // Fails silently if the camera was already stopped or not fully started
           }
           safeClear(html5QrCode);
         });
@@ -245,7 +248,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   };
 
   const renderZoomControl = () => {
-    // Slider always renders now as long as we aren't loading or broken
     if (isProcessing || hasError) return null;
 
     return (
@@ -297,10 +299,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     <div style={styles.container}>
       <style>{CSS_STYLES}</style>
 
-      {/* 1. Hardware Camera Output */}
       <div id="reader"></div>
 
-      {/* 2. Target Box Overlay */}
       <div style={styles.targetOverlay}>
         <div className="scanner-cutout">
           <div className="corner corner-tl"></div>
@@ -311,10 +311,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         <p style={styles.instructionText}>Point camera at a barcode to scan</p>
       </div>
 
-      {/* 3. Universal Zoom Controls */}
       {renderZoomControl()}
 
-      {/* 4. Navigation Header */}
       <div className="scanner-header-wrapper">
         <h2 style={styles.logo}>
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
@@ -328,7 +326,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         </button>
       </div>
 
-      {/* 5. Loading / Error Screen */}
       {(isProcessing || hasError) && renderStatusOverlay()}
     </div>
   );
@@ -336,7 +333,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   return createPortal(modalContent, document.body);
 };
 
-// --- STYLES ---
 const styles = {
   container: {
     position: "fixed",
@@ -446,7 +442,6 @@ const CSS_STYLES = `
   #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.1s ease-out; }
   #reader > *:not(video) { display: none !important; }
   
-  /* 🏆 UPDATED: Rectangular Box to fit 1D Barcodes */
   .scanner-cutout { position: relative; width: 320px; height: 150px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
   
   .corner { position: absolute; width: 40px; height: 40px; border-color: #3b82f6; border-style: solid; }
