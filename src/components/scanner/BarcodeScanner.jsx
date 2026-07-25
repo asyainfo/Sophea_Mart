@@ -7,10 +7,10 @@ import {
   FiCameraOff,
   FiZoomIn,
   FiZoomOut,
+  FiRefreshCcw,
 } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
-// --- CONFIGURATION ---
 const SCANNER_CONFIG = {
   fps: 20,
   qrbox: { width: 320, height: 150 },
@@ -24,14 +24,13 @@ const SCANNER_CONFIG = {
 };
 
 let cameraOperationChain = Promise.resolve();
+// Global audio context for iOS compatibility
+let globalAudioCtx = null;
 
-// --- HELPERS ---
 const safeClear = (scanner) => {
   try {
     scanner.clear();
-  } catch (e) {
-    // Silently ignore teardown errors
-  }
+  } catch (e) {}
 };
 
 const playBeepSound = () => {
@@ -39,31 +38,40 @@ const playBeepSound = () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
 
-    const audioCtx = new AudioContext();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
+    // Reuse context to bypass iOS Safari restrictions
+    if (!globalAudioCtx) {
+      globalAudioCtx = new AudioContext();
+    }
+
+    // iOS requires context to be resumed if suspended
+    if (globalAudioCtx.state === "suspended") {
+      globalAudioCtx.resume();
+    }
+
+    const oscillator = globalAudioCtx.createOscillator();
+    const gainNode = globalAudioCtx.createGain();
 
     oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
-    gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    oscillator.frequency.setValueAtTime(1200, globalAudioCtx.currentTime);
+    gainNode.gain.setValueAtTime(0.2, globalAudioCtx.currentTime);
 
     oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(globalAudioCtx.destination);
 
     oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.12);
+    oscillator.stop(globalAudioCtx.currentTime + 0.12);
   } catch (err) {
-    console.error("Audio feedback error:", err);
+    console.warn("Audio feedback skipped:", err);
   }
 };
 
-// --- MAIN COMPONENT ---
 const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const { t } = useTranslation();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
+  const [facingMode, setFacingMode] = useState("environment");
 
   const [zoom, setZoom] = useState(1);
   const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
@@ -77,20 +85,26 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     onScanSuccessRef.current = onScanSuccess;
   }, [onScanSuccess]);
 
-  // Lock body scroll while scanner is active
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = "hidden";
-
     return () => {
       document.body.style.overflow = originalStyle;
     };
   }, []);
 
-  const applyZoom = async (zoomValue) => {
+  const toggleCamera = () => {
+    if (isProcessing) return;
+    setHasError(false);
+    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
+    setZoom(1);
+  };
+
+  const applyHardwareSettings = async (zoomValue) => {
     const videoElement = document.querySelector("#reader video");
     if (!videoElement) return;
 
+    // Always apply universal digital zoom
     videoElement.style.transform = `scale(${zoomValue})`;
     videoElement.style.transformOrigin = "center center";
 
@@ -99,20 +113,30 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         const track = videoElement.srcObject.getVideoTracks()[0];
         if (track && track.getCapabilities) {
           const caps = track.getCapabilities();
-          if (caps.zoom) {
-            await track.applyConstraints({ advanced: [{ zoom: zoomValue }] });
+          const constraintsToApply = {};
+
+          // Apply hardware zoom if supported
+          if (caps.zoom) constraintsToApply.zoom = zoomValue;
+
+          // Force continuous autofocus via track application rather than strict init
+          if (caps.focusMode && caps.focusMode.includes("continuous")) {
+            constraintsToApply.focusMode = "continuous";
+          }
+
+          if (Object.keys(constraintsToApply).length > 0) {
+            await track.applyConstraints({ advanced: [constraintsToApply] });
           }
         }
       }
     } catch (err) {
-      // Hardware zoom denied, CSS zoom will silently handle it
+      // Silently fall back to digital zoom if hardware denies it
     }
   };
 
   const handleZoomChange = (e) => {
     const newZoom = parseFloat(e.target.value);
     setZoom(newZoom);
-    applyZoom(newZoom);
+    applyHardwareSettings(newZoom);
   };
 
   useEffect(() => {
@@ -126,7 +150,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     scannerRef.current = html5QrCode;
 
     const startScanner = async () => {
-      const cameraConfig = { facingMode: "environment" };
+      const cameraConfig = { facingMode: facingMode };
 
       if (cancelled) return;
 
@@ -137,10 +161,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           qrbox: SCANNER_CONFIG.qrbox,
           disableFlip: true,
           formatsToSupport: SCANNER_CONFIG.formats,
+          // 🏆 FIX: Replaced strict 'min' with 'ideal' for universal compatibility
           videoConstraints: {
-            width: { min: 1280, ideal: 3840 },
-            height: { min: 720, ideal: 2160 },
-            advanced: [{ focusMode: "continuous" }],
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
         },
         (decodedText) => {
@@ -151,7 +175,6 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           playBeepSound();
           if (navigator.vibrate) navigator.vibrate(200);
 
-          // Always try to catch stop() errors securely
           try {
             html5QrCode
               .stop()
@@ -171,9 +194,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         () => {},
       );
 
-      // Check for hardware zoom after init
+      // Attempt to upgrade to hardware zoom/focus after 500ms
       setTimeout(() => {
-        // FIX: Prevent state update if component unmounted rapidly
         if (!isMountedRef.current) return;
         try {
           const videoElement = document.querySelector("#reader video");
@@ -181,6 +203,14 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
             const track = videoElement.srcObject.getVideoTracks()[0];
             if (track.getCapabilities) {
               const caps = track.getCapabilities();
+
+              // Try to set continuous focus manually
+              if (caps.focusMode && caps.focusMode.includes("continuous")) {
+                track
+                  .applyConstraints({ advanced: [{ focusMode: "continuous" }] })
+                  .catch(() => {});
+              }
+
               if (caps.zoom && caps.zoom.max > 3) {
                 setZoomRange((prev) => ({ ...prev, max: caps.zoom.max }));
               }
@@ -203,31 +233,26 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         }
       });
 
-    // Cleanup phase
     return () => {
       isMountedRef.current = false;
       cancelled = true;
       cameraOperationChain = cameraOperationChain
         .catch(() => {})
         .then(async () => {
-          // FIX: Blindly try to stop and catch the error.
-          // Do not rely on undefined .isScanning properties.
           try {
             await html5QrCode.stop();
-          } catch (e) {
-            // Fails silently if the camera was already stopped or not fully started
-          }
+          } catch (e) {}
           safeClear(html5QrCode);
         });
     };
-  }, []);
+  }, [facingMode]);
 
   // --- RENDER HELPERS ---
   const getErrorMessage = () => {
     const errors = {
       NotAllowedError: t(
         "scanner.error_permission",
-        "Camera permission was denied. Please allow camera access in your browser settings.",
+        "Camera permission was denied.",
       ),
       NotFoundError: t(
         "scanner.error_no_camera",
@@ -240,10 +265,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     };
     return (
       errors[errorType] ||
-      t(
-        "scanner.error_generic",
-        "Could not access camera. Please check your browser permissions.",
-      )
+      t("scanner.error_generic", "Could not access camera.")
     );
   };
 
@@ -298,9 +320,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const modalContent = (
     <div style={styles.container}>
       <style>{CSS_STYLES}</style>
-
       <div id="reader"></div>
-
       <div style={styles.targetOverlay}>
         <div className="scanner-cutout">
           <div className="corner corner-tl"></div>
@@ -317,13 +337,22 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         <h2 style={styles.logo}>
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
         </h2>
-        <button
-          onClick={onClose}
-          className="header-close-btn"
-          aria-label="Close"
-        >
-          <FiX size={24} />
-        </button>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <button
+            onClick={toggleCamera}
+            className="header-icon-btn"
+            aria-label="Switch Camera"
+          >
+            <FiRefreshCcw size={20} />
+          </button>
+          <button
+            onClick={onClose}
+            className="header-icon-btn"
+            aria-label="Close"
+          >
+            <FiX size={24} />
+          </button>
+        </div>
       </div>
 
       {(isProcessing || hasError) && renderStatusOverlay()}
@@ -450,8 +479,9 @@ const CSS_STYLES = `
   .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 20px; }
   .corner-br { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 20px; }
   .scanner-header-wrapper { position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px; display: flex; justify-content: space-between; align-items: center; z-index: 10; box-sizing: border-box; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%); }
-  .header-close-btn { padding: 8px; background: rgba(255,255,255,0.1); color: white; border-radius: 50%; border: none; cursor: pointer; display: flex; transition: background 0.2s; backdrop-filter: blur(4px); }
-  .header-close-btn:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
+  
+  .header-icon-btn { padding: 10px; background: rgba(255,255,255,0.15); color: white; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; backdrop-filter: blur(4px); }
+  .header-icon-btn:active { background: rgba(255,255,255,0.25); transform: scale(0.95); }
   
   .zoom-slider-container {
     position: absolute;
