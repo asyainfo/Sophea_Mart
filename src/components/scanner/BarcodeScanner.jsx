@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import {
-  FiX,
-  FiLoader,
-  FiCameraOff,
-  FiZoomIn,
-  FiZoomOut,
-} from "react-icons/fi";
+import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
 const SCANNER_CONFIG = {
-  fps: 30, // Max frame rate for instant detection
-  qrbox: { width: 300, height: 140 }, // Optimized for standard retail barcodes
+  fps: 30,
+  qrbox: { width: 300, height: 140 },
   formatsToSupport: [
     Html5QrcodeSupportedFormats.CODE_128,
     Html5QrcodeSupportedFormats.EAN_13,
@@ -22,25 +16,76 @@ const SCANNER_CONFIG = {
   ],
 };
 
+// --- Audio Engine ---
 let globalAudioCtx = null;
+let isAudioUnlocked = false;
 
-const playBeepSound = () => {
+const unlockAudioEngine = () => {
+  if (isAudioUnlocked) return;
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    if (!globalAudioCtx) globalAudioCtx = new AudioContext();
+
+    globalAudioCtx = globalAudioCtx || new AudioContext();
     if (globalAudioCtx.state === "suspended") globalAudioCtx.resume();
 
-    const oscillator = globalAudioCtx.createOscillator();
-    const gainNode = globalAudioCtx.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(1200, globalAudioCtx.currentTime);
-    gainNode.gain.setValueAtTime(0.2, globalAudioCtx.currentTime);
-    oscillator.connect(gainNode);
-    gainNode.connect(globalAudioCtx.destination);
-    oscillator.start();
-    oscillator.stop(globalAudioCtx.currentTime + 0.12);
+    const osc = globalAudioCtx.createOscillator();
+    const gain = globalAudioCtx.createGain();
+    gain.gain.value = 0;
+
+    osc.connect(gain);
+    gain.connect(globalAudioCtx.destination);
+    osc.start();
+    osc.stop(globalAudioCtx.currentTime + 0.01);
+
+    isAudioUnlocked = true;
   } catch (err) {}
+};
+
+const playBeepSound = () => {
+  try {
+    if (!globalAudioCtx || globalAudioCtx.state === "suspended")
+      unlockAudioEngine();
+    const osc = globalAudioCtx.createOscillator();
+    const gain = globalAudioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1500, globalAudioCtx.currentTime);
+    gain.gain.setValueAtTime(0.5, globalAudioCtx.currentTime);
+
+    osc.connect(gain);
+    gain.connect(globalAudioCtx.destination);
+    osc.start();
+    osc.stop(globalAudioCtx.currentTime + 0.1);
+  } catch (err) {}
+};
+
+// --- Camera Hardware Helpers ---
+const getBackCameraId = async () => {
+  // 1. WebRTC Bypass: Force OS to reveal the actual hardware ID
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: "environment" } },
+    });
+    const track = stream.getVideoTracks()[0];
+    const deviceId = track.getSettings().deviceId;
+    stream.getTracks().forEach((t) => t.stop());
+    if (deviceId) return deviceId;
+  } catch (err) {
+    // Ignore and fallback to list
+  }
+
+  // 2. Failsafe: Search device list
+  const devices = await Html5Qrcode.getCameras();
+  if (!devices || devices.length === 0) return null;
+
+  const backCameras = devices.filter((c) =>
+    /back|rear|environment/i.test(c.label),
+  );
+
+  return backCameras.length > 0
+    ? backCameras[backCameras.length - 1].id
+    : devices[devices.length - 1].id;
 };
 
 const stopScannerSafe = async (scanner) => {
@@ -50,6 +95,7 @@ const stopScannerSafe = async (scanner) => {
   } catch (err) {}
 };
 
+// --- Main Component ---
 const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const { t } = useTranslation();
 
@@ -58,36 +104,31 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const [hasError, setHasError] = useState(false);
   const [errorType, setErrorType] = useState("");
 
-  const [zoom, setZoom] = useState(1);
-  const [zoomRange, setZoomRange] = useState({ min: 1, max: 3, step: 0.1 });
-
   const scannerRef = useRef(null);
   const isProcessingRef = useRef(false);
-  const onScanSuccessRef = useRef(onScanSuccess);
   const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    onScanSuccessRef.current = onScanSuccess;
-  }, [onScanSuccess]);
-
+  // Lock body scroll
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = "hidden";
+    unlockAudioEngine();
     return () => {
       document.body.style.overflow = originalStyle;
     };
   }, []);
 
+  // Initialize Scanner
   useEffect(() => {
     isMountedRef.current = true;
 
     const initScanner = async () => {
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100)); // Brief delay for smooth UI mount
       if (!isMountedRef.current) return;
 
       const scanner = new Html5Qrcode("reader", {
         verbose: false,
-        useBarCodeDetectorIfSupported: true, // 🚀 Uses native phone GPU for instant scanning
+        useBarCodeDetectorIfSupported: true,
       });
       scannerRef.current = scanner;
 
@@ -97,101 +138,23 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         setIsProcessing(true);
 
         playBeepSound();
-        if (navigator.vibrate) navigator.vibrate(200);
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
         stopScannerSafe(scannerRef.current).finally(() => {
-          if (isMountedRef.current && onScanSuccessRef.current) {
-            onScanSuccessRef.current(decodedText);
-          }
+          if (isMountedRef.current) onScanSuccess(decodedText);
         });
       };
 
       try {
-        // 🏆 STEP 1: Query exact hardware devices instead of guessing "environment"
-        const devices = await Html5Qrcode.getCameras();
-        let selectedCameraId = null;
+        const cameraId = await getBackCameraId();
+        if (!cameraId) throw new Error("No cameras found");
 
-        if (devices && devices.length > 0) {
-          // Find all back-facing cameras
-          const backCameras = devices.filter(
-            (c) =>
-              c.label.toLowerCase().includes("back") ||
-              c.label.toLowerCase().includes("rear") ||
-              c.label.toLowerCase().includes("environment"),
-          );
-
-          if (backCameras.length > 0) {
-            // 🚀 SMART SELECTION: The last back camera in the list is usually the
-            // primary Auto-Focus lens. The first one is often the Ultra-Wide (which cannot focus).
-            selectedCameraId = backCameras[backCameras.length - 1].id;
-          } else {
-            // Fallback to the last camera overall
-            selectedCameraId = devices[devices.length - 1].id;
-          }
-        } else {
-          throw new Error("No cameras found");
-        }
-
-        const baseConfig = {
-          fps: SCANNER_CONFIG.fps,
-          qrbox: SCANNER_CONFIG.qrbox,
+        const config = {
+          ...SCANNER_CONFIG,
           disableFlip: true,
-          formatsToSupport: SCANNER_CONFIG.formatsToSupport,
         };
 
-        // Start scanner with our specifically chosen Auto-Focus lens
-        await scanner.start(selectedCameraId, baseConfig, handleScan, () => {});
-
-        // 🏆 STEP 2: The "Pull Toward Focus" Magic
-        // Give the video stream 800ms to mount, then hack the video track directly
-        setTimeout(async () => {
-          if (!isMountedRef.current) return;
-          try {
-            const videoElement = document.querySelector("#reader video");
-            if (videoElement && videoElement.srcObject) {
-              const track = videoElement.srcObject.getVideoTracks()[0];
-              const capabilities = track.getCapabilities
-                ? track.getCapabilities()
-                : {};
-
-              const constraints = { advanced: [] };
-
-              // Force the hardware lens to continuously hunt for focus
-              if (
-                capabilities.focusMode &&
-                capabilities.focusMode.includes("continuous")
-              ) {
-                constraints.advanced.push({ focusMode: "continuous" });
-              }
-
-              // Apply a default 1.5x zoom. This makes the barcode larger, keeping the phone
-              // further away so the lens can actually achieve minimum focal distance.
-              let defaultZoom = 1;
-              if (capabilities.zoom) {
-                const idealZoom = 1.5;
-                defaultZoom = Math.min(idealZoom, capabilities.zoom.max);
-                constraints.advanced.push({ zoom: defaultZoom });
-                setZoomRange({
-                  min: capabilities.zoom.min,
-                  max: capabilities.zoom.max,
-                  step: 0.1,
-                });
-                setZoom(defaultZoom);
-              }
-
-              // Apply the strict focus and zoom constraints directly to the hardware
-              if (constraints.advanced.length > 0) {
-                await track.applyConstraints(constraints);
-              }
-
-              // Ensure the video element scales visually to match
-              videoElement.style.transform = `scale(${defaultZoom})`;
-              videoElement.style.transformOrigin = "center center";
-            }
-          } catch (err) {
-            console.warn("Could not apply hardware constraints:", err);
-          }
-        }, 800);
+        await scanner.start(cameraId, config, handleScan, () => {});
       } catch (err) {
         if (isMountedRef.current) {
           setHasError(true);
@@ -214,43 +177,19 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         });
       }
     };
-  }, []);
+  }, [onScanSuccess]);
 
-  const applyHardwareZoom = async (zoomValue) => {
-    const videoElement = document.querySelector("#reader video");
-    if (!videoElement) return;
-
-    videoElement.style.transform = `scale(${zoomValue})`;
-    videoElement.style.transformOrigin = "center center";
-
-    try {
-      if (videoElement.srcObject) {
-        const track = videoElement.srcObject.getVideoTracks()[0];
-        if (track && track.getCapabilities) {
-          const caps = track.getCapabilities();
-          if (caps.zoom) {
-            await track.applyConstraints({ advanced: [{ zoom: zoomValue }] });
-          }
-        }
-      }
-    } catch (err) {}
-  };
-
-  const handleZoomChange = (e) => {
-    const newZoom = parseFloat(e.target.value);
-    setZoom(newZoom);
-    applyHardwareZoom(newZoom);
-  };
-
+  // --- Render Helpers ---
   const getErrorMessage = () => {
     const errors = {
       NotAllowedError: t(
         "scanner.error_permission",
         "Camera permission was denied.",
       ),
-      NotFoundError: t(
-        "scanner.error_no_camera",
-        "No camera hardware found on this device.",
+      NotFoundError: t("scanner.error_no_camera", "No camera hardware found."),
+      OverconstrainedError: t(
+        "scanner.error_no_back_camera",
+        "Could not access the back camera.",
       ),
     };
     return (
@@ -260,37 +199,14 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   };
 
   const renderStatusOverlay = () => {
-    if (isProcessing) {
-      return (
-        <div style={styles.statusOverlay}>
-          <div style={styles.loaderIconWrapper}>
-            <FiLoader size={40} style={styles.loaderIcon} />
-          </div>
-          <p style={styles.statusText}>
-            {t("scanner.loading", "Loading product...")}
-          </p>
-        </div>
-      );
-    }
+    if (!isProcessing && !isInitializing && !hasError) return null;
 
-    if (isInitializing) {
-      return (
-        <div style={styles.statusOverlay}>
-          <div style={styles.loaderIconWrapper}>
-            <FiLoader size={40} style={styles.loaderIcon} />
-          </div>
-          <p style={styles.statusText}>
-            {t("scanner.starting", "Starting camera...")}
-          </p>
-        </div>
-      );
-    }
-
+    let content;
     if (hasError) {
-      return (
-        <div style={styles.statusOverlay}>
+      content = (
+        <>
           <div style={styles.errorIconWrapper}>
-            <FiCameraOff size={40} style={{ color: "#ef4444" }} />
+            <FiCameraOff size={40} color="#ef4444" />
           </div>
           <p style={styles.errorTitle}>
             {t("scanner.camera_blocked", "Camera Access Blocked")}
@@ -299,36 +215,35 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           <button onClick={onClose} style={styles.closeButton}>
             {t("scanner.close", "Close Scanner")}
           </button>
-        </div>
+        </>
+      );
+    } else {
+      const text = isProcessing
+        ? t("scanner.loading", "Loading product...")
+        : t("scanner.starting", "Starting camera...");
+      content = (
+        <>
+          <div style={styles.loaderIconWrapper}>
+            <FiLoader size={40} style={styles.loaderIcon} />
+          </div>
+          <p style={styles.statusText}>{text}</p>
+        </>
       );
     }
-    return null;
-  };
 
-  const renderZoomControl = () => {
-    if (isProcessing || isInitializing || hasError) return null;
-
-    return (
-      <div className="zoom-slider-container">
-        <FiZoomOut size={20} color="white" style={{ opacity: 0.8 }} />
-        <input
-          type="range"
-          min={zoomRange.min}
-          max={zoomRange.max}
-          step={zoomRange.step}
-          value={zoom}
-          onChange={handleZoomChange}
-          className="zoom-slider"
-        />
-        <FiZoomIn size={20} color="white" style={{ opacity: 0.8 }} />
-      </div>
-    );
+    return <div style={styles.statusOverlay}>{content}</div>;
   };
 
   return createPortal(
-    <div style={styles.container}>
+    <div
+      style={styles.container}
+      onClick={unlockAudioEngine}
+      onTouchStart={unlockAudioEngine}
+    >
       <style>{CSS_STYLES}</style>
+
       <div id="reader"></div>
+
       <div style={styles.targetOverlay}>
         <div className="scanner-cutout">
           <div className="corner corner-tl"></div>
@@ -336,10 +251,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           <div className="corner corner-bl"></div>
           <div className="corner corner-br"></div>
         </div>
-        <p style={styles.instructionText}>Point camera at a barcode to scan</p>
+        <p style={styles.instructionText}>
+          {t("scanner.instruction", "Point camera at a barcode to scan")}
+        </p>
       </div>
-
-      {renderZoomControl()}
 
       <div className="scanner-header-wrapper">
         <h2 style={styles.logo}>
@@ -360,6 +275,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   );
 };
 
+// --- Styles ---
 const styles = {
   container: {
     position: "fixed",
@@ -368,7 +284,7 @@ const styles = {
     right: 0,
     bottom: 0,
     zIndex: 999999,
-    backgroundColor: "#000000",
+    backgroundColor: "#000",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -388,7 +304,7 @@ const styles = {
     justifyContent: "center",
   },
   instructionText: {
-    color: "white",
+    color: "#fff",
     marginTop: "32px",
     fontSize: "14px",
     fontWeight: "500",
@@ -396,7 +312,7 @@ const styles = {
     textShadow: "0 2px 4px rgba(0,0,0,0.5)",
   },
   logo: {
-    color: "white",
+    color: "#fff",
     fontWeight: 800,
     fontSize: "18px",
     margin: 0,
@@ -426,12 +342,7 @@ const styles = {
     marginBottom: "16px",
   },
   loaderIcon: { color: "#3b82f6", animation: "spin 1s linear infinite" },
-  statusText: {
-    color: "white",
-    fontSize: "18px",
-    margin: 0,
-    fontWeight: "600",
-  },
+  statusText: { color: "#fff", fontSize: "18px", margin: 0, fontWeight: "600" },
   errorIconWrapper: {
     padding: "20px",
     backgroundColor: "rgba(239, 68, 68, 0.2)",
@@ -453,8 +364,8 @@ const styles = {
   },
   closeButton: {
     padding: "14px 40px",
-    backgroundColor: "#ffffff",
-    color: "#000000",
+    backgroundColor: "#fff",
+    color: "#000",
     borderRadius: "12px",
     fontWeight: "bold",
     border: "none",
@@ -465,41 +376,23 @@ const styles = {
 };
 
 const CSS_STYLES = `
-  #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000000; overflow: hidden; }
-  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
+  #reader { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; }
   #reader > *:not(video) { display: none !important; }
   
-  .scanner-cutout { position: relative; width: 300px; height: 140px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; transition: transform 0.2s ease-out; }
+  .scanner-cutout { position: relative; width: 300px; height: 140px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 20px; }
   
   .corner { position: absolute; width: 40px; height: 40px; border-color: #3b82f6; border-style: solid; }
   .corner-tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 20px; }
   .corner-tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 20px; }
   .corner-bl { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 20px; }
   .corner-br { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 20px; }
-  .scanner-header-wrapper { position: absolute; top: 0; left: 0; width: 100%; padding: 20px 24px; padding-top: 48px; display: flex; justify-content: space-between; align-items: center; z-index: 10; box-sizing: border-box; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%); }
   
-  .header-icon-btn { padding: 10px; background: rgba(255,255,255,0.15); color: white; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; backdrop-filter: blur(4px); }
+  .scanner-header-wrapper { position: absolute; top: 0; left: 0; width: 100%; padding: 48px 24px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 10; box-sizing: border-box; background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%); }
+  
+  .header-icon-btn { padding: 10px; background: rgba(255,255,255,0.15); color: #fff; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; backdrop-filter: blur(4px); }
   .header-icon-btn:active { background: rgba(255,255,255,0.25); transform: scale(0.95); }
   
-  .zoom-slider-container {
-    position: absolute;
-    bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 85%;
-    max-width: 320px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(0, 0, 0, 0.65);
-    padding: 10px 20px;
-    border-radius: 999px;
-    z-index: 30;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.15);
-    pointer-events: auto;
-  }
-  .zoom-slider { flex: 1; accent-color: #3b82f6; cursor: pointer; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
 `;
 
