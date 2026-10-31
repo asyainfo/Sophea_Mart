@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { FiUploadCloud } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
@@ -42,13 +42,50 @@ const CATEGORIES = [
   "ទឹកដោះគោ",
   "សាប៊ូបោកខោអាវ",
   "សាប៊ូលាងចាន",
-  "មី​ និង​ គុយទាវ",
+  "មី និង គុយទាវ",
   "ស្បែកជើង",
   "ប្រេងឆា",
   "សាប៊ូដុះខ្លួន",
   "អាហារកំប៉ុង",
   "សម្ភារៈទូទៅ",
 ];
+
+// ⚡ Background Helper: Shrinks 3MB+ photos to ~35KB WebP automatically before uploading
+async function compressProductImage(file, maxWidth = 800, quality = 0.8) {
+  if (!file || !file.type?.startsWith("image/")) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, maxWidth / img.width);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const cleanName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.webp`;
+          resolve(new File([blob], cleanName, { type: "image/webp" }));
+        },
+        "image/webp",
+        quality,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+  });
+}
 
 export default function ProductFormModal({ open, onClose, product, onSave }) {
   const { t } = useTranslation();
@@ -62,9 +99,22 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const objectUrlRef = useRef(null);
+
+  // Clean up memory when component unmounts
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   // Sync state when modal opens or product changes
   useEffect(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+
     if (product && Object.keys(product).length > 0) {
       setName(product.name || "");
       setCategory(product.category || CATEGORIES[0]);
@@ -76,7 +126,9 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
       setPreviewUrl(
         product.image?.startsWith("http")
           ? product.image
-          : `/${product.image || ""}`,
+          : product.image
+            ? `/${product.image}`
+            : "",
       );
       setImageFile(null);
     } else {
@@ -95,8 +147,11 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const newPreview = URL.createObjectURL(file);
+      objectUrlRef.current = newPreview;
       setImageFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
+      setPreviewUrl(newPreview);
     }
   };
 
@@ -119,14 +174,19 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     try {
       let finalImageUrl = product?.image || "";
 
-      // Upload Image to Supabase
+      // ⚡ Upload Compressed WebP Image to Supabase with 1-Year Cache
       if (imageFile) {
-        const fileExt = imageFile.name.split(".").pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const optimizedFile = await compressProductImage(imageFile);
+        const fileExt = optimizedFile.name.split(".").pop() || "webp";
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("product-images")
-          .upload(fileName, imageFile);
+          .upload(fileName, optimizedFile, {
+            cacheControl: "31536000", // Cache for 1 year to save Supabase Cached Egress!
+            contentType: optimizedFile.type || "image/webp",
+            upsert: false,
+          });
 
         if (uploadError) throw uploadError;
 
@@ -188,6 +248,8 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
               <img
                 src={previewUrl}
                 alt="Preview"
+                loading="lazy"
+                decoding="async"
                 style={{
                   height: 120,
                   objectFit: "contain",

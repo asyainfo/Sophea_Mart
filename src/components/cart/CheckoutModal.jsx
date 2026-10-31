@@ -12,10 +12,48 @@ import {
 } from "react-icons/fi";
 import { useCart } from "../../hooks/useCart";
 import { useAuth } from "../../hooks/useAuth";
+import { useStore } from "../../hooks/useStore";
 import { fmt, fmtKHR } from "../../utils/currency";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { supabase } from "../../services/supabase";
+import { sendOrderNotification } from "../../services/telegram";
+
+// ⚡ Background Helper: Compress bank receipt screenshot before uploading
+async function compressReceiptImage(file, maxWidth = 1000, quality = 0.8) {
+  if (!file || !file.type?.startsWith("image/")) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, maxWidth / img.width);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          resolve(new File([blob], "receipt.webp", { type: "image/webp" }));
+        },
+        "image/webp",
+        quality,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+  });
+}
 
 export default function CheckoutModal({
   open,
@@ -26,6 +64,7 @@ export default function CheckoutModal({
   const { t } = useTranslation();
   const { items, total, dispatch } = useCart();
   const { user } = useAuth();
+  const { refreshProducts } = useStore() || {};
 
   const [confirmed, setConfirmed] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -118,28 +157,43 @@ export default function CheckoutModal({
       const orderId = `ORD-${String(Date.now()).slice(-4)}`;
       let receiptUrl = null;
 
-      // 1. Fetch Customer Name for Notification
-      const { data: profileData } = await supabase
+      // 1. Fetch Customer Name & Compress/Upload Receipt in Parallel
+      const profilePromise = supabase
         .from("profiles")
         .select("full_name")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
+
+      const receiptPromise = (async () => {
+        if (paymentMethod === "bank" && receiptFile) {
+          const optimizedReceipt = await compressReceiptImage(receiptFile);
+          const fileExt = optimizedReceipt.name.split(".").pop() || "webp";
+          const fileName = `${orderId}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("receipts")
+            .upload(fileName, optimizedReceipt, {
+              cacheControl: "31536000",
+              contentType: optimizedReceipt.type || "image/webp",
+              upsert: false,
+            });
+
+          if (uploadError) throw uploadError;
+          return supabase.storage.from("receipts").getPublicUrl(fileName).data
+            .publicUrl;
+        }
+        return null;
+      })();
+
+      const [{ data: profileData }, uploadedReceiptUrl] = await Promise.all([
+        profilePromise,
+        receiptPromise,
+      ]);
 
       const customerName = profileData?.full_name || "Registered Customer";
+      receiptUrl = uploadedReceiptUrl;
 
-      // 2. Upload Receipt
-      if (paymentMethod === "bank" && receiptFile) {
-        const fileExt = receiptFile.name.split(".").pop();
-        const fileName = `${orderId}-${Math.random()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from("receipts")
-          .upload(fileName, receiptFile);
-        if (uploadError) throw uploadError;
-        receiptUrl = supabase.storage.from("receipts").getPublicUrl(fileName)
-          .data.publicUrl;
-      }
-
-      // 3. Create Order Record
+      // 2. Create Order Record
       const totalKhrValue = Math.round(finalTotalUsd * 4000);
       const totalItemsCount = items.reduce(
         (sum, item) => sum + (item.quantity || 1),
@@ -168,14 +222,13 @@ export default function CheckoutModal({
         .insert([newOrder]);
       if (orderError) throw orderError;
 
-      // 4. Create Order Items (Strictly mapped to Supabase Schema)
+      // 3. Create Order Items
       const orderItemsToSave = items.map((item) => ({
         order_id: orderId,
         product_name: item.name,
         quantity: item.quantity || 1,
         price: item.price,
         product_id: item.isGift ? null : item.id,
-        // 🚫 REMOVED: image: item.image (This caused the 400 Schema Cache error!)
       }));
 
       const { error: itemsError } = await supabase
@@ -183,38 +236,34 @@ export default function CheckoutModal({
         .insert(orderItemsToSave);
       if (itemsError) throw itemsError;
 
-      // 5. Update Stock Quantities
-      for (const item of items) {
-        if (item.isGift) continue;
-        const { data: liveProduct, error: fetchError } = await supabase
-          .from("products")
-          .select("stock")
-          .eq("id", item.id)
-          .single();
+      // 4. Update Stock Quantities in Parallel (Much Faster!)
+      const regularItems = items.filter((item) => !item.isGift);
+      await Promise.all(
+        regularItems.map(async (item) => {
+          const { data: liveProduct, error: fetchError } = await supabase
+            .from("products")
+            .select("stock")
+            .eq("id", item.id)
+            .single();
 
-        if (fetchError) {
-          console.error(
-            `Failed to fetch live stock for ${item.name}`,
-            fetchError,
-          );
-          continue;
-        }
+          if (fetchError || !liveProduct) return;
 
-        const qtyBought = item.quantity || 1;
-        const newStockLevel = Math.max(0, liveProduct.stock - qtyBought);
-        const { error: stockUpdateError } = await supabase
-          .from("products")
-          .update({ stock: newStockLevel })
-          .eq("id", item.id);
+          const qtyBought = item.quantity || 1;
+          const newStockLevel = Math.max(0, liveProduct.stock - qtyBought);
 
-        if (stockUpdateError)
-          console.error(
-            `Failed to update stock for ${item.name}`,
-            stockUpdateError,
-          );
+          await supabase
+            .from("products")
+            .update({ stock: newStockLevel })
+            .eq("id", item.id);
+        }),
+      );
+
+      // Refresh local storefront cache so new stock levels appear
+      if (typeof refreshProducts === "function") {
+        refreshProducts();
       }
 
-      // 6. Burn the Voucher
+      // 5. Burn the Voucher
       if (appliedVoucher) {
         const { error: voucherError } = await supabase
           .from("user_vouchers")
@@ -224,36 +273,21 @@ export default function CheckoutModal({
           console.error("Failed to mark voucher as used:", voucherError);
       }
 
-      // 7. TELEGRAM BOT NOTIFICATION
-      try {
-        const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-        const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+      // 6. SECURE TELEGRAM BOT NOTIFICATION
+      const formattedDate = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Phnom_Penh",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
 
-        if (botToken && chatId) {
-          const formattedDate = new Date().toLocaleString("en-US", {
-            timeZone: "Asia/Phnom_Penh",
-            dateStyle: "medium",
-            timeStyle: "short",
-          });
-
-          const telegramMessage = `🚨 *មានការបញ្ជាទិញថ្មី!* 🚨\n----------------------------------------\n🆔 *លេខកូដបញ្ជាទិញ:* \`${orderId}\`\n👤 *អតិថិជន:* ${customerName}\n📅 *កាលបរិច្ឆេទ:* ${formattedDate}\n\n💵 *តម្លៃសរុប:* $${finalTotalUsd.toFixed(2)} (${totalKhrValue.toLocaleString()}៛)\n📦 *ចំនួនទំនិញ:* ${totalItemsCount} items\n----------------------------------------\n🛒 *សូមពិនិត្យមើល Admin Dashboard ដើម្បីដំណើរការការបញ្ជាទិញនេះ។*`;
-
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: telegramMessage,
-              parse_mode: "Markdown",
-            }),
-          });
-        }
-      } catch (tgError) {
-        console.error(
-          "Telegram notification failed, but order was saved.",
-          tgError,
-        );
-      }
+      await sendOrderNotification({
+        orderId,
+        customerName,
+        dateFormatted: formattedDate,
+        totalUsd: finalTotalUsd,
+        totalKhr: totalKhrValue,
+        itemCount: totalItemsCount,
+      });
 
       setConfirmed(true);
     } catch (error) {
@@ -405,6 +439,8 @@ export default function CheckoutModal({
                         <img
                           src={bankLogoUrl}
                           alt="Bank"
+                          loading="lazy"
+                          decoding="async"
                           style={styles.bankLogoImage}
                         />
                       </div>
@@ -471,6 +507,8 @@ export default function CheckoutModal({
                       <img
                         src={bankQrImage}
                         alt={`${selectedBank} QR Code`}
+                        loading="lazy"
+                        decoding="async"
                         style={styles.qrImage}
                       />
                     </div>
@@ -586,6 +624,8 @@ export default function CheckoutModal({
                         <img
                           src={item.image}
                           alt={item.name}
+                          loading="lazy"
+                          decoding="async"
                           style={styles.summaryItemImg}
                         />
                         <span>

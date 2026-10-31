@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   FiBox,
   FiDollarSign,
@@ -92,6 +92,7 @@ export default function AdminDashboard() {
   const [newGift, setNewGift] = useState({ name: "" });
   const [giftImageFile, setGiftImageFile] = useState(null);
   const [giftImagePreview, setGiftImagePreview] = useState(null);
+  const previewRef = useRef(null);
 
   const [isSavingGift, setIsSavingGift] = useState(false);
   const [processingGiftId, setProcessingGiftId] = useState(null);
@@ -118,6 +119,13 @@ export default function AdminDashboard() {
       }, 1500);
     }
   }, [profile, isStaff, t]);
+
+  // Clean up object URL on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    };
+  }, []);
 
   // --- DASHBOARD DATA FETCHING ---
   const fetchDashboardData = async () => {
@@ -241,10 +249,6 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // ==========================================
-  // STANDARDIZED API CALLS
-  // ==========================================
-
   const fetchProducts = async () => {
     const { data, error } = await adminApi.fetchProducts();
     if (error) {
@@ -361,7 +365,6 @@ export default function AdminDashboard() {
     setIsLoadingSettings(false);
   };
 
-  // --- GIFT ACTIONS ---
   const handleAddGift = async () => {
     if (!newGift.name)
       return triggerGlobalToast(
@@ -405,6 +408,7 @@ export default function AdminDashboard() {
       setNewGift({ name: "" });
       setGiftImageFile(null);
       setGiftImagePreview(null);
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
       fetchGifts();
     }
   };
@@ -429,7 +433,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- ORDER ACTIONS ---
   const toggleOrderStatus = async (
     orderId,
     currentStatus,
@@ -501,7 +504,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- COMPUTED STATS ---
   const stats = useMemo(() => {
     const baseStats = [
       {
@@ -642,6 +644,8 @@ export default function AdminDashboard() {
             <img
               src="/Sophea Mart no1.png"
               alt="Logo"
+              loading="lazy"
+              decoding="async"
               style={{
                 width: 38,
                 height: 38,
@@ -1691,6 +1695,8 @@ export default function AdminDashboard() {
                                 <img
                                   src={gift.image_url}
                                   alt={gift.name}
+                                  loading="lazy"
+                                  decoding="async"
                                   style={{
                                     width: 44,
                                     height: 44,
@@ -1900,7 +1906,11 @@ export default function AdminDashboard() {
                     const file = e.target.files[0];
                     if (file) {
                       setGiftImageFile(file);
-                      setGiftImagePreview(URL.createObjectURL(file));
+                      if (previewRef.current)
+                        URL.revokeObjectURL(previewRef.current);
+                      const newUrl = URL.createObjectURL(file);
+                      previewRef.current = newUrl;
+                      setGiftImagePreview(newUrl);
                     }
                   }}
                   style={{
@@ -1919,6 +1929,8 @@ export default function AdminDashboard() {
                   <img
                     src={giftImagePreview}
                     alt="Preview"
+                    loading="lazy"
+                    decoding="async"
                     style={{
                       width: "100%",
                       height: "100%",
@@ -2050,6 +2062,8 @@ export default function AdminDashboard() {
             <img
               src={receiptImage}
               alt="Receipt"
+              loading="lazy"
+              decoding="async"
               style={{
                 maxWidth: "100%",
                 maxHeight: "80vh",

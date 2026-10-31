@@ -7,27 +7,29 @@ import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 
 import GlobalAudioAlerts from "./components/GlobalAudioAlerts";
-// 🏆 FIX: Import ToastProvider instead of Toast
 import { ToastProvider, useToast } from "./components/ui/Toast";
 
 import Navbar from "./components/layout/Navbar";
+import Footer from "./components/layout/Footer";
+import FloatingCartButton from "./components/cart/FloatingCartButton";
+import CartDrawer from "./components/cart/CartDrawer";
+
 import LoginModal from "./components/auth/LoginModal";
 import RegisterModal from "./components/auth/RegisterModal";
 import ForgotPasswordModal from "./components/auth/ForgotPasswordModal";
-import CartDrawer from "./components/cart/CartDrawer";
-import CheckoutModal from "./components/cart/CheckoutModal";
-import Footer from "./components/layout/Footer";
 
-import ProductDetail from "./pages/ProductDetail";
-import FloatingCartButton from "./components/cart/FloatingCartButton";
+// ⚡ Eagerly load HomePage so "/" renders immediately without a double network waterfall
+import HomePage from "./pages/HomePage";
 
-const HomePage = lazy(() => import("./pages/HomePage"));
+// ⚡ Lazy-load secondary pages & heavy modals (like Admin + Recharts)
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const Cart = lazy(() => import("./pages/Cart"));
 const OrderHistory = lazy(() => import("./pages/OrderHistory"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Redeem = lazy(() => import("./pages/Redeem"));
+const CheckoutModal = lazy(() => import("./components/cart/CheckoutModal"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 
 const PageLoader = () => (
   <div className="flex flex-col items-center justify-center min-h-[60vh] text-blue-500 gap-4">
@@ -37,7 +39,6 @@ const PageLoader = () => (
 );
 
 function MainApp() {
-  // 🏆 FIX: Only extract 'show' (aliased as 'toast'). The 'toasts' array is managed by the Provider now.
   const { show: toast } = useToast();
   const location = useLocation();
 
@@ -51,16 +52,11 @@ function MainApp() {
 
   const isAdminPage = location.pathname.startsWith("/admin");
 
-  // 🏆 FIX: Removed the redundant global-toast event listener here!
-
   // Isolated barcode listener
   useEffect(() => {
     const handleStoreScan = (e) => {
-      console.log("[App] store-barcode-scanned event received:", e.detail);
       if (e.detail) {
         setScannedBarcode(e.detail);
-      } else {
-        console.warn("[App] Event fired but detail was empty/falsy.");
       }
     };
     window.addEventListener("store-barcode-scanned", handleStoreScan);
@@ -81,7 +77,9 @@ function MainApp() {
       )}
 
       <main
-        className={`max-w-7xl mx-auto px-4 pt-6 flex-grow w-full relative z-10 ${!isAdminPage ? "pb-28 md:pb-12" : "pb-12"}`}
+        className={`max-w-7xl mx-auto px-4 pt-6 flex-grow w-full relative z-10 ${
+          !isAdminPage ? "pb-28 md:pb-12" : "pb-12"
+        }`}
       >
         <Suspense fallback={<PageLoader />}>
           <Routes>
@@ -147,31 +145,32 @@ function MainApp() {
         }}
       />
 
-      <CheckoutModal
-        open={checkoutOpen}
-        onClose={() => {
-          setCheckoutOpen(false);
-          setAppliedVoucher(null);
-        }}
-        toast={toast}
-        appliedVoucher={appliedVoucher}
-      />
+      <Suspense fallback={null}>
+        {checkoutOpen && (
+          <CheckoutModal
+            open={checkoutOpen}
+            onClose={() => {
+              setCheckoutOpen(false);
+              setAppliedVoucher(null);
+            }}
+            toast={toast}
+            appliedVoucher={appliedVoucher}
+          />
+        )}
 
-      {scannedBarcode && (
-        <ProductDetail
-          barcode={scannedBarcode}
-          onClose={() => setScannedBarcode(null)}
-        />
-      )}
-
-      {/* 🏆 FIX: Removed the manual <Toast /> component here since the Provider handles it */}
+        {scannedBarcode && (
+          <ProductDetail
+            barcode={scannedBarcode}
+            onClose={() => setScannedBarcode(null)}
+          />
+        )}
+      </Suspense>
     </>
   );
 }
 
 export default function App() {
   return (
-    // 🏆 FIX: Added ToastProvider at the very top of the tree!
     <ToastProvider>
       <AuthProvider>
         <StoreProvider>

@@ -1,12 +1,40 @@
-import { createContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { supabase } from "../services/supabase";
 
 export const StoreContext = createContext(null);
 
-export function StoreProvider({ children }) {
-  const [products, setProducts] = useState([]);
+const CACHE_KEY = "sophea_mart_products_cache";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
-  // Note: We are keeping orders as mock data for now based on your code
+export function StoreProvider({ children }) {
+  const [products, setProducts] = useState(() => {
+    // 1. Load instantly from sessionStorage on refresh (0ms load, 0 Supabase bandwidth!)
+    try {
+      const saved = sessionStorage.getItem(CACHE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          Date.now() - parsed.timestamp < CACHE_TTL &&
+          Array.isArray(parsed.data)
+        ) {
+          return parsed.data;
+        }
+      }
+    } catch (e) {
+      // Ignore storage errors
+    }
+    return [];
+  });
+
+  const [loading, setLoading] = useState(() => products.length === 0);
+  const [error, setError] = useState(null);
+
   const [orders, setOrders] = useState([
     {
       id: "ORD-001",
@@ -26,97 +54,183 @@ export function StoreProvider({ children }) {
     },
   ]);
 
-  // --- FETCH PRODUCTS FROM SUPABASE ---
-  useEffect(() => {
-    const fetchProducts = async () => {
-      // 🏆 UPGRADE: The magic filter! We only select items that are in stock.
-      // We also added .order("id") so your products don't shuffle around randomly on reload.
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("in_stock", true)
-        .order("id");
-
-      if (error) {
-        console.error("Error fetching products:", error);
-      } else {
-        setProducts(data || []);
+  // Helper to update state AND sessionStorage cache together
+  const updateProductsAndCache = useCallback((updater) => {
+    setProducts((prev) => {
+      const nextProducts =
+        typeof updater === "function" ? updater(prev) : updater;
+      try {
+        sessionStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({ data: nextProducts, timestamp: Date.now() }),
+        );
+      } catch (e) {
+        // Ignore storage quota errors
       }
-    };
-
-    fetchProducts();
+      return nextProducts;
+    });
   }, []);
 
-  // --- ADD PRODUCT TO SUPABASE ---
-  const addProduct = async (p) => {
-    try {
-      const { data, error } = await supabase
-        .from("products")
-        .insert([p])
-        .select()
-        .single();
+  // --- FETCH PRODUCTS FROM SUPABASE ---
+  const fetchProducts = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        // Skip network call if cache is still fresh and not forced
+        if (!forceRefresh) {
+          const saved = sessionStorage.getItem(CACHE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (
+              Date.now() - parsed.timestamp < CACHE_TTL &&
+              parsed.data?.length > 0
+            ) {
+              setLoading(false);
+              return;
+            }
+          }
+        }
 
-      if (error) throw error;
+        setLoading(true);
+        setError(null);
 
-      if (data && data.in_stock !== false) {
-        setProducts((prev) => [...prev, data]);
+        const { data, error: sbError } = await supabase
+          .from("products")
+          .select("*")
+          .eq("in_stock", true)
+          .order("id", { ascending: true });
+
+        if (sbError) throw sbError;
+
+        updateProductsAndCache(data || []);
+      } catch (err) {
+        console.error("Error fetching products:", err.message);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Error adding product:", err.message);
-      alert("Failed to add product.");
-    }
-  };
+    },
+    [updateProductsAndCache],
+  );
+
+  useEffect(() => {
+    fetchProducts(false);
+  }, [fetchProducts]);
+
+  // --- ADD PRODUCT TO SUPABASE ---
+  const addProduct = useCallback(
+    async (p) => {
+      try {
+        const { data, error: sbError } = await supabase
+          .from("products")
+          .insert([p])
+          .select()
+          .single();
+
+        if (sbError) throw sbError;
+
+        if (data && data.in_stock !== false) {
+          updateProductsAndCache((prev) => [...prev, data]);
+        }
+        return { data, error: null };
+      } catch (err) {
+        console.error("Error adding product:", err.message);
+        alert("Failed to add product.");
+        return { data: null, error: err };
+      }
+    },
+    [updateProductsAndCache],
+  );
 
   // --- EDIT PRODUCT IN SUPABASE ---
-  const editProduct = async (id, data) => {
-    try {
-      const { error } = await supabase
-        .from("products")
-        .update(data)
-        .eq("id", id);
+  const editProduct = useCallback(
+    async (id, updatedFields) => {
+      try {
+        const { error: sbError } = await supabase
+          .from("products")
+          .update(updatedFields)
+          .eq("id", id);
 
-      if (error) throw error;
+        if (sbError) throw sbError;
 
-      // Update local UI
-      setProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, ...data } : p)),
-      );
-    } catch (err) {
-      console.error("Error updating product:", err.message);
-      alert("Failed to update product.");
-    }
-  };
+        updateProductsAndCache((prev) => {
+          // If product was marked out of stock, remove it from public storefront list
+          if (updatedFields.in_stock === false) {
+            return prev.filter((p) => p.id !== id);
+          }
+          return prev.map((p) =>
+            p.id === id ? { ...p, ...updatedFields } : p,
+          );
+        });
+        return { success: true, error: null };
+      } catch (err) {
+        console.error("Error updating product:", err.message);
+        alert("Failed to update product.");
+        return { success: false, error: err };
+      }
+    },
+    [updateProductsAndCache],
+  );
 
   // --- DELETE PRODUCT IN SUPABASE ---
-  const deleteProduct = async (id) => {
-    try {
-      const { error } = await supabase.from("products").delete().eq("id", id);
+  const deleteProduct = useCallback(
+    async (id) => {
+      try {
+        const { error: sbError } = await supabase
+          .from("products")
+          .delete()
+          .eq("id", id);
 
-      if (error) throw error;
+        if (sbError) throw sbError;
 
-      // Update local UI
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      console.error("Error deleting product:", err.message);
-      alert("Failed to delete product.");
-    }
-  };
+        updateProductsAndCache((prev) => prev.filter((p) => p.id !== id));
+        return { success: true, error: null };
+      } catch (err) {
+        console.error("Error deleting product:", err.message);
+        alert("Failed to delete product.");
+        return { success: false, error: err };
+      }
+    },
+    [updateProductsAndCache],
+  );
 
-  const addOrder = (order) => setOrders((prev) => [...prev, order]);
-  const totalRevenue = orders.reduce((s, o) => s + o.total, 0);
+  const addOrder = useCallback((order) => {
+    setOrders((prev) => [...prev, order]);
+  }, []);
+
+  const totalRevenue = useMemo(
+    () => orders.reduce((s, o) => s + (Number(o.total) || 0), 0),
+    [orders],
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      products,
+      loading,
+      error,
+      refreshProducts: () => fetchProducts(true),
+      addProduct,
+      editProduct,
+      deleteProduct,
+      orders,
+      addOrder,
+      totalRevenue,
+    }),
+    [
+      products,
+      loading,
+      error,
+      fetchProducts,
+      addProduct,
+      editProduct,
+      deleteProduct,
+      orders,
+      addOrder,
+      totalRevenue,
+    ],
+  );
 
   return (
-    <StoreContext.Provider
-      value={{
-        products,
-        addProduct,
-        editProduct,
-        deleteProduct,
-        orders,
-        addOrder,
-        totalRevenue,
-      }}
-    >
+    <StoreContext.Provider value={contextValue}>
       {children}
     </StoreContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useStore } from "../hooks/useStore";
 import { useCart } from "../hooks/useCart";
@@ -10,7 +10,6 @@ import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
 import QuickViewModal from "../components/product/QuickViewModal";
-// 🏆 FIX 1: Removed 'Toast' from the import, only kept 'useToast'
 import { useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
 import { useTranslation } from "react-i18next";
@@ -49,12 +48,12 @@ const styles = {
 export default function HomePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { products } = useStore();
+  const { products = [] } = useStore();
   const { dispatch, cart } = useCart();
-  // 🏆 FIX 2: Only extracting 'show: toast', no longer need 'toasts'
   const { show: toast } = useToast();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("All");
 
   const [loginOpen, setLoginOpen] = useState(false);
@@ -62,63 +61,97 @@ export default function HomePage() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
 
+  // 1. Background Performance: 200ms debounce so typing in search is smooth
   useEffect(() => {
-    if (user) {
-      fetchFavorites();
-    } else {
-      setFavoriteIds(new Set());
-    }
-  }, [user]);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim().toLowerCase());
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const fetchFavorites = async () => {
+  // 2. Background Performance: Only fetch favorites when user.id actually changes
+  const fetchFavorites = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
         .from("favorites")
         .select("product_id")
-        .eq("user_id", user?.id);
+        .eq("user_id", userId);
 
       if (error) throw error;
-      setFavoriteIds(new Set(data.map((fav) => fav.product_id)));
+      setFavoriteIds(new Set((data || []).map((fav) => fav.product_id)));
     } catch (error) {
       console.error("Error fetching favorites:", error.message);
     }
-  };
+  }, []);
 
+  useEffect(() => {
+    if (user?.id) {
+      fetchFavorites(user.id);
+    } else {
+      setFavoriteIds(new Set());
+    }
+  }, [user?.id, fetchFavorites]);
+
+  // 3. Background Performance: Instant O(1) Cart Lookup Map
+  const cartQuantityMap = useMemo(() => {
+    const map = new Map();
+    if (Array.isArray(cart)) {
+      for (const item of cart) {
+        map.set(item.id, item.quantity || 0);
+      }
+    }
+    return map;
+  }, [cart]);
+
+  // 4. Memoized Filtering
   const filteredProducts = useMemo(() => {
+    if (!Array.isArray(products)) return [];
     return products.filter((product) => {
       const categoryMatch = category === "All" || product.category === category;
+      if (!categoryMatch) return false;
+      if (!debouncedSearch) return true;
+
       const searchMatch =
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.description?.toLowerCase().includes(search.toLowerCase());
-      return categoryMatch && searchMatch;
+        product.name?.toLowerCase().includes(debouncedSearch) ||
+        product.description?.toLowerCase().includes(debouncedSearch);
+      return searchMatch;
     });
-  }, [products, search, category]);
+  }, [products, debouncedSearch, category]);
 
-  const handleAddToCart = (product) => {
-    if (!user) {
-      toast(t("store.sign_in_cart", "Sign in to add items to cart."), "error");
-      setLoginOpen(true);
-      return;
-    }
+  const handleAddToCart = useCallback(
+    (product) => {
+      if (!user) {
+        toast(
+          t("store.sign_in_cart", "Sign in to add items to cart."),
+          "error",
+        );
+        setLoginOpen(true);
+        return;
+      }
 
-    if (product.stock <= 0) {
-      toast(
-        t(
-          "store.out_of_stock_toast",
-          "Sorry, this item is currently out of stock!",
-        ),
-        "error",
-      );
-      return;
-    }
+      if (product.in_stock === false || product.stock <= 0) {
+        toast(
+          t(
+            "store.out_of_stock_toast",
+            "Sorry, this item is currently out of stock!",
+          ),
+          "error",
+        );
+        return;
+      }
 
-    dispatch({ type: "ADD", product });
-    toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
-  };
+      dispatch({ type: "ADD", product });
+      toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
+    },
+    [user, dispatch, toast, t],
+  );
 
-  const handleRemoveFromCart = (product) => {
-    dispatch({ type: "REMOVE", product });
-  };
+  const handleRemoveFromCart = useCallback(
+    (product) => {
+      dispatch({ type: "REMOVE", product });
+    },
+    [dispatch],
+  );
 
   const handleToggleFavorite = async (product) => {
     if (!user) {
@@ -152,23 +185,21 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error("Error updating favorite:", error.message);
-      fetchFavorites();
+      fetchFavorites(user.id);
       toast(t("store.fav_failed", "Failed to update favorite."), "error");
     }
   };
 
   const clearFilters = () => {
     setSearch("");
+    setDebouncedSearch("");
     setCategory("All");
   };
 
-  const safeCart = Array.isArray(cart) ? cart : [];
   const modalProduct = selectedProduct
     ? {
         ...selectedProduct,
-        quantityInCart:
-          safeCart.find((item) => item.id === selectedProduct.id)?.quantity ||
-          0,
+        quantityInCart: cartQuantityMap.get(selectedProduct.id) || 0,
       }
     : null;
 
@@ -224,8 +255,7 @@ export default function HomePage() {
         {filteredProducts.length ? (
           <div className="responsive-grid">
             {filteredProducts.map((product) => {
-              const cartItem = safeCart.find((item) => item.id === product.id);
-              const quantityInCart = cartItem ? cartItem.quantity : 0;
+              const quantityInCart = cartQuantityMap.get(product.id) || 0;
               const productWithCartData = { ...product, quantityInCart };
 
               return (
@@ -304,8 +334,6 @@ export default function HomePage() {
         }
         onToggleFavorite={handleToggleFavorite}
       />
-
-      {/* 🏆 FIX 3: Removed <Toast toasts={toasts} /> from here */}
     </div>
   );
 }

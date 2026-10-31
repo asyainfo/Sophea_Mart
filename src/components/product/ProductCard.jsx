@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
 import { fmt, fmtKHR } from "../../utils/currency";
 import { useTranslation } from "react-i18next";
 
-export default function ProductCard({
+function ProductCard({
   product,
   onAddToCart,
   onRemoveFromCart,
@@ -14,17 +14,26 @@ export default function ProductCard({
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [isJustAdded, setIsJustAdded] = useState(false);
+  const timerRef = useRef(null);
+
+  // Clean up timer on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   // --- LOGIC CHECKS ---
   const isInCart = product.quantityInCart && product.quantityInCart > 0;
-  const isOutOfStock = product.stock === 0;
+  const isOutOfStock = product.stock === 0 || product.in_stock === false;
 
   // --- ACTIONS ---
   const handleAddToCart = () => {
     if (isOutOfStock) return;
     onAddToCart(product);
     setIsJustAdded(true);
-    setTimeout(() => setIsJustAdded(false), 1000);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setIsJustAdded(false), 1000);
   };
 
   const handleHeartClick = (e) => {
@@ -44,7 +53,6 @@ export default function ProductCard({
       };
     if (product.stock > 0)
       return {
-        // 🏆 Uses your verified dynamic layout syntax
         text: t("quick_view.only_left", "Only {{count}} left", {
           count: product.stock,
         }),
@@ -119,9 +127,12 @@ export default function ProductCard({
           <FiHeart size={16} fill={isFavorite ? "#EF4444" : "none"} />
         </button>
 
+        {/* ⚡ UPGRADED: Added lazy loading & async decoding to save Supabase Egress */}
         <img
           src={product.image}
           alt={product.name}
+          loading="lazy"
+          decoding="async"
           style={{
             width: "100%",
             height: "100%",
@@ -155,7 +166,6 @@ export default function ProductCard({
                 boxShadow: "0 4px 12px rgba(153, 27, 27, 0.3)",
               }}
             >
-              {/* 🏆 Uses your root translation for consistency */}
               {t("quick_view.sold_out", "SOLD OUT")}
             </span>
           </div>
@@ -386,3 +396,6 @@ export default function ProductCard({
     </div>
   );
 }
+
+// Wrap with React.memo so unchanged cards don't re-render when cart/favorites change
+export default memo(ProductCard);

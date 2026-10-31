@@ -1,0 +1,1451 @@
+[
+  {
+    "barcode": "0001",
+    "name": "Eragold ចាហួយខ្មៅ 330ml",
+    "category": "beverage",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0002",
+    "name": "Yeo's Lychee Drink 330ml",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0003",
+    "name": "Freshy Winter Melon",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0004",
+    "name": "Freshy Grape Juice 330ml",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0005",
+    "name": "Gatsby Cooling",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0006",
+    "name": "Gatsby Cooling Face Wash",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0007",
+    "name": "GetSby Bright White",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0008",
+    "name": "SPRITE SLEEK",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0009",
+    "name": "FANTA ORANGE SLEEK",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0010",
+    "name": "FANTA GRAPE SLEEK",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0011",
+    "name": "FANTA FRUIT PUNCH SLEEK",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0012",
+    "name": "Coca Cola",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0013",
+    "name": "7UP",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0014",
+    "name": "Angkormilk",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0015",
+    "name": "Wall's Wonder",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0016",
+    "name": "Wall's Sweet Corn",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0017",
+    "name": "Cledor Espresso Coffee",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0018",
+    "name": "Binggrae Melona Ice",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0019",
+    "name": "Q Ngon",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0020",
+    "name": "Potato Chips Sour Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0021",
+    "name": "Potato Chips Tomato Barbecue",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0022",
+    "name": "Potato Chips Tomato Flavour",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0023",
+    "name": "Potato Chips Hot & Spicy Flavour",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0024",
+    "name": "Potato Chips Sour Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0025",
+    "name": "Panpan Potato Chips Barbecue Flavour",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0026",
+    "name": "Panpan Potato Chips Hot",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0027",
+    "name": "Bacchus Sugar Free Energy",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0028",
+    "name": "Bacchus Blue",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0029",
+    "name": "Wurk",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0030",
+    "name": "Dazz",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0031",
+    "name": "Sting Red",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0032",
+    "name": "Cola Sleek",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0033",
+    "name": "Soda Water",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0034",
+    "name": "Tonic",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0035",
+    "name": "Grand Extension Cord 6W G-167 1 Piece",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0036",
+    "name": "Panasonic LED",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0037",
+    "name": "Camelion Electric Mosquito",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0038",
+    "name": "Super Heavy",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0039",
+    "name": "Alkaline Battery",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0040",
+    "name": "ថង់កិបស 4x6",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0041",
+    "name": "ឥដ្ឋកកពែងធំ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0042",
+    "name": "SCG ព្រីមៀមស៊ីម៉ង់",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0043",
+    "name": "Angkor Milk",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0044",
+    "name": "Feast Max",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0045",
+    "name": "Feast Max",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0046",
+    "name": "Green feast",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0047",
+    "name": "Passion",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0048",
+    "name": "Fresh",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0049",
+    "name": "ទឹកលាងចាន Rins-រិន",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0050",
+    "name": "ទឹកស៊ីអ៉ីវលាងដប",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0051",
+    "name": "Midori Pands - M",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0052",
+    "name": "Midori Pands - Small",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0053",
+    "name": "Cherin - ឆេរីន",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0054",
+    "name": "Viso",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0055",
+    "name": "Pleu",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0056",
+    "name": "Fanlove",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0057",
+    "name": "UCS",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0058",
+    "name": "Red Leaf",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0059",
+    "name": "ប៊ីចេង ត្រីក្រហម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0060",
+    "name": "Breeze Exel",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0061",
+    "name": "Angkor Milke - ធំ រសជាតិផ្អែម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0062",
+    "name": "Angkor Milke - តូច រសជាតិផ្អែម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0063",
+    "name": "- Angkor Milke ធំ រសជាតិសាប",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0064",
+    "name": "មីឆាឃ្យូ ក្រហម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0065",
+    "name": "Indomie",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0066",
+    "name": "ប៊ីចេងសញ្ញា ចានទ្រនាប់",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0067",
+    "name": "កាហ្វេ ខ្មែរ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0068",
+    "name": "ម្សៅអង្ករដំណើប",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0069",
+    "name": "ម្សៅអង្ករខ្សាយ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0070",
+    "name": "ម្សៅឆា",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0071",
+    "name": "មីសួរ - Poko",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0072",
+    "name": "Glovedo",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0073",
+    "name": "Star Grow",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0074",
+    "name": "Citra",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0075",
+    "name": "Hotdog",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0076",
+    "name": "HotDog",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0077",
+    "name": "ទឹកត្រី",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0078",
+    "name": "ម្សៅស៊ុប ត្រីក្រហម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0079",
+    "name": "Sobi",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0080",
+    "name": "Dau Hao",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0081",
+    "name": "ត្រីក្រហម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0082",
+    "name": "Meizan",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0083",
+    "name": "Meizan",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0084",
+    "name": "Meizan",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0085",
+    "name": "Golex",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0086",
+    "name": "Baby Bites",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0087",
+    "name": "Baby Bites",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0088",
+    "name": "Apsara Tea",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0089",
+    "name": "Apsara Tea",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0090",
+    "name": "ផ្កាឈូក",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0091",
+    "name": "Poko",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0092",
+    "name": "Ly Ly beancurd",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0093",
+    "name": "Whole corn",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0094",
+    "name": "Good",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0095",
+    "name": "Good",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0096",
+    "name": "Soya",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0097",
+    "name": "CalLan",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0098",
+    "name": "Simply",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0099",
+    "name": "Simply",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0100",
+    "name": "Happi Koki",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0101",
+    "name": "G Cook",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0102",
+    "name": "មីជាតិ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0103",
+    "name": "មីជាតិ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0104",
+    "name": "Best Cows",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0105",
+    "name": "Best Cows",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0106",
+    "name": "ទឹកដោះគោឆៅ - Phka Chhuk",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0107",
+    "name": "Mackerel",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0108",
+    "name": "My Cup",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0109",
+    "name": "Kiss Baby",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0110",
+    "name": "ក្រែមបន្ទន់សក់ - ណាផា",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0111",
+    "name": "Lux",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0112",
+    "name": "Clear - Mentho ISegar",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0113",
+    "name": "Rejoice",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0114",
+    "name": "Sunsilk",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0115",
+    "name": "Clins - Sakura Persume",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0116",
+    "name": "Clear - Men",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0117",
+    "name": "Head Shoulders",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0118",
+    "name": "សាប៊ូដុសខ្លួន រូបពពែ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0119",
+    "name": "Citra - Shower Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0120",
+    "name": "Empress - សាប៊ូ និង ស្បៅ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0121",
+    "name": "Relex - Shower Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0122",
+    "name": "Klen - ក្រែមបន្ទន់សក់",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0123",
+    "name": "សាប៊ូដុសខ្លួន គីវីអឹមយ៉រ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0124",
+    "name": "KP Body Wash",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0125",
+    "name": "Ayapro - សាប៊ូដុសខ្លួន",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0126",
+    "name": "ត្រីខម៉ាកភូមិ - Meatophum",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0127",
+    "name": "Koreno",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0128",
+    "name": "Blue Berry",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0129",
+    "name": "មីជាតិ - ខគោ ខាប់",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0130",
+    "name": "ទឹកប៉េងប៉ោះ លាង ឡេង",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0131",
+    "name": "Spy - Classic",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0132",
+    "name": "Double Love",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0133",
+    "name": "Homeboby",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0134",
+    "name": "Double Love",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0135",
+    "name": "Double Love",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0136",
+    "name": "Jolly",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0137",
+    "name": "Jolly",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0138",
+    "name": "Certainty - Dry Tape",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0139",
+    "name": "OKA - Bright Clean",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0140",
+    "name": "Viso + ពិសេស",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0141",
+    "name": "MungKul Asl",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0142",
+    "name": "NET - concentrated",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0143",
+    "name": "Sunlight",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0144",
+    "name": "ក្មេងស្អាត",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0145",
+    "name": "images",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0146",
+    "name": "Bioaoua",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0147",
+    "name": "Mis Cara",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0148",
+    "name": "Chines",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0149",
+    "name": "Baby Powder",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0150",
+    "name": "24k - Pure Gold",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0151",
+    "name": "Tree City",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0152",
+    "name": "Aloe vera",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0153",
+    "name": "KLEN - Intimate wash",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0154",
+    "name": "2in1 - Shampoo Natural",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0155",
+    "name": "Mamiza cleaning Foam",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0156",
+    "name": "Bioaoua - Vitamin E",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0157",
+    "name": "KP - គណិកា ពេជ្រ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0158",
+    "name": "U Kara - Double Brightening Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0159",
+    "name": "ATOMY - Body Care",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0160",
+    "name": "Night - Repair Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0161",
+    "name": "Sodium Hyaluronate",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0162",
+    "name": "ATROPHYL",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0163",
+    "name": "Homebaby - Baby Wet Wipes",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0164",
+    "name": "សំឡី ជូតត្បៀក",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0165",
+    "name": "ម្សៅគៀក អេមខន",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0166",
+    "name": "Finer Care",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0167",
+    "name": "Ah Lady",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0168",
+    "name": "SAISI - Color Cream",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0169",
+    "name": "Bee & Flower Brand",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0170",
+    "name": "Essentail - guardian",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0171",
+    "name": "Lectogen - Nestle",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0172",
+    "name": "Gain Growth - ម្សៅដោះគោ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0173",
+    "name": "សាប៊ូខ្មៅ - C&S",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0174",
+    "name": "សាប៊ូខ្មៅ - C&S",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0175",
+    "name": "AFC - Vegetable Flavor",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0176",
+    "name": "Comfort - Blossom Fresh",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0177",
+    "name": "Baby Feeding Bottle",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0178",
+    "name": "Herculaes Bear",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0179",
+    "name": "Hercules Bear",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0180",
+    "name": "Hercules Bear",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0181",
+    "name": "ច្រាសលាង កន្ទប",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0182",
+    "name": "ច្រាសដុស ធ្មេញ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0183",
+    "name": "ច្រាសដុស ធ្មេញ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0184",
+    "name": "ច្រាសដុស ធ្មេញ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0185",
+    "name": "កន្ត្រៃ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0186",
+    "name": "Cool kid - Sinsinpas",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0187",
+    "name": "Paw Paw",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0188",
+    "name": "KMT - កុមារលាងមុខ",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0189",
+    "name": "Gloved - Shampoo & Bath",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0190",
+    "name": "UniJoy",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0191",
+    "name": "KLEN",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0192",
+    "name": "JinLly - Perfume",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0193",
+    "name": "SADOER",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0194",
+    "name": "dmp - SPA 50 Pa++",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0195",
+    "name": "POND'S",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0196",
+    "name": "ក្រអូប - សាប៊ូទឹកបោក",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0197",
+    "name": "KISS BABY",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0198",
+    "name": "DUMEX Dupro",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0199",
+    "name": "DUMEX Dupro",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0200",
+    "name": "D-noj New",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0201",
+    "name": "C'Lins",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0202",
+    "name": "Empress - អឹមប្រេស",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0203",
+    "name": "Empress - អឹមប្រេស",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0204",
+    "name": "អូនឈូក ម៉ាក់ណាម",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0205",
+    "name": "KLEN - Baby Bath",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0206",
+    "name": "PANTENE",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  },
+  {
+    "barcode": "0207",
+    "name": "STARCARE - Shampoo",
+    "category": "",
+    "price": 0.0,
+    "stock_quantity": 100
+  }
+]

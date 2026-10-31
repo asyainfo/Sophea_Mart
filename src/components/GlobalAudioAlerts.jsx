@@ -3,7 +3,11 @@ import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
 
 const adminSound = new Audio("/admin-alert.wav");
+adminSound.preload = "none";
+
 const customerSound = new Audio("/customer-alert.mp3");
+customerSound.preload = "none";
+
 let isAudioUnlocked = false;
 
 const triggerGlobalToast = (message, type = "success") => {
@@ -24,7 +28,9 @@ export default function GlobalAudioAlerts() {
   const { user, profile } = useAuth();
   const notifiedOrders = useRef(new Set());
 
-  const isStaff = profile?.role === "admin" || profile?.role === "cashier";
+  const userId = user?.id;
+  const userRole = profile?.role;
+  const isStaff = userRole === "admin" || userRole === "cashier";
 
   // 1. Safe Audio Unlocker
   useEffect(() => {
@@ -52,7 +58,10 @@ export default function GlobalAudioAlerts() {
 
     const events = ["click", "touchstart", "keydown"];
     events.forEach((event) =>
-      document.addEventListener(event, unlockAudio, { once: true }),
+      document.addEventListener(event, unlockAudio, {
+        once: true,
+        passive: true,
+      }),
     );
 
     return () => {
@@ -64,47 +73,47 @@ export default function GlobalAudioAlerts() {
 
   // 2. Supabase Realtime Subscriptions
   useEffect(() => {
-    if (!user?.id) return;
+    // Wait until both userId and profile role are loaded to avoid double-connecting
+    if (!userId || !profile) return;
 
     let activeChannel;
 
     if (isStaff) {
       // --- STAFF SUBSCRIPTION (Admins & Cashiers) ---
-      console.log("[AudioAlerts] Initializing Staff Broadcast Channel...");
-
       activeChannel = supabase
         .channel("global-staff-listener")
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "Orders" },
           (payload) => {
-            triggerGlobalToast(`🚨 New Order Received! ID: ${payload.new.id}`);
-            playSound(adminSound);
+            const orderId = payload.new?.id;
+            if (orderId && !notifiedOrders.current.has(orderId)) {
+              notifiedOrders.current.add(orderId);
+              triggerGlobalToast(`🚨 New Order Received! ID: ${orderId}`);
+              playSound(adminSound);
+            }
           },
         )
         .subscribe();
     } else {
       // --- CUSTOMER SUBSCRIPTION ---
-      console.log(
-        `[AudioAlerts] Initializing Customer Stream for UID: ${user.id}`,
-      );
-
       activeChannel = supabase
-        .channel(`global-customer-${user.id}`)
+        .channel(`global-customer-${userId}`)
         .on(
           "postgres_changes",
           {
             event: "UPDATE",
             schema: "public",
             table: "Orders",
-            filter: `user_id=eq.${user.id}`,
+            filter: `user_id=eq.${userId}`,
           },
           (payload) => {
-            const orderId = payload.new.id;
-            const status = payload.new.status;
+            const orderId = payload.new?.id;
+            const status = payload.new?.status;
 
             // Strict check: Status must be completed AND not already notified
             if (
+              orderId &&
               status === "completed" &&
               !notifiedOrders.current.has(orderId)
             ) {
@@ -123,11 +132,10 @@ export default function GlobalAudioAlerts() {
     // Cleanup function when user logs out or role changes
     return () => {
       if (activeChannel) {
-        console.log("[AudioAlerts] De-allocating active real-time channels.");
         supabase.removeChannel(activeChannel);
       }
     };
-  }, [user?.id, isStaff]);
+  }, [userId, Boolean(profile), isStaff]);
 
   return null;
 }

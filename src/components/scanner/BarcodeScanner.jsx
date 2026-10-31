@@ -5,8 +5,9 @@ import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
 const SCANNER_CONFIG = {
-  fps: 30,
+  fps: 25,
   qrbox: { width: 300, height: 140 },
+  disableFlip: true,
   formatsToSupport: [
     Html5QrcodeSupportedFormats.CODE_128,
     Html5QrcodeSupportedFormats.EAN_13,
@@ -44,8 +45,11 @@ const unlockAudioEngine = () => {
 
 const playBeepSound = () => {
   try {
-    if (!globalAudioCtx || globalAudioCtx.state === "suspended")
+    if (!globalAudioCtx || globalAudioCtx.state === "suspended") {
       unlockAudioEngine();
+    }
+    if (!globalAudioCtx) return;
+
     const osc = globalAudioCtx.createOscillator();
     const gain = globalAudioCtx.createGain();
 
@@ -61,21 +65,7 @@ const playBeepSound = () => {
 };
 
 // --- Camera Hardware Helpers ---
-const getBackCameraId = async () => {
-  // 1. WebRTC Bypass: Force OS to reveal the actual hardware ID
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: "environment" } },
-    });
-    const track = stream.getVideoTracks()[0];
-    const deviceId = track.getSettings().deviceId;
-    stream.getTracks().forEach((t) => t.stop());
-    if (deviceId) return deviceId;
-  } catch (err) {
-    // Ignore and fallback to list
-  }
-
-  // 2. Failsafe: Search device list
+const getFallbackBackCameraId = async () => {
   const devices = await Html5Qrcode.getCameras();
   if (!devices || devices.length === 0) return null;
 
@@ -91,7 +81,12 @@ const getBackCameraId = async () => {
 const stopScannerSafe = async (scanner) => {
   if (!scanner) return;
   try {
-    await scanner.stop();
+    if (scanner.isScanning) {
+      await scanner.stop();
+    }
+  } catch (err) {}
+  try {
+    scanner.clear();
   } catch (err) {}
 };
 
@@ -107,6 +102,12 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const scannerRef = useRef(null);
   const isProcessingRef = useRef(false);
   const isMountedRef = useRef(true);
+  const onScanSuccessRef = useRef(onScanSuccess);
+
+  // Keep callback ref fresh so parent re-renders never restart the camera hardware
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess;
+  }, [onScanSuccess]);
 
   // Lock body scroll
   useEffect(() => {
@@ -118,12 +119,12 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     };
   }, []);
 
-  // Initialize Scanner
+  // Initialize Scanner (Runs once on mount)
   useEffect(() => {
     isMountedRef.current = true;
 
     const initScanner = async () => {
-      await new Promise((r) => setTimeout(r, 100)); // Brief delay for smooth UI mount
+      await new Promise((r) => setTimeout(r, 60));
       if (!isMountedRef.current) return;
 
       const scanner = new Html5Qrcode("reader", {
@@ -133,7 +134,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       scannerRef.current = scanner;
 
       const handleScan = (decodedText) => {
-        if (isProcessingRef.current) return;
+        if (isProcessingRef.current || !isMountedRef.current) return;
         isProcessingRef.current = true;
         setIsProcessing(true);
 
@@ -141,20 +142,33 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
         stopScannerSafe(scannerRef.current).finally(() => {
-          if (isMountedRef.current) onScanSuccess(decodedText);
+          if (isMountedRef.current && onScanSuccessRef.current) {
+            onScanSuccessRef.current(decodedText);
+          }
         });
       };
 
       try {
-        const cameraId = await getBackCameraId();
-        if (!cameraId) throw new Error("No cameras found");
+        // 1. Single-step hardware start using environment facingMode (no double camera boot!)
+        try {
+          await scanner.start(
+            { facingMode: { exact: "environment" } },
+            SCANNER_CONFIG,
+            handleScan,
+            () => {},
+          );
+        } catch {
+          // 2. Fallback for desktop webcams or devices without exact environment constraint
+          const cameraId = await getFallbackBackCameraId();
+          if (!cameraId) throw new Error("No cameras found");
+          await scanner.start(cameraId, SCANNER_CONFIG, handleScan, () => {});
+        }
 
-        const config = {
-          ...SCANNER_CONFIG,
-          disableFlip: true,
-        };
-
-        await scanner.start(cameraId, config, handleScan, () => {});
+        // If user closed modal while camera was mid-startup, stop it immediately
+        if (!isMountedRef.current) {
+          await stopScannerSafe(scanner);
+          return;
+        }
       } catch (err) {
         if (isMountedRef.current) {
           setHasError(true);
@@ -170,14 +184,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
     return () => {
       isMountedRef.current = false;
       if (scannerRef.current) {
-        stopScannerSafe(scannerRef.current).then(() => {
-          try {
-            scannerRef.current.clear();
-          } catch (e) {}
-        });
+        stopScannerSafe(scannerRef.current);
       }
     };
-  }, [onScanSuccess]);
+  }, []);
 
   // --- Render Helpers ---
   const getErrorMessage = () => {

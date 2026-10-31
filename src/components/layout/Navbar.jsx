@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FiShoppingCart,
@@ -19,7 +19,9 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import Button from "../ui/Button";
 import { useTranslation } from "react-i18next";
-import BarcodeScanner from "../scanner/BarcodeScanner";
+
+// ⚡ Lazy-load BarcodeScanner so regular customers don't download 350KB of camera code on startup!
+const BarcodeScanner = lazy(() => import("../scanner/BarcodeScanner"));
 
 export default function Navbar({ onLogin, onRegister, onCartOpen }) {
   const navigate = useNavigate();
@@ -121,7 +123,12 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
       <nav className="nav-container">
         <div className="inner-container">
           <div onClick={() => navigate("/")} className="logo-wrapper">
-            <img src="/Sophea Mart no1.png" alt="Logo" className="logo-img" />
+            <img
+              src="/Sophea Mart no1.png"
+              alt="Logo"
+              decoding="async"
+              className="logo-img"
+            />
             <span className="logo-text">
               SOPHEA <span style={{ color: "#0066FF" }}>MART</span>
             </span>
@@ -235,7 +242,6 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
                       <FiAward size={16} /> {t("navbar.rewards", "Rewards")}
                     </button>
 
-                    {/* 🏆 Cleanly relies on i18next JSON for translation */}
                     {isStaff && (
                       <button
                         onClick={() => {
@@ -286,17 +292,19 @@ export default function Navbar({ onLogin, onRegister, onCartOpen }) {
         </div>
       </nav>
 
-      {/* 🏆 CAMERA MOUNTS HERE & DISPATCHES EVENT */}
+      {/* 🏆 CAMERA MOUNTS LAZILY ONLY WHEN OPENED BY STAFF */}
       {showScanner && (
-        <BarcodeScanner
-          onClose={() => setShowScanner(false)}
-          onScanSuccess={(barcode) => {
-            setShowScanner(false);
-            window.dispatchEvent(
-              new CustomEvent("store-barcode-scanned", { detail: barcode }),
-            );
-          }}
-        />
+        <Suspense fallback={null}>
+          <BarcodeScanner
+            onClose={() => setShowScanner(false)}
+            onScanSuccess={(barcode) => {
+              setShowScanner(false);
+              window.dispatchEvent(
+                new CustomEvent("store-barcode-scanned", { detail: barcode }),
+              );
+            }}
+          />
+        </Suspense>
       )}
     </>
   );
