@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, memo } from "react";
-import { FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
+import { FiShoppingCart, FiCheck, FiHeart, FiImage } from "react-icons/fi";
 import { fmt, fmtKHR } from "../../utils/currency";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,13 @@ function ProductCard({
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [isJustAdded, setIsJustAdded] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const timerRef = useRef(null);
+
+  // Reset image error state if product.image changes
+  useEffect(() => {
+    setImgError(false);
+  }, [product?.image]);
 
   // Clean up timer on unmount to prevent memory leaks
   useEffect(() => {
@@ -26,6 +32,16 @@ function ProductCard({
   // --- LOGIC CHECKS ---
   const isInCart = product.quantityInCart && product.quantityInCart > 0;
   const isOutOfStock = product.stock === 0 || product.in_stock === false;
+
+  // Normalize image URL safely so empty strings "" are never passed to <img src>
+  const rawImage =
+    typeof product.image === "string" ? product.image.trim() : "";
+  const validImageSrc =
+    !rawImage || imgError
+      ? null
+      : rawImage.startsWith("http") || rawImage.startsWith("/")
+        ? rawImage
+        : `/${rawImage}`;
 
   // --- ACTIONS ---
   const handleAddToCart = () => {
@@ -127,20 +143,36 @@ function ProductCard({
           <FiHeart size={16} fill={isFavorite ? "#EF4444" : "none"} />
         </button>
 
-        {/* ⚡ UPGRADED: Added lazy loading & async decoding to save Supabase Egress */}
-        <img
-          src={product.image}
-          alt={product.name}
-          loading="lazy"
-          decoding="async"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            opacity: isOutOfStock ? 0.4 : 1,
-            transition: "opacity 0.3s ease",
-          }}
-        />
+        {/* ⚡ SAFE IMAGE RENDERING: Never passes src="" and prevents alt-text overlap */}
+        {validImageSrc ? (
+          <img
+            src={validImageSrc}
+            alt={product.name || "Product"}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImgError(true)}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              opacity: isOutOfStock ? 0.4 : 1,
+              transition: "opacity 0.3s ease",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#CBD5E1",
+              gap: 6,
+            }}
+          >
+            <FiImage size={36} />
+          </div>
+        )}
 
         {/* Sold Out Overlay */}
         {isOutOfStock && (
@@ -216,16 +248,22 @@ function ProductCard({
           {product.name}
         </h3>
 
-        <p
-          style={{
-            margin: "0 0 12px",
-            fontSize: 12,
-            color: "#6B7280",
-            lineHeight: 1.5,
-          }}
-        >
-          {product.description?.slice(0, 50)}...
-        </p>
+        {product.description ? (
+          <p
+            style={{
+              margin: "0 0 12px",
+              fontSize: 12,
+              color: "#6B7280",
+              lineHeight: 1.5,
+            }}
+          >
+            {product.description.length > 50
+              ? `${product.description.slice(0, 50)}...`
+              : product.description}
+          </p>
+        ) : (
+          <div style={{ height: 12 }} />
+        )}
 
         {/* Variants */}
         <div

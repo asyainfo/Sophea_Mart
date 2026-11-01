@@ -9,19 +9,23 @@ import { supabase } from "../services/supabase";
 
 export const StoreContext = createContext(null);
 
-const CACHE_KEY = "sophea_mart_products_cache";
+// Changed key to v2 so any old cached dummy 207 items are automatically wiped!
+const CACHE_KEY = "sophea_mart_supabase_products_v2";
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
 export function StoreProvider({ children }) {
   const [products, setProducts] = useState(() => {
-    // 1. Load instantly from sessionStorage on refresh (0ms load, 0 Supabase bandwidth!)
     try {
+      // Remove old v1 cache if present
+      sessionStorage.removeItem("sophea_mart_products_cache");
+
       const saved = sessionStorage.getItem(CACHE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (
           Date.now() - parsed.timestamp < CACHE_TTL &&
-          Array.isArray(parsed.data)
+          Array.isArray(parsed.data) &&
+          parsed.data.length > 0
         ) {
           return parsed.data;
         }
@@ -54,16 +58,20 @@ export function StoreProvider({ children }) {
     },
   ]);
 
-  // Helper to update state AND sessionStorage cache together
+  // Helper to update state AND sessionStorage cache together (only caches real Supabase products)
   const updateProductsAndCache = useCallback((updater) => {
     setProducts((prev) => {
       const nextProducts =
         typeof updater === "function" ? updater(prev) : updater;
       try {
-        sessionStorage.setItem(
-          CACHE_KEY,
-          JSON.stringify({ data: nextProducts, timestamp: Date.now() }),
-        );
+        if (Array.isArray(nextProducts) && nextProducts.length > 0) {
+          sessionStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify({ data: nextProducts, timestamp: Date.now() }),
+          );
+        } else {
+          sessionStorage.removeItem(CACHE_KEY);
+        }
       } catch (e) {
         // Ignore storage quota errors
       }
@@ -71,18 +79,18 @@ export function StoreProvider({ children }) {
     });
   }, []);
 
-  // --- FETCH PRODUCTS FROM SUPABASE ---
+  // --- FETCH REAL PRODUCTS FROM SUPABASE (268 ITEMS) ---
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
       try {
-        // Skip network call if cache is still fresh and not forced
         if (!forceRefresh) {
           const saved = sessionStorage.getItem(CACHE_KEY);
           if (saved) {
             const parsed = JSON.parse(saved);
             if (
               Date.now() - parsed.timestamp < CACHE_TTL &&
-              parsed.data?.length > 0
+              Array.isArray(parsed.data) &&
+              parsed.data.length > 0
             ) {
               setLoading(false);
               return;
@@ -153,7 +161,6 @@ export function StoreProvider({ children }) {
         if (sbError) throw sbError;
 
         updateProductsAndCache((prev) => {
-          // If product was marked out of stock, remove it from public storefront list
           if (updatedFields.in_stock === false) {
             return prev.filter((p) => p.id !== id);
           }
