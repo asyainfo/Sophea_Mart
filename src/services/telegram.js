@@ -1,68 +1,87 @@
-// src/services/telegram.js
+export async function sendTelegramNotification(
+  messageText,
+  parseMode = "HTML",
+) {
+  if (!messageText || typeof messageText !== "string") return false;
 
-export async function sendTelegramAlert(message) {
+  const cleanText = messageText.trim();
+  if (!cleanText) return false;
+
+  // 1. In Production (Vercel), use the secure Serverless API route first
+  if (!import.meta.env.DEV) {
+    try {
+      const response = await fetch("/api/send-telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: cleanText,
+          text: cleanText,
+          parse_mode: parseMode,
+        }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      if (response.ok && contentType.includes("application/json")) {
+        const result = await response.json();
+        if (result?.success || result?.ok) return true;
+      }
+    } catch {
+      // Fall through to direct Telegram API fallback
+    }
+  }
+
+  // 2. Direct Telegram API (Used automatically on localhost or if /api route is unconfigured)
+  const token = import.meta.env.VITE_TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID?.trim();
+
+  if (!token || !chatId) {
+    console.error(
+      "⚠️ Missing VITE_TELEGRAM_BOT_TOKEN or VITE_TELEGRAM_CHAT_ID in your .env file!",
+    );
+    return false;
+  }
+
+  const endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
+
   try {
-    // 1. In production (Vercel), use the secure /api/send-telegram route
-    const response = await fetch("/api/send-telegram", {
+    const directRes = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: cleanText,
+        parse_mode: parseMode,
+      }),
     });
 
-    if (response.ok) {
-      return { success: true };
+    const data = await directRes.json();
+
+    if (data?.ok) return true;
+
+    // 3. Failsafe: If HTML tags/characters (&, <, >) broke Telegram's parser, retry as plain text
+    if (parseMode && data?.description?.includes("can't parse entities")) {
+      const retryRes = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: cleanText,
+        }),
+      });
+      const retryData = await retryRes.json();
+      if (retryData?.ok) return true;
     }
 
-    // 2. Fallback for local `npm run dev` testing
-    const localToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-    const localChatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
-
-    if (import.meta.env.DEV && localToken && localChatId) {
-      const devRes = await fetch(
-        `https://api.telegram.org/bot${localToken}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: localChatId,
-            text: message,
-            parse_mode: "HTML",
-          }),
-        },
-      );
-      return { success: devRes.ok };
-    }
-
-    return { success: false };
-  } catch (error) {
-    console.error("Telegram Alert Error:", error);
-    return { success: false, error: error.message };
+    console.error(
+      "⚠️ Telegram API Error:",
+      data?.description || "Unknown error",
+    );
+    return false;
+  } catch (err) {
+    console.error("⚠️ Network error sending Telegram message:", err);
+    return false;
   }
 }
 
-/**
- * Formats the exact Khmer Order Notification for SOPHEA MART
- */
-export async function sendOrderNotification({
-  orderId,
-  customerName,
-  dateFormatted,
-  totalUsd,
-  totalKhr,
-  itemCount,
-}) {
-  const message = [
-    `🚨 <b>មានការបញ្ជាទិញថ្មី!</b> 🚨`,
-    `------------------------------------`,
-    `🆔 លេខកូដបញ្ជាទិញ: ${orderId}`,
-    `👤 អតិថិជន: ${customerName}`,
-    `📅 កាលបរិច្ឆេទ: ${dateFormatted}`,
-    ``,
-    `💵 តម្លៃសរុប: $${Number(totalUsd).toFixed(2)} (${Number(totalKhr).toLocaleString()}៛)`,
-    `📦 ចំនួនទំនិញ: ${itemCount} items`,
-    `------------------------------------`,
-    `🛒 សូមពិនិត្យមើល <b>Admin Dashboard</b> ដើម្បីដំណើរការការបញ្ជាទិញនេះ។`,
-  ].join("\n");
-
-  return sendTelegramAlert(message);
-}
+// Export alias so imports using either function name work seamlessly
+export const sendTelegramAlert = sendTelegramNotification;

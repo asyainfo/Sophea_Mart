@@ -135,7 +135,7 @@ export default function GlobalAudioAlerts() {
         supabase.removeChannel(activeChannel);
       }
     };
-  }, [userId, Boolean(profile), isStaff]);
+  }, [userId, profile, isStaff]);
 
   return null;
 }
