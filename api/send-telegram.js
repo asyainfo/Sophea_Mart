@@ -1,5 +1,15 @@
+// api/send-telegram.js
+
+// Helper to clean whitespace AND strip accidental surrounding quotes (" or ')
+const cleanEnvVar = (val) =>
+  (val || "")
+    .toString()
+    .trim()
+    .replace(/^["']|["']$/g, "");
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -15,29 +25,30 @@ export default async function handler(req, res) {
 
   // Accept either "message" or "text" from the request body
   const { message, text, parse_mode = "HTML" } = body;
-  const finalMessage = (message || text || "").toString().trim();
+  const rawMessage = (message || text || "").toString().trim();
 
-  // 2. Support both standard and VITE_ prefixed environment variables in Vercel (and trim whitespace)
-  const token = (
-    process.env.TELEGRAM_BOT_TOKEN ||
-    process.env.VITE_TELEGRAM_BOT_TOKEN ||
-    ""
-  ).trim();
+  if (!rawMessage) {
+    return res.status(400).json({ error: "Valid message text is required" });
+  }
 
-  const chatId = (
-    process.env.TELEGRAM_CHAT_ID ||
-    process.env.VITE_TELEGRAM_CHAT_ID ||
-    ""
-  ).trim();
+  // Telegram's hard limit is 4096 chars; truncate safely if an order is huge
+  const finalMessage =
+    rawMessage.length > 4000
+      ? `${rawMessage.slice(0, 4000)}\n...(truncated)`
+      : rawMessage;
+
+  // 2. Support both standard and VITE_ prefixed env variables & strip any quotes
+  const token = cleanEnvVar(
+    process.env.TELEGRAM_BOT_TOKEN || process.env.VITE_TELEGRAM_BOT_TOKEN,
+  );
+  const chatId = cleanEnvVar(
+    process.env.TELEGRAM_CHAT_ID || process.env.VITE_TELEGRAM_CHAT_ID,
+  );
 
   if (!token || !chatId) {
     return res.status(500).json({
       error: "Server is missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID",
     });
-  }
-
-  if (!finalMessage) {
-    return res.status(400).json({ error: "Valid message text is required" });
   }
 
   const endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -50,7 +61,9 @@ export default async function handler(req, res) {
         chat_id: chatId,
         text: finalMessage,
         parse_mode,
+        disable_web_page_preview: true,
       }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
     });
 
     const data = await response.json();
@@ -67,7 +80,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           chat_id: chatId,
           text: finalMessage,
+          disable_web_page_preview: true,
         }),
+        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
       });
       const retryData = await retryRes.json();
 
@@ -76,11 +91,14 @@ export default async function handler(req, res) {
       }
     }
 
+    console.error("Telegram API rejected request:", data);
     return res.status(400).json({
       error: data?.description || "Telegram API failed to send message",
     });
   } catch (error) {
     console.error("Telegram API Error:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({
+      error: error?.message || "Internal server error",
+    });
   }
 }

@@ -1,21 +1,33 @@
+const cleanEnv = (val) =>
+  (val || "")
+    .toString()
+    .trim()
+    .replace(/^["']|["']$/g, "");
+
 export async function sendTelegramNotification(
   messageText,
   parseMode = "HTML",
 ) {
   if (!messageText || typeof messageText !== "string") return false;
 
-  const cleanText = messageText.trim();
-  if (!cleanText) return false;
+  const trimmed = messageText.trim();
+  if (!trimmed) return false;
 
-  // 1. In Production (Vercel), use the secure Serverless API route first
+  // Telegram's hard limit is 4096 chars; truncate safely if an order is huge
+  const finalMessage =
+    trimmed.length > 4000
+      ? `${trimmed.slice(0, 4000)}\n...(truncated)`
+      : trimmed;
+
+  // 1. In Production (Vercel), try the secure Serverless API route first
   if (!import.meta.env.DEV) {
     try {
       const response = await fetch("/api/send-telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: cleanText,
-          text: cleanText,
+          message: finalMessage,
+          text: finalMessage,
           parse_mode: parseMode,
         }),
       });
@@ -30,9 +42,9 @@ export async function sendTelegramNotification(
     }
   }
 
-  // 2. Direct Telegram API (Used automatically on localhost or if /api route is unconfigured)
-  const token = import.meta.env.VITE_TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID?.trim();
+  // 2. Direct Telegram API (Used on localhost or if /api route isn't configured)
+  const token = cleanEnv(import.meta.env.VITE_TELEGRAM_BOT_TOKEN);
+  const chatId = cleanEnv(import.meta.env.VITE_TELEGRAM_CHAT_ID);
 
   if (!token || !chatId) {
     console.error(
@@ -43,33 +55,30 @@ export async function sendTelegramNotification(
 
   const endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
 
-  try {
-    const directRes = await fetch(endpoint, {
+  const postToTelegram = async (mode) => {
+    const payload = {
+      chat_id: chatId,
+      text: finalMessage,
+      disable_web_page_preview: true,
+    };
+    if (mode) payload.parse_mode = mode;
+
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: cleanText,
-        parse_mode: parseMode,
-      }),
+      body: JSON.stringify(payload),
     });
+    return res.json();
+  };
 
-    const data = await directRes.json();
-
+  try {
+    let data = await postToTelegram(parseMode);
     if (data?.ok) return true;
 
-    // 3. Failsafe: If HTML tags/characters (&, <, >) broke Telegram's parser, retry as plain text
+    // 3. Failsafe: If special characters (&, <, >) broke HTML parsing, retry as plain text
     if (parseMode && data?.description?.includes("can't parse entities")) {
-      const retryRes = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: cleanText,
-        }),
-      });
-      const retryData = await retryRes.json();
-      if (retryData?.ok) return true;
+      data = await postToTelegram(null);
+      if (data?.ok) return true;
     }
 
     console.error(
