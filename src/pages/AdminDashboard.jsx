@@ -29,7 +29,6 @@ import { supabase } from "../services/supabase";
 import { adminApi } from "../services/adminApi";
 import OrderDetailsModal from "../components/order/OrderDetailsModal";
 import { useAuth } from "../hooks/useAuth";
-import { useCart } from "../hooks/useCart";
 import { fmt, fmtKHR } from "../utils/currency";
 
 import Button from "../components/ui/Button";
@@ -59,10 +58,48 @@ const triggerGlobalToast = (message, type = "success") => {
   );
 };
 
+// ⚡ Compress Free Gift image to lightweight WebP before uploading
+async function compressGiftImage(file, maxSize = 600, quality = 0.82) {
+  if (!file || !file.type?.startsWith("image/")) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const cleanName = file.name.replace(/\.[^/.]+$/, "");
+          resolve(
+            new File([blob], `${cleanName}.webp`, { type: "image/webp" }),
+          );
+        },
+        "image/webp",
+        quality,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+  });
+}
+
 export default function AdminDashboard() {
   const { t, i18n } = useTranslation();
   const { logout, profile } = useAuth();
-  const { count = 0 } = useCart();
 
   const [tab, setTab] = useState("overview");
 
@@ -127,26 +164,24 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // --- DASHBOARD DATA FETCHING ---
+  // --- DASHBOARD DATA FETCHING (Parallel & Fast) ---
   const fetchDashboardData = async () => {
     try {
-      const { data: ordersData, error: ordersError } = await supabase
-        .from("Orders")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const [
+        { data: ordersData, error: ordersError },
+        { count: usersCount, error: usersError },
+        { data: itemsData, error: itemsError },
+      ] = await Promise.all([
+        supabase
+          .from("Orders")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase.from("profiles").select("*", { count: "exact", head: true }),
+        supabase.from("order_items").select("*"),
+      ]);
 
       if (ordersError) throw ordersError;
-
-      const { count: usersCount, error: usersError } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true });
-
       if (usersError) console.error("Error fetching profiles:", usersError);
-
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("order_items")
-        .select("*");
-
       if (itemsError) console.error("Error fetching items:", itemsError);
 
       const safeOrders = ordersData || [];
@@ -165,7 +200,10 @@ export default function AdminDashboard() {
       const generatedChartData = last7Days.map((date) => {
         const dayTotal = safeOrders
           .filter(
-            (o) => o.status === "completed" && o.created_at.startsWith(date),
+            (o) =>
+              o.status === "completed" &&
+              typeof o.created_at === "string" &&
+              o.created_at.startsWith(date),
           )
           .reduce((sum, o) => sum + (o.total_usd || 0), 0);
 
@@ -187,14 +225,14 @@ export default function AdminDashboard() {
       (itemsData || []).forEach((item) => {
         if (completedOrderIds.has(item.order_id)) {
           const productName = item.product_name || "Unknown Product";
-          const quantity = parseInt(item.quantity) || 0;
+          const quantity = parseInt(item.quantity, 10) || 0;
 
           if (!itemSales[productName]) {
             itemSales[productName] = { name: productName, qty: 0, revenue: 0 };
           }
 
           itemSales[productName].qty += quantity;
-          itemSales[productName].revenue += quantity * item.price;
+          itemSales[productName].revenue += quantity * (item.price || 0);
         }
       });
 
@@ -229,26 +267,6 @@ export default function AdminDashboard() {
     if (!error) setDbGifts(data || []);
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchProducts();
-    fetchSettings();
-    fetchGifts();
-
-    const channel = supabase
-      .channel("admin-dashboard-refresh")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Orders" },
-        () => fetchDashboardData(),
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   const fetchProducts = async () => {
     const { data, error } = await adminApi.fetchProducts();
     if (error) {
@@ -260,6 +278,31 @@ export default function AdminDashboard() {
       setDbProducts(data || []);
     }
   };
+
+  useEffect(() => {
+    fetchDashboardData();
+    fetchProducts();
+    fetchSettings();
+    fetchGifts();
+
+    let refreshTimer = null;
+    const channel = supabase
+      .channel("admin-dashboard-refresh")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Orders" },
+        () => {
+          if (refreshTimer) clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(() => fetchDashboardData(), 400);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleAddProduct = async (productData) => {
     if (!isAdmin) return;
@@ -376,7 +419,8 @@ export default function AdminDashboard() {
     let finalImageUrl = "";
 
     if (giftImageFile) {
-      const { url, error } = await adminApi.uploadGiftImage(giftImageFile);
+      const optimizedGiftFile = await compressGiftImage(giftImageFile);
+      const { url, error } = await adminApi.uploadGiftImage(optimizedGiftFile);
       if (error) {
         triggerGlobalToast(
           t("admin.toasts.failed_upload", "Failed to upload image"),
@@ -579,13 +623,13 @@ export default function AdminDashboard() {
     >
       <style>
         {`
-          .admin-tabs-scroll { 
+          .admin-tabs-scroll {
             display: flex;
             gap: 8px;
             width: 100%;
-            overflow-x: auto; 
-            white-space: nowrap; 
-            scrollbar-width: none; 
+            overflow-x: auto;
+            white-space: nowrap;
+            scrollbar-width: none;
             -ms-overflow-style: none;
             padding-bottom: 2px;
           }
@@ -597,11 +641,11 @@ export default function AdminDashboard() {
           .admin-content-padding { padding: 24px; }
           .hide-mobile-text { margin-left: 6px; }
           
-          .stats-grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
-            gap: 18px; 
-            margin-bottom: 30px; 
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-bottom: 30px;
           }
           .charts-grid {
             display: grid;
@@ -1058,7 +1102,11 @@ export default function AdminDashboard() {
                             {o.id}
                           </td>
                           <td style={tableCell}>
-                            {new Date(o.created_at).toISOString().split("T")[0]}
+                            {o.created_at
+                              ? new Date(o.created_at)
+                                  .toISOString()
+                                  .split("T")[0]
+                              : "-"}
                           </td>
                           <td style={tableCell}>
                             <div
@@ -1369,7 +1417,9 @@ export default function AdminDashboard() {
                           {o.id}
                         </td>
                         <td style={tableCell}>
-                          {new Date(o.created_at).toISOString().split("T")[0]}
+                          {o.created_at
+                            ? new Date(o.created_at).toISOString().split("T")[0]
+                            : "-"}
                         </td>
                         <td style={tableCell}>
                           <div
@@ -1781,7 +1831,8 @@ export default function AdminDashboard() {
               else await handleAddProduct(data);
               setShowAddModal(false);
               setEditingProduct(null);
-            } catch (error) {
+            } catch {
+              // Handled in handleAddProduct / handleUpdateProduct
             } finally {
               setIsSavingProduct(false);
             }

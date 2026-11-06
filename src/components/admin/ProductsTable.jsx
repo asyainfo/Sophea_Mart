@@ -211,7 +211,13 @@ export default function ProductsTable({
                   >
                     <div style={styles.imageBox}>
                       {p.image ? (
-                        <img src={p.image} alt={p.name} style={styles.image} />
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          loading="lazy"
+                          decoding="async"
+                          style={styles.image}
+                        />
                       ) : (
                         <FiImage color="#9ca3af" />
                       )}

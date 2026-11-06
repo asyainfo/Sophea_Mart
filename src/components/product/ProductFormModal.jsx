@@ -51,8 +51,9 @@ const CATEGORIES = [
 ];
 
 // ⚡ Background Helper: Shrinks 3MB+ photos to ~35KB WebP automatically before uploading
-async function compressProductImage(file, maxWidth = 800, quality = 0.8) {
+async function compressProductImage(file, maxSize = 800, quality = 0.82) {
   if (!file || !file.type?.startsWith("image/")) return file;
+  if (file.type === "image/webp" && file.size < 45 * 1024) return file;
 
   return new Promise((resolve) => {
     const img = new Image();
@@ -62,7 +63,8 @@ async function compressProductImage(file, maxWidth = 800, quality = 0.8) {
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
       const canvas = document.createElement("canvas");
-      const scale = Math.min(1, maxWidth / img.width);
+      const longestSide = Math.max(img.width, img.height) || 1;
+      const scale = Math.min(1, maxSize / longestSide);
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
 
@@ -87,7 +89,13 @@ async function compressProductImage(file, maxWidth = 800, quality = 0.8) {
   });
 }
 
-export default function ProductFormModal({ open, onClose, product, onSave }) {
+export default function ProductFormModal({
+  open,
+  onClose,
+  product,
+  onSave,
+  isSaving = false,
+}) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -100,6 +108,8 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const objectUrlRef = useRef(null);
+
+  const isBusy = isUploading || isSaving;
 
   // Clean up memory when component unmounts
   useEffect(() => {
@@ -118,13 +128,13 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
     if (product && Object.keys(product).length > 0) {
       setName(product.name || "");
       setCategory(product.category || CATEGORIES[0]);
-      setPrice(product.price?.toString() || "");
-      setStock(product.stock?.toString() || "");
+      setPrice(product.price?.toString() ?? "");
+      setStock(product.stock?.toString() ?? "");
       setBarcode(product.barcode || "");
       setSizes(product.sizes || "");
       setDescription(product.description || "");
       setPreviewUrl(
-        product.image?.startsWith("http")
+        product.image?.startsWith("http") || product.image?.startsWith("/")
           ? product.image
           : product.image
             ? `/${product.image}`
@@ -145,7 +155,7 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
   }, [product, open]);
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const newPreview = URL.createObjectURL(file);
@@ -153,10 +163,12 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
       setImageFile(file);
       setPreviewUrl(newPreview);
     }
+    e.target.value = "";
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isBusy) return;
 
     const isNewProduct = !product?.id;
     if (isNewProduct && !imageFile) {
@@ -197,17 +209,22 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         finalImageUrl = data.publicUrl;
       }
 
-      await onSave({
-        ...(product || {}),
+      const parsedPrice = parseFloat(price) || 0;
+      const parsedStock = Math.max(0, parseInt(stock, 10) || 0);
+
+      const payload = {
         name: name.trim(),
         category,
-        price: parseFloat(price) || 0,
-        stock: parseInt(stock, 10) || 0,
+        price: parsedPrice,
+        stock: parsedStock,
+        in_stock: product?.in_stock ?? parsedStock > 0,
         barcode: barcode.trim(),
         sizes: sizes.trim(),
         description: description.trim(),
         image: finalImageUrl,
-      });
+      };
+
+      await onSave(payload);
     } catch (error) {
       console.error("Save Error:", error.message);
       alert(
@@ -392,8 +409,8 @@ export default function ProductFormModal({ open, onClose, product, onSave }) {
         </div>
 
         {/* --- Submit Button --- */}
-        <Button full type="submit" disabled={isUploading}>
-          {isUploading
+        <Button full type="submit" disabled={isBusy}>
+          {isBusy
             ? t("product_form.btn_saving", "Saving...")
             : product?.id
               ? t("product_form.btn_update", "Update Product")
