@@ -349,7 +349,7 @@ export default function CheckoutModal({
                 <div style={styles.phonePrefix}>🇰🇭 +855</div>
                 <input
                   type="tel"
-                  placeholder="96 210 6665"
+                  placeholder="011 110 1111"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   autoFocus

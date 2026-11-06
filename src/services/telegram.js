@@ -1,16 +1,63 @@
+// src/services/telegram.js
+
+// Helper to trim whitespace and strip accidental surrounding quotes (" or ')
 const cleanEnv = (val) =>
   (val || "")
     .toString()
     .trim()
     .replace(/^["']|["']$/g, "");
 
+/**
+ * Formats an order details object into the Khmer Telegram receipt template
+ */
+export function formatOrderTelegramMessage({
+  orderId,
+  customerName = "Customer",
+  dateFormatted,
+  totalUsd = 0,
+  totalKhr = 0,
+  itemCount = 1,
+}) {
+  const usdFormatted = Number(totalUsd).toFixed(2);
+  const khrFormatted = Number(totalKhr).toLocaleString("en-US");
+  const dateStr =
+    dateFormatted ||
+    new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Phnom_Penh",
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+  return [
+    "🚨 <b>មានការបញ្ជាទិញថ្មី!</b> 🚨",
+    "----------------------------------------",
+    `🆔 លេខកូដបញ្ជាទិញ: ${orderId}`,
+    `👤 អតិថិជន: ${customerName}`,
+    `📅 កាលបរិច្ឆេទ: ${dateStr}`,
+    "",
+    `💵 តម្លៃសរុប: $${usdFormatted} (${khrFormatted}៛)`,
+    `📦 ចំនួនទំនិញ: ${itemCount} items`,
+    "----------------------------------------",
+    "🛒 សូមពិនិត្យមើល <b>Admin Dashboard</b> ដើម្បីដំណើរការការបញ្ជាទិញនេះ។",
+  ].join("\n");
+}
+
+/**
+ * Sends a notification to Telegram (accepts EITHER a string OR an order object!)
+ */
 export async function sendTelegramNotification(
-  messageText,
+  payloadOrText,
   parseMode = "HTML",
 ) {
-  if (!messageText || typeof messageText !== "string") return false;
+  if (!payloadOrText) return false;
 
-  const trimmed = messageText.trim();
+  // Automatically convert an order object from CheckoutModal into the Khmer receipt string
+  const rawText =
+    typeof payloadOrText === "object"
+      ? formatOrderTelegramMessage(payloadOrText)
+      : String(payloadOrText);
+
+  const trimmed = rawText.trim();
   if (!trimmed) return false;
 
   // Telegram's hard limit is 4096 chars; truncate safely if an order is huge
@@ -56,17 +103,17 @@ export async function sendTelegramNotification(
   const endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
 
   const postToTelegram = async (mode) => {
-    const payload = {
+    const body = {
       chat_id: chatId,
       text: finalMessage,
       disable_web_page_preview: true,
     };
-    if (mode) payload.parse_mode = mode;
+    if (mode) body.parse_mode = mode;
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
     return res.json();
   };
@@ -92,5 +139,6 @@ export async function sendTelegramNotification(
   }
 }
 
-// Export alias so imports using either function name work seamlessly
+// Export all aliases so CheckoutModal.jsx and any other files work seamlessly!
+export const sendOrderNotification = sendTelegramNotification;
 export const sendTelegramAlert = sendTelegramNotification;
