@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
 import { fmt, fmtKHR } from "../utils/currency";
-import { FiTrash2, FiShoppingBag, FiArrowRight } from "react-icons/fi";
+import { FiTrash2, FiShoppingBag, FiArrowRight, FiImage } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
 
 // 🏆 1. IMPORT YOUR CUSTOM BUTTON COMPONENT
@@ -10,11 +11,19 @@ import Button from "../components/ui/Button";
 export default function Cart({ onCheckout }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { items, total, dispatch } = useCart();
+  const { items = [], total = 0, dispatch } = useCart();
+  const [brokenImages, setBrokenImages] = useState({});
 
   const handleRemove = (id) => {
     dispatch({ type: "REMOVE", id });
   };
+
+  const getItemQty = (item) => Number(item?.quantity ?? item?.qty ?? 1);
+
+  const totalItemsCount = items.reduce(
+    (sum, item) => sum + getItemQty(item),
+    0,
+  );
 
   // --- EMPTY CART STATE ---
   if (items.length === 0) {
@@ -51,58 +60,80 @@ export default function Cart({ onCheckout }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
         {/* Left Side: Cart Items List */}
         <div className="lg:col-span-2 space-y-4">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-col sm:flex-row items-center gap-6 bg-white p-5 md:p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <img
-                src={item.image}
-                alt={item.name}
-                className="w-24 h-24 object-contain"
-              />
+          {items.map((item) => {
+            const qty = getItemQty(item);
+            const unitPrice = Number(item.price || 0);
+            const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+            const hasValidImage =
+              typeof item.image === "string" &&
+              item.image.trim().length > 0 &&
+              !brokenImages[item.id];
 
-              <div className="flex-1 text-center sm:text-left w-full">
-                <h3 className="font-bold text-gray-900 text-lg mb-1 line-clamp-2">
-                  {item.name}
-                </h3>
-                <p className="text-gray-500 text-sm mb-4">
-                  {t("cart_page.unit_price", "Unit Price:")}{" "}
-                  <span className="font-medium text-gray-700">
-                    {fmt(item.price)}
-                  </span>
-                </p>
-
-                {/* Quantity Display */}
-                <div className="inline-flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
-                  <span className="text-gray-500 text-sm font-medium">
-                    {t("cart_page.qty", "Qty:")}
-                  </span>
-                  <span className="font-bold text-gray-900">{item.qty}</span>
-                </div>
-              </div>
-
-              {/* Item Total & Remove Button */}
-              <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100 mt-2 sm:mt-0">
-                <div className="text-xl font-black text-blue-600">
-                  {fmt(item.price * item.qty)}
-                </div>
-                <button
-                  onClick={() => handleRemove(item.id)}
-                  className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-colors flex items-center gap-2 group"
-                  aria-label="Remove item"
-                >
-                  <FiTrash2
-                    size={18}
-                    className="group-hover:scale-110 transition-transform"
+            return (
+              <div
+                key={item.id}
+                className="flex flex-col sm:flex-row items-center gap-6 bg-white p-5 md:p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+              >
+                {hasValidImage ? (
+                  <img
+                    src={item.image}
+                    alt={item.name || "Product"}
+                    loading="lazy"
+                    decoding="async"
+                    onError={() =>
+                      setBrokenImages((prev) => ({ ...prev, [item.id]: true }))
+                    }
+                    className="w-24 h-24 object-contain"
                   />
-                  <span className="sm:hidden font-medium text-sm">
-                    {t("cart_page.remove", "Remove")}
-                  </span>
-                </button>
+                ) : (
+                  <div className="w-24 h-24 flex items-center justify-center bg-gray-50 rounded-xl text-gray-300">
+                    <FiImage size={32} />
+                  </div>
+                )}
+
+                <div className="flex-1 text-center sm:text-left w-full">
+                  <h3 className="font-bold text-gray-900 text-lg mb-1 line-clamp-2">
+                    {item.name}
+                  </h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    {t("cart_page.unit_price", "Unit Price:")}{" "}
+                    <span className="font-medium text-gray-700">
+                      {fmt(unitPrice)}
+                    </span>
+                  </p>
+
+                  {/* Quantity Display */}
+                  <div className="inline-flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                    <span className="text-gray-500 text-sm font-medium">
+                      {t("cart_page.qty", "Qty:")}
+                    </span>
+                    <span className="font-bold text-gray-900">{qty}</span>
+                  </div>
+                </div>
+
+                {/* Item Total & Remove Button */}
+                <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100 mt-2 sm:mt-0">
+                  <div className="text-xl font-black text-blue-600">
+                    {fmt(lineTotal)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(item.id)}
+                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-colors flex items-center gap-2 group"
+                    aria-label="Remove item"
+                  >
+                    <FiTrash2
+                      size={18}
+                      className="group-hover:scale-110 transition-transform"
+                    />
+                    <span className="sm:hidden font-medium text-sm">
+                      {t("cart_page.remove", "Remove")}
+                    </span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Right Side: Order Summary */}
@@ -113,9 +144,7 @@ export default function Cart({ onCheckout }) {
 
           <div className="flex justify-between text-gray-600 mb-4">
             <span>{t("cart_page.total_items", "Total Items")}</span>
-            <span className="font-bold text-gray-900">
-              {items.reduce((sum, item) => sum + item.qty, 0)}
-            </span>
+            <span className="font-bold text-gray-900">{totalItemsCount}</span>
           </div>
 
           <div className="border-t border-dashed border-gray-200 my-4"></div>
