@@ -7,6 +7,14 @@ const cleanEnv = (val) =>
     .trim()
     .replace(/^["']|["']$/g, "");
 
+// Escape user/product strings so symbols like "&" (e.g., "M&M's") never break Telegram HTML mode
+const escapeHtml = (str) =>
+  String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
 /**
  * Formats an order details object into the Khmer Telegram receipt template
  */
@@ -17,9 +25,16 @@ export function formatOrderTelegramMessage({
   totalUsd = 0,
   totalKhr = 0,
   itemCount = 1,
+  paymentMethod,
+  bankName,
+  phoneNumber,
+  receiptUrl,
+  items = [],
 }) {
-  const usdFormatted = Number(totalUsd).toFixed(2);
-  const khrFormatted = Number(totalKhr).toLocaleString("en-US");
+  const usdFormatted = Number(totalUsd || 0).toFixed(2);
+  const khrFormatted = Math.round(Number(totalKhr || 0)).toLocaleString(
+    "en-US",
+  );
   const dateStr =
     dateFormatted ||
     new Date().toLocaleString("en-US", {
@@ -28,18 +43,70 @@ export function formatOrderTelegramMessage({
       timeStyle: "short",
     });
 
-  return [
+  const lines = [
     "🚨 <b>មានការបញ្ជាទិញថ្មី!</b> 🚨",
     "----------------------------------------",
-    `🆔 លេខកូដបញ្ជាទិញ: ${orderId}`,
-    `👤 អតិថិជន: ${customerName}`,
-    `📅 កាលបរិច្ឆេទ: ${dateStr}`,
-    "",
-    `💵 តម្លៃសរុប: $${usdFormatted} (${khrFormatted}៛)`,
-    `📦 ចំនួនទំនិញ: ${itemCount} items`,
-    "----------------------------------------",
+    `🆔 លេខកូដបញ្ជាទិញ: <b>${escapeHtml(orderId)}</b>`,
+    `👤 អតិថិជន: ${escapeHtml(customerName)}`,
+    `📅 កាលបរិច្ឆេទ: ${escapeHtml(dateStr)}`,
+  ];
+
+  if (paymentMethod) {
+    const methodLabel =
+      paymentMethod === "bank"
+        ? `Bank Transfer${bankName ? ` (${escapeHtml(bankName)})` : ""}`
+        : "Cash / Takeaway";
+    lines.push(`💳 ការទូទាត់: <b>${methodLabel}</b>`);
+  }
+
+  if (phoneNumber) {
+    lines.push(`📞 លេខទូរស័ព្ទ: <b>${escapeHtml(phoneNumber)}</b>`);
+  }
+
+  lines.push("");
+  lines.push(`💵 តម្លៃសរុប: <b>$${usdFormatted} (${khrFormatted}៛)</b>`);
+  lines.push(`📦 ចំនួនទំនិញ: ${Number(itemCount || 1)} items`);
+
+  // Include itemized packing list if passed from CheckoutModal
+  if (Array.isArray(items) && items.length > 0) {
+    lines.push("");
+    lines.push("🧾 <b>បញ្ជីទំនិញ:</b>");
+    items.slice(0, 25).forEach((item) => {
+      const qty = Number(item.quantity ?? item.qty ?? 1);
+      const lineTotal = (Number(item.price || 0) * qty).toFixed(2);
+      lines.push(`  • ${escapeHtml(item.name)} ×${qty} ($${lineTotal})`);
+    });
+    if (items.length > 25) {
+      lines.push(`  • ...និង ${items.length - 25} មុខទៀត`);
+    }
+  }
+
+  if (receiptUrl) {
+    lines.push("");
+    lines.push(
+      `🖼 <a href="${escapeHtml(receiptUrl)}">មើលវិក្កយបត្រធនាគារ (View Receipt)</a>`,
+    );
+  }
+
+  lines.push("----------------------------------------");
+  lines.push(
     "🛒 សូមពិនិត្យមើល <b>Admin Dashboard</b> ដើម្បីដំណើរការការបញ្ជាទិញនេះ។",
-  ].join("\n");
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * Helper: fetch with an 8-second timeout so checkout never hangs on slow networks
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -69,7 +136,7 @@ export async function sendTelegramNotification(
   // 1. In Production (Vercel), try the secure Serverless API route first
   if (!import.meta.env.DEV) {
     try {
-      const response = await fetch("/api/send-telegram", {
+      const response = await fetchWithTimeout("/api/send-telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -106,11 +173,11 @@ export async function sendTelegramNotification(
     const body = {
       chat_id: chatId,
       text: finalMessage,
-      disable_web_page_preview: true,
+      disable_web_page_preview: false,
     };
     if (mode) body.parse_mode = mode;
 
-    const res = await fetch(endpoint, {
+    const res = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -122,7 +189,7 @@ export async function sendTelegramNotification(
     let data = await postToTelegram(parseMode);
     if (data?.ok) return true;
 
-    // 3. Failsafe: If special characters (&, <, >) broke HTML parsing, retry as plain text
+    // 3. Failsafe: If special characters broke HTML parsing, retry as plain text
     if (parseMode && data?.description?.includes("can't parse entities")) {
       data = await postToTelegram(null);
       if (data?.ok) return true;

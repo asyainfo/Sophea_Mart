@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { FiX, FiLoader, FiCameraOff } from "react-icons/fi";
@@ -40,7 +40,9 @@ const unlockAudioEngine = () => {
     osc.stop(globalAudioCtx.currentTime + 0.01);
 
     isAudioUnlocked = true;
-  } catch (err) {}
+  } catch {
+    // Ignore audio context restrictions
+  }
 };
 
 const playBeepSound = () => {
@@ -61,7 +63,9 @@ const playBeepSound = () => {
     gain.connect(globalAudioCtx.destination);
     osc.start();
     osc.stop(globalAudioCtx.currentTime + 0.1);
-  } catch (err) {}
+  } catch {
+    // Ignore audio errors
+  }
 };
 
 // --- Camera Hardware Helpers ---
@@ -78,16 +82,43 @@ const getFallbackBackCameraId = async () => {
     : devices[devices.length - 1].id;
 };
 
-const stopScannerSafe = async (scanner) => {
-  if (!scanner) return;
+const forceStopVideoTracks = () => {
   try {
-    if (scanner.isScanning) {
+    const videoEl = document.querySelector("#reader video");
+    if (videoEl && videoEl.srcObject) {
+      const stream = videoEl.srcObject;
+      if (typeof stream.getTracks === "function") {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {
+            // Ignore track stop errors
+          }
+        });
+      }
+      videoEl.srcObject = null;
+    }
+  } catch {
+    // Ignore DOM access errors
+  }
+};
+
+const stopScannerSafe = async (scanner) => {
+  try {
+    if (scanner && scanner.isScanning) {
       await scanner.stop();
     }
-  } catch (err) {}
+  } catch {
+    // Ignore stop errors if already stopped
+  }
   try {
-    scanner.clear();
-  } catch (err) {}
+    if (scanner) {
+      scanner.clear();
+    }
+  } catch {
+    // Ignore clear errors
+  }
+  forceStopVideoTracks();
 };
 
 // --- Main Component ---
@@ -103,29 +134,51 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
   const isProcessingRef = useRef(false);
   const isMountedRef = useRef(true);
   const onScanSuccessRef = useRef(onScanSuccess);
+  const onCloseRef = useRef(onClose);
 
-  // Keep callback ref fresh so parent re-renders never restart the camera hardware
+  // Keep callback refs fresh so parent re-renders never restart the camera hardware
   useEffect(() => {
     onScanSuccessRef.current = onScanSuccess;
-  }, [onScanSuccess]);
+    onCloseRef.current = onClose;
+  }, [onScanSuccess, onClose]);
 
-  // Lock body scroll
+  const handleClose = useCallback(() => {
+    isMountedRef.current = false;
+    stopScannerSafe(scannerRef.current).finally(() => {
+      if (onCloseRef.current) onCloseRef.current();
+    });
+  }, []);
+
+  // Lock body scroll & support Escape key
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = "hidden";
     unlockAudioEngine();
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.body.style.overflow = originalStyle;
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [handleClose]);
 
   // Initialize Scanner (Runs once on mount)
   useEffect(() => {
     isMountedRef.current = true;
+    let initTimer = null;
 
     const initScanner = async () => {
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => {
+        initTimer = setTimeout(r, 50);
+      });
       if (!isMountedRef.current) return;
+
+      const readerEl = document.getElementById("reader");
+      if (!readerEl) return;
 
       const scanner = new Html5Qrcode("reader", {
         verbose: false,
@@ -134,7 +187,10 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
       scannerRef.current = scanner;
 
       const handleScan = (decodedText) => {
-        if (isProcessingRef.current || !isMountedRef.current) return;
+        const cleanCode = String(decodedText || "").trim();
+        if (!cleanCode || isProcessingRef.current || !isMountedRef.current) {
+          return;
+        }
         isProcessingRef.current = true;
         setIsProcessing(true);
 
@@ -143,7 +199,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
 
         stopScannerSafe(scannerRef.current).finally(() => {
           if (isMountedRef.current && onScanSuccessRef.current) {
-            onScanSuccessRef.current(decodedText);
+            onScanSuccessRef.current(cleanCode);
           }
         });
       };
@@ -159,6 +215,7 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           );
         } catch {
           // 2. Fallback for desktop webcams or devices without exact environment constraint
+          if (!isMountedRef.current) return;
           const cameraId = await getFallbackBackCameraId();
           if (!cameraId) throw new Error("No cameras found");
           await scanner.start(cameraId, SCANNER_CONFIG, handleScan, () => {});
@@ -183,9 +240,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
 
     return () => {
       isMountedRef.current = false;
-      if (scannerRef.current) {
-        stopScannerSafe(scannerRef.current);
-      }
+      if (initTimer) clearTimeout(initTimer);
+      stopScannerSafe(scannerRef.current);
     };
   }, []);
 
@@ -222,7 +278,11 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
             {t("scanner.camera_blocked", "Camera Access Blocked")}
           </p>
           <p style={styles.errorSubtitle}>{getErrorMessage()}</p>
-          <button onClick={onClose} style={styles.closeButton}>
+          <button
+            type="button"
+            onClick={handleClose}
+            style={styles.closeButton}
+          >
             {t("scanner.close", "Close Scanner")}
           </button>
         </>
@@ -271,7 +331,8 @@ const BarcodeScanner = ({ onClose, onScanSuccess }) => {
           SOPHEA <span style={{ color: "#3b82f6" }}>MART</span>
         </h2>
         <button
-          onClick={onClose}
+          type="button"
+          onClick={handleClose}
           className="header-icon-btn"
           aria-label="Close"
         >

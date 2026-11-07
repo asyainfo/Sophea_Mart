@@ -4,6 +4,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 import { supabase } from "../services/supabase";
 
@@ -39,8 +40,10 @@ export function StoreProvider({ children }) {
   const [products, setProducts] = useState(() => readCachedProducts().data);
   const [loading, setLoading] = useState(() => products.length === 0);
   const [error, setError] = useState(null);
-
   const [orders, setOrders] = useState([]);
+
+  // Prevent duplicate concurrent fetches
+  const isFetchingRef = useRef(false);
 
   // Helper to update state AND browser cache together
   const updateProductsAndCache = useCallback((updater) => {
@@ -67,12 +70,16 @@ export function StoreProvider({ children }) {
   // --- FETCH REAL PRODUCTS FROM SUPABASE ---
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
+      if (isFetchingRef.current) return;
+
       try {
         const cached = readCachedProducts();
         if (!forceRefresh && cached.isFresh && cached.data.length > 0) {
           setLoading(false);
           return;
         }
+
+        isFetchingRef.current = true;
 
         // Only show full loading spinner if we don't already have cached products on screen
         if (cached.data.length === 0) {
@@ -93,6 +100,7 @@ export function StoreProvider({ children }) {
         console.error("Error fetching products:", err.message);
         setError(err.message);
       } finally {
+        isFetchingRef.current = false;
         setLoading(false);
       }
     },
@@ -103,18 +111,97 @@ export function StoreProvider({ children }) {
     return fetchProducts(true);
   }, [fetchProducts]);
 
+  // 1. Initial Load, Admin Same-Tab Event, Cross-Tab Storage Sync, and Tab Visibility Check
   useEffect(() => {
     fetchProducts(false);
 
-    // Automatically refresh storefront cache if Admin updates products in the same browser
     const handleAdminProductChange = () => fetchProducts(true);
+
+    // Sync instantly across multiple open tabs of sopheamart.store
+    const handleStorageChange = (e) => {
+      if (e.key === CACHE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed?.data)) {
+            setProducts(parsed.data);
+          }
+        } catch {
+          // Ignore malformed storage event
+        }
+      }
+    };
+
+    // If customer returns to tab after cache expired (>10 mins), refresh silently in background
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const cached = readCachedProducts();
+        if (!cached.isFresh) {
+          fetchProducts(true);
+        }
+      }
+    };
+
     window.addEventListener("admin-products-changed", handleAdminProductChange);
-    return () =>
+    window.addEventListener("storage", handleStorageChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
       window.removeEventListener(
         "admin-products-changed",
         handleAdminProductChange,
       );
+      window.removeEventListener("storage", handleStorageChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [fetchProducts]);
+
+  // 2. ⚡ LIVE REALTIME PRODUCT SYNC (Updates stock, prices, and new items in 0 DB queries!)
+  useEffect(() => {
+    const channel = supabase
+      .channel("public-products-live-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+
+          if (eventType === "INSERT" && newRow) {
+            if (newRow.in_stock === false) return;
+            updateProductsAndCache((prev) => {
+              if (prev.some((p) => p.id === newRow.id)) {
+                return prev.map((p) =>
+                  p.id === newRow.id ? { ...p, ...newRow } : p,
+                );
+              }
+              return [...prev, newRow].sort((a, b) => a.id - b.id);
+            });
+          } else if (eventType === "UPDATE" && newRow) {
+            updateProductsAndCache((prev) => {
+              // If admin toggled in_stock off, remove from customer storefront
+              if (newRow.in_stock === false) {
+                return prev.filter((p) => p.id !== newRow.id);
+              }
+              const exists = prev.some((p) => p.id === newRow.id);
+              if (!exists) {
+                return [...prev, newRow].sort((a, b) => a.id - b.id);
+              }
+              return prev.map((p) =>
+                p.id === newRow.id ? { ...p, ...newRow } : p,
+              );
+            });
+          } else if (eventType === "DELETE" && oldRow?.id !== undefined) {
+            updateProductsAndCache((prev) =>
+              prev.filter((p) => p.id !== oldRow.id),
+            );
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [updateProductsAndCache]);
 
   // --- ADD PRODUCT TO SUPABASE ---
   const addProduct = useCallback(
@@ -129,7 +216,10 @@ export function StoreProvider({ children }) {
         if (sbError) throw sbError;
 
         if (data && data.in_stock !== false) {
-          updateProductsAndCache((prev) => [...prev, data]);
+          updateProductsAndCache((prev) => {
+            if (prev.some((item) => item.id === data.id)) return prev;
+            return [...prev, data].sort((a, b) => a.id - b.id);
+          });
         }
         return { data, error: null };
       } catch (err) {
