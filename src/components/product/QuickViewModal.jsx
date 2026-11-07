@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { FiX, FiShoppingCart, FiCheck, FiHeart } from "react-icons/fi";
+import { useState, useEffect, useRef } from "react";
+import { FiShoppingCart, FiCheck, FiHeart, FiImage } from "react-icons/fi";
 import { fmt, fmtKHR } from "../../utils/currency";
 import Modal from "../ui/Modal";
 import { useTranslation } from "react-i18next";
@@ -10,46 +10,82 @@ export default function QuickViewModal({
   product,
   onAddToCart,
   onRemoveFromCart,
-  isFavorite,
+  isFavorite = false,
   onToggleFavorite,
 }) {
-  const { t } = useTranslation(); // 🏆 2. Initialized
+  const { t } = useTranslation();
   const [isJustAdded, setIsJustAdded] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const timerRef = useRef(null);
+  const prevQtyRef = useRef(product?.quantityInCart || 0);
+
+  // Reset image error and state when switching products
+  useEffect(() => {
+    setImgError(false);
+    setIsJustAdded(false);
+    prevQtyRef.current = product?.quantityInCart || 0;
+  }, [product?.id, product?.image]);
+
+  // Only show "Added!" when quantityInCart actually increases from 0 -> 1
+  useEffect(() => {
+    const currentQty = product?.quantityInCart || 0;
+    if (prevQtyRef.current === 0 && currentQty > 0) {
+      setIsJustAdded(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setIsJustAdded(false), 900);
+    }
+    prevQtyRef.current = currentQty;
+  }, [product?.quantityInCart]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   if (!product) return null;
 
-  // --- LOGIC CHECKS (Same as Product Card) ---
-  const isInCart = product.quantityInCart && product.quantityInCart > 0;
-  const isOutOfStock = product.stock === 0;
+  // --- LOGIC CHECKS (Matches ProductCard.jsx) ---
+  const qtyInCart = Number(product.quantityInCart || 0);
+  const stockCount = Number(product.stock ?? 0);
+  const isInCart = qtyInCart > 0;
+  const isOutOfStock = stockCount <= 0 || product.in_stock === false;
+
+  const rawImage =
+    typeof product.image === "string" ? product.image.trim() : "";
+  const validImageSrc =
+    !rawImage || imgError
+      ? null
+      : rawImage.startsWith("http") || rawImage.startsWith("/")
+        ? rawImage
+        : `/${rawImage}`;
 
   // --- ACTIONS ---
   const handleAddToCart = () => {
-    if (isOutOfStock) return;
+    if (isOutOfStock || stockCount <= qtyInCart) return;
     onAddToCart(product);
-    setIsJustAdded(true);
-    setTimeout(() => setIsJustAdded(false), 1000);
   };
 
   const getStockStatus = () => {
-    if (product.stock > 10)
+    if (isOutOfStock)
+      return {
+        text: t("quick_view.out_of_stock", "Out of Stock"),
+        bg: "#FEE2E2",
+        color: "#991B1B",
+      };
+    if (stockCount > 10)
       return {
         text: t("quick_view.in_stock", "In Stock"),
         bg: "#DBEAFE",
         color: "#2563EB",
       };
-    if (product.stock > 0)
-      return {
-        // 🏆 Uses dynamic variable {{count}}
-        text: t("quick_view.only_left", "Only {{count}} left", {
-          count: product.stock,
-        }),
-        bg: "#FEF3C7",
-        color: "#92400E",
-      };
     return {
-      text: t("quick_view.out_of_stock", "Out of Stock"),
-      bg: "#FEE2E2",
-      color: "#991B1B",
+      text: t("quick_view.only_left", "Only {{count}} left", {
+        count: stockCount,
+      }),
+      bg: "#FEF3C7",
+      color: "#92400E",
     };
   };
   const stockStatus = getStockStatus();
@@ -76,7 +112,9 @@ export default function QuickViewModal({
         >
           {/* Favorite Heart */}
           <button
-            onClick={() => onToggleFavorite(product)}
+            type="button"
+            onClick={() => onToggleFavorite && onToggleFavorite(product)}
+            aria-label="Toggle Favorite"
             style={{
               position: "absolute",
               top: 16,
@@ -118,17 +156,33 @@ export default function QuickViewModal({
             </span>
           )}
 
-          {/* Main Image */}
-          <img
-            src={product.image}
-            alt={product.name}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              opacity: isOutOfStock ? 0.4 : 1,
-            }}
-          />
+          {/* Main Image with Fallback */}
+          {validImageSrc ? (
+            <img
+              src={validImageSrc}
+              alt={product.name || "Product"}
+              decoding="async"
+              onError={() => setImgError(true)}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                opacity: isOutOfStock ? 0.4 : 1,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#CBD5E1",
+              }}
+            >
+              <FiImage size={48} />
+            </div>
+          )}
 
           {/* Sold Out Overlay */}
           {isOutOfStock && (
@@ -266,6 +320,7 @@ export default function QuickViewModal({
                 }}
               >
                 <button
+                  type="button"
                   onClick={() => onRemoveFromCart(product)}
                   style={{
                     width: 50,
@@ -282,30 +337,21 @@ export default function QuickViewModal({
                 <span
                   style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}
                 >
-                  {/* 🏆 Uses dynamic variable {{count}} */}
                   {t("quick_view.in_cart", "{{count}} in Cart", {
-                    count: product.quantityInCart,
+                    count: qtyInCart,
                   })}
                 </span>
                 <button
+                  type="button"
                   onClick={handleAddToCart}
-                  disabled={product.stock <= product.quantityInCart}
+                  disabled={stockCount <= qtyInCart}
                   style={{
                     width: 50,
                     height: "100%",
                     border: "none",
-                    background:
-                      product.stock <= product.quantityInCart
-                        ? "#F3F4F6"
-                        : "#EFF6FF",
-                    color:
-                      product.stock <= product.quantityInCart
-                        ? "#D1D5DB"
-                        : "#2563EB",
-                    cursor:
-                      product.stock <= product.quantityInCart
-                        ? "not-allowed"
-                        : "pointer",
+                    background: stockCount <= qtyInCart ? "#F3F4F6" : "#EFF6FF",
+                    color: stockCount <= qtyInCart ? "#D1D5DB" : "#2563EB",
+                    cursor: stockCount <= qtyInCart ? "not-allowed" : "pointer",
                     fontSize: 24,
                   }}
                 >
@@ -314,6 +360,7 @@ export default function QuickViewModal({
               </div>
             ) : (
               <button
+                type="button"
                 onClick={handleAddToCart}
                 disabled={isOutOfStock}
                 style={{
@@ -351,6 +398,7 @@ export default function QuickViewModal({
             )}
 
             <button
+              type="button"
               onClick={onClose}
               style={{
                 width: 100,
