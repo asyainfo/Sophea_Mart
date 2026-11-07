@@ -41,6 +41,45 @@ const triggerGlobalToast = (message, type = "success") => {
   );
 };
 
+// ⚡ Compress credit/receipt image to lightweight WebP before uploading
+async function compressCreditImage(file, maxSize = 1000, quality = 0.82) {
+  if (!file || !file.type?.startsWith("image/")) return file;
+  if (file.type === "image/webp" && file.size < 60 * 1024) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      const longestSide = Math.max(img.width, img.height) || 1;
+      const scale = Math.min(1, maxSize / longestSide);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const cleanName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.webp`;
+          resolve(new File([blob], cleanName, { type: "image/webp" }));
+        },
+        "image/webp",
+        quality,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+  });
+}
+
 export default function CustomerCredits() {
   const { t } = useTranslation();
   const [credits, setCredits] = useState([]);
@@ -58,6 +97,7 @@ export default function CustomerCredits() {
   const [imagePreview, setImagePreview] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const fileInputRef = useRef(null);
+  const previewUrlRef = useRef(null);
 
   // Partial Payment State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -74,6 +114,13 @@ export default function CustomerCredits() {
     total_usd: "",
     due_date: "",
   });
+
+  // Clean up object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
 
   // --- FETCH DATA FROM SUPABASE ---
   const fetchCredits = async () => {
@@ -123,23 +170,30 @@ export default function CustomerCredits() {
 
   // --- HANDLE IMAGE SELECTION ---
   const handleImageSelect = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
-      setImageFile(file);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const previewUrl = URL.createObjectURL(file);
+      previewUrlRef.current = previewUrl;
+      setImageFile(file);
       setImagePreview(previewUrl);
     }
+    e.target.value = "";
   };
 
-  // --- UPLOAD IMAGE TO SUPABASE STORAGE ---
+  // --- UPLOAD IMAGE TO SUPABASE STORAGE (WebP + 1-Year Cache) ---
   const uploadImage = async (file) => {
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${fileName}`;
+    const optimizedFile = await compressCreditImage(file);
+    const fileExt = optimizedFile.name.split(".").pop() || "webp";
+    const filePath = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
       .from("credit_images")
-      .upload(filePath, file);
+      .upload(filePath, optimizedFile, {
+        cacheControl: "31536000", // 1-year browser & CDN cache
+        contentType: optimizedFile.type || "image/webp",
+        upsert: false,
+      });
 
     if (uploadError) throw uploadError;
 
@@ -153,6 +207,7 @@ export default function CustomerCredits() {
   // --- SAVE CREDIT (Handles both Add & Edit) ---
   const handleSaveCredit = async (e) => {
     e.preventDefault();
+    if (isSaving) return;
     setIsSaving(true);
 
     try {
@@ -163,33 +218,46 @@ export default function CustomerCredits() {
       }
 
       const payload = {
-        customer_name: formData.customer_name,
-        items_desc: formData.items_desc,
-        total_usd: parseFloat(formData.total_usd),
+        customer_name: formData.customer_name.trim(),
+        items_desc: formData.items_desc.trim(),
+        total_usd: Number((parseFloat(formData.total_usd) || 0).toFixed(2)),
         due_date: formData.due_date,
         image_url: uploadedImageUrl,
       };
 
       if (editingId) {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("customer_credits")
           .update(payload)
-          .eq("id", editingId);
+          .eq("id", editingId)
+          .select();
 
         if (error) throw error;
+        if (updated?.[0]) {
+          setCredits((prev) =>
+            prev.map((c) => (c.id === editingId ? updated[0] : c)),
+          );
+        } else {
+          fetchCredits();
+        }
         triggerGlobalToast(t("credits.toast.update_success"), "success");
       } else {
         payload.status = "Unpaid";
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from("customer_credits")
-          .insert([payload]);
+          .insert([payload])
+          .select();
 
         if (error) throw error;
+        if (inserted?.[0]) {
+          setCredits((prev) => [inserted[0], ...prev]);
+        } else {
+          fetchCredits();
+        }
         triggerGlobalToast(t("credits.toast.save_success"), "success");
       }
 
       resetForm();
-      fetchCredits();
     } catch (error) {
       console.error("Error saving credit:", error);
       triggerGlobalToast(t("credits.toast.save_failed"), "error");
@@ -200,11 +268,15 @@ export default function CustomerCredits() {
 
   // --- PREPARE MODAL FOR EDITING ---
   const openEditModal = (credit) => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     setEditingId(credit.id);
     setFormData({
       customer_name: credit.customer_name || "",
       items_desc: credit.items_desc || "",
-      total_usd: credit.total_usd || "",
+      total_usd: credit.total_usd ?? "",
       due_date: credit.due_date || "",
     });
     setImagePreview(credit.image_url || null);
@@ -228,11 +300,11 @@ export default function CustomerCredits() {
 
       if (error) throw error;
 
+      setCredits((prev) => prev.filter((c) => c.id !== id));
       triggerGlobalToast(
         t("credits.toast.delete_success", { name }),
         "success",
       );
-      fetchCredits();
     } catch (error) {
       console.error("Error deleting:", error);
       triggerGlobalToast(t("credits.toast.delete_failed"), "error");
@@ -242,6 +314,10 @@ export default function CustomerCredits() {
   };
 
   const resetForm = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     setShowModal(false);
     setEditingId(null);
     setFormData({
@@ -270,11 +346,13 @@ export default function CustomerCredits() {
 
       if (error) throw error;
 
+      setCredits((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, status: "Paid" } : c)),
+      );
       triggerGlobalToast(
         t("credits.toast.pay_full_success", { name }),
         "success",
       );
-      fetchCredits();
     } catch (error) {
       console.error("Error updating status:", error);
       triggerGlobalToast(t("credits.toast.update_status_failed"), "error");
@@ -283,16 +361,15 @@ export default function CustomerCredits() {
     }
   };
 
-  // --- 🏆 NEW: HANDLE PARTIAL PAYMENT ---
+  // --- 🏆 HANDLE PARTIAL PAYMENT ---
   const handlePartialPayment = async (e) => {
     e.preventDefault();
-    const amountToPay = parseFloat(partialAmount);
+    if (isSaving || !paymentData) return;
 
-    if (
-      !amountToPay ||
-      amountToPay <= 0 ||
-      amountToPay > paymentData.total_usd
-    ) {
+    const totalDebt = Number(parseFloat(paymentData.total_usd || 0).toFixed(2));
+    const amountToPay = Number(parseFloat(partialAmount || 0).toFixed(2));
+
+    if (!amountToPay || amountToPay <= 0 || amountToPay > totalDebt) {
       alert(t("credits.prompt.invalid_amount"));
       return;
     }
@@ -301,32 +378,40 @@ export default function CustomerCredits() {
     setIsSaving(true);
 
     try {
-      if (amountToPay === paymentData.total_usd) {
-        // If they paid the exact full amount, just mark the whole thing as paid
-        await supabase
+      if (amountToPay >= totalDebt) {
+        // If they paid the exact full amount, mark the whole record as Paid
+        const { error } = await supabase
           .from("customer_credits")
           .update({ status: "Paid" })
           .eq("id", paymentData.id);
+
+        if (error) throw error;
       } else {
-        // 1. Reduce the original Unpaid record by the amount paid
-        const newBalance = paymentData.total_usd - amountToPay;
-        await supabase
+        // 1. Reduce the original Unpaid record by the exact amount paid
+        const newBalance = Number((totalDebt - amountToPay).toFixed(2));
+        const { error: updateError } = await supabase
           .from("customer_credits")
           .update({ total_usd: newBalance })
           .eq("id", paymentData.id);
 
-        // 2. Create a new "Paid" receipt record so your "Total Collected" stat tracks the money
-        await supabase.from("customer_credits").insert([
-          {
-            customer_name: paymentData.customer_name,
-            total_usd: amountToPay,
-            status: "Paid",
-            items_desc:
-              `${t("credits.table.partial_pay_prefix")} ${paymentData.items_desc || ""}`.trim(),
-            due_date: new Date().toISOString().split("T")[0],
-            image_url: paymentData.image_url,
-          },
-        ]);
+        if (updateError) throw updateError;
+
+        // 2. Create a new "Paid" receipt record so "Total Collected" tracks the money
+        const { error: insertError } = await supabase
+          .from("customer_credits")
+          .insert([
+            {
+              customer_name: paymentData.customer_name,
+              total_usd: amountToPay,
+              status: "Paid",
+              items_desc:
+                `${t("credits.table.partial_pay_prefix")} ${paymentData.items_desc || ""}`.trim(),
+              due_date: new Date().toISOString().split("T")[0],
+              image_url: paymentData.image_url,
+            },
+          ]);
+
+        if (insertError) throw insertError;
       }
 
       triggerGlobalToast(
@@ -376,8 +461,7 @@ export default function CustomerCredits() {
             fontWeight: 700,
           }}
         >
-          {t("credits.header.title")}
-          {""}
+          {t("credits.header.title")}{" "}
           <span style={{ color: COLORS.muted, fontWeight: 500 }}>
             ({filteredCredits.length})
           </span>
@@ -656,6 +740,8 @@ export default function CustomerCredits() {
                           <img
                             src={c.image_url}
                             alt="Credit Item"
+                            loading="lazy"
+                            decoding="async"
                             onClick={() => setViewImage(c.image_url)}
                             style={{
                               width: 44,
@@ -726,7 +812,9 @@ export default function CustomerCredits() {
                         }}
                       >
                         {t("credits.table.bought_date")}{" "}
-                        {new Date(c.created_at).toISOString().split("T")[0]}
+                        {c.created_at
+                          ? new Date(c.created_at).toISOString().split("T")[0]
+                          : "-"}
                       </div>
                       <div
                         style={{
@@ -736,7 +824,7 @@ export default function CustomerCredits() {
                           fontSize: 12,
                         }}
                       >
-                        {t("credits.table.due_date")} {c.due_date}
+                        {t("credits.table.due_date")} {c.due_date || "-"}
                       </div>
                     </td>
 
@@ -875,7 +963,7 @@ export default function CustomerCredits() {
         </div>
       </div>
 
-      {/* --- 🏆 NEW: PARTIAL PAYMENT MODAL --- */}
+      {/* --- 🏆 PARTIAL PAYMENT MODAL --- */}
       {showPaymentModal && paymentData && (
         <div
           style={{
@@ -1122,7 +1210,7 @@ export default function CustomerCredits() {
                   style={{ display: "none" }}
                 />
                 <div
-                  onClick={() => fileInputRef.current.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   style={{
                     border: `2px dashed ${COLORS.border}`,
                     borderRadius: 12,
@@ -1149,6 +1237,8 @@ export default function CustomerCredits() {
                       <img
                         src={imagePreview}
                         alt="Preview"
+                        loading="lazy"
+                        decoding="async"
                         style={{
                           width: 100,
                           height: 100,
@@ -1382,6 +1472,8 @@ export default function CustomerCredits() {
             <img
               src={viewImage}
               alt="Full Credit Items"
+              loading="lazy"
+              decoding="async"
               style={{
                 maxWidth: "100%",
                 maxHeight: "85vh",

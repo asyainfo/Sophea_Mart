@@ -11,6 +11,18 @@ const cache = {
 };
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const STOREFRONT_CACHE_KEY = "sophea_mart_supabase_products_v3";
+
+// Notify StoreContext whenever Admin modifies products so the storefront stays 100% in sync
+function syncStorefrontCache() {
+  try {
+    localStorage.removeItem(STOREFRONT_CACHE_KEY);
+    sessionStorage.removeItem(STOREFRONT_CACHE_KEY);
+    window.dispatchEvent(new Event("admin-products-changed"));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 // Helper: Automatically compress any image to lightweight WebP (~25KB-40KB) before uploading
 export async function compressImage(file, maxSize = 800, quality = 0.82) {
@@ -58,6 +70,7 @@ export const adminApi = {
     cache.products = { data: null, timestamp: 0 };
     cache.gifts = { data: null, timestamp: 0 };
     cache.settings.clear();
+    syncStorefrontCache();
   },
 
   // ==========================================
@@ -100,13 +113,14 @@ export const adminApi = {
 
       if (error) throw error;
 
-      // Update local cache in-place instead of re-downloading all 269 products
+      // Update local cache in-place instead of re-downloading all 271 products
       if (cache.products.data && data?.[0]) {
         cache.products.data = [...cache.products.data, data[0]];
       } else {
         cache.products = { data: null, timestamp: 0 };
       }
 
+      syncStorefrontCache();
       return { data, error: null };
     } catch (error) {
       console.error("API Error (addProduct):", error.message);
@@ -133,6 +147,7 @@ export const adminApi = {
         cache.products = { data: null, timestamp: 0 };
       }
 
+      syncStorefrontCache();
       return { data, error: null };
     } catch (error) {
       console.error("API Error (updateProduct):", error.message);
@@ -151,6 +166,7 @@ export const adminApi = {
         cache.products.data = cache.products.data.filter((p) => p.id !== id);
       }
 
+      syncStorefrontCache();
       return { success: true, error: null };
     } catch (error) {
       console.error("API Error (deleteProduct):", error.message);
@@ -175,6 +191,7 @@ export const adminApi = {
         );
       }
 
+      syncStorefrontCache();
       return { newStatus, error: null };
     } catch (error) {
       console.error("API Error (toggleStock):", error.message);
@@ -237,7 +254,7 @@ export const adminApi = {
   // 🏆 IMAGE UPLOAD & FREE GIFTS API
   // ==========================================
 
-  uploadImage: async (file, bucketName = "products") => {
+  uploadImage: async (file, bucketName = "product-images") => {
     try {
       // 1. Compress image to WebP before uploading (shrinks 3MB -> ~35KB)
       const optimizedFile = await compressImage(file);
@@ -268,7 +285,7 @@ export const adminApi = {
     return adminApi.uploadImage(file, bucketName);
   },
 
-  uploadProductImage: async (file, bucketName = "products") => {
+  uploadProductImage: async (file, bucketName = "product-images") => {
     return adminApi.uploadImage(file, bucketName);
   },
 

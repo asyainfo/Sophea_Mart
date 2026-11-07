@@ -9,96 +9,75 @@ import { supabase } from "../services/supabase";
 
 export const StoreContext = createContext(null);
 
-// Changed key to v2 so any old cached dummy 207 items are automatically wiped!
-const CACHE_KEY = "sophea_mart_supabase_products_v2";
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+// Bumped to v3 so all browsers immediately load the new .webp image URLs!
+const CACHE_KEY = "sophea_mart_supabase_products_v3";
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes fresh cache
+
+function readCachedProducts() {
+  try {
+    // Clean up old legacy cache keys
+    sessionStorage.removeItem("sophea_mart_products_cache");
+    sessionStorage.removeItem("sophea_mart_supabase_products_v2");
+    localStorage.removeItem("sophea_mart_supabase_products_v2");
+
+    const raw =
+      localStorage.getItem(CACHE_KEY) || sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return { data: [], isFresh: false };
+
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.data) && parsed.data.length > 0) {
+      const isFresh = Date.now() - (parsed.timestamp || 0) < CACHE_TTL;
+      return { data: parsed.data, isFresh };
+    }
+  } catch {
+    // Ignore storage errors (e.g., private browsing mode)
+  }
+  return { data: [], isFresh: false };
+}
 
 export function StoreProvider({ children }) {
-  const [products, setProducts] = useState(() => {
-    try {
-      // Remove old v1 cache if present
-      sessionStorage.removeItem("sophea_mart_products_cache");
-
-      const saved = sessionStorage.getItem(CACHE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (
-          Date.now() - parsed.timestamp < CACHE_TTL &&
-          Array.isArray(parsed.data) &&
-          parsed.data.length > 0
-        ) {
-          return parsed.data;
-        }
-      }
-    } catch (e) {
-      // Ignore storage errors
-    }
-    return [];
-  });
-
+  const [products, setProducts] = useState(() => readCachedProducts().data);
   const [loading, setLoading] = useState(() => products.length === 0);
   const [error, setError] = useState(null);
 
-  const [orders, setOrders] = useState([
-    {
-      id: "ORD-001",
-      userId: 1,
-      total: 12.5,
-      status: "completed",
-      items: 3,
-      date: "2025-05-28",
-    },
-    {
-      id: "ORD-002",
-      userId: 1,
-      total: 8.75,
-      status: "pending",
-      items: 2,
-      date: "2025-05-30",
-    },
-  ]);
+  const [orders, setOrders] = useState([]);
 
-  // Helper to update state AND sessionStorage cache together (only caches real Supabase products)
+  // Helper to update state AND browser cache together
   const updateProductsAndCache = useCallback((updater) => {
     setProducts((prev) => {
       const nextProducts =
         typeof updater === "function" ? updater(prev) : updater;
       try {
         if (Array.isArray(nextProducts) && nextProducts.length > 0) {
-          sessionStorage.setItem(
-            CACHE_KEY,
-            JSON.stringify({ data: nextProducts, timestamp: Date.now() }),
-          );
+          const payload = JSON.stringify({
+            data: nextProducts,
+            timestamp: Date.now(),
+          });
+          localStorage.setItem(CACHE_KEY, payload);
         } else {
-          sessionStorage.removeItem(CACHE_KEY);
+          localStorage.removeItem(CACHE_KEY);
         }
-      } catch (e) {
+      } catch {
         // Ignore storage quota errors
       }
       return nextProducts;
     });
   }, []);
 
-  // --- FETCH REAL PRODUCTS FROM SUPABASE (268 ITEMS) ---
+  // --- FETCH REAL PRODUCTS FROM SUPABASE ---
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
       try {
-        if (!forceRefresh) {
-          const saved = sessionStorage.getItem(CACHE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (
-              Date.now() - parsed.timestamp < CACHE_TTL &&
-              Array.isArray(parsed.data) &&
-              parsed.data.length > 0
-            ) {
-              setLoading(false);
-              return;
-            }
-          }
+        const cached = readCachedProducts();
+        if (!forceRefresh && cached.isFresh && cached.data.length > 0) {
+          setLoading(false);
+          return;
         }
 
-        setLoading(true);
+        // Only show full loading spinner if we don't already have cached products on screen
+        if (cached.data.length === 0) {
+          setLoading(true);
+        }
         setError(null);
 
         const { data, error: sbError } = await supabase
@@ -120,8 +99,21 @@ export function StoreProvider({ children }) {
     [updateProductsAndCache],
   );
 
+  const refreshProducts = useCallback(() => {
+    return fetchProducts(true);
+  }, [fetchProducts]);
+
   useEffect(() => {
     fetchProducts(false);
+
+    // Automatically refresh storefront cache if Admin updates products in the same browser
+    const handleAdminProductChange = () => fetchProducts(true);
+    window.addEventListener("admin-products-changed", handleAdminProductChange);
+    return () =>
+      window.removeEventListener(
+        "admin-products-changed",
+        handleAdminProductChange,
+      );
   }, [fetchProducts]);
 
   // --- ADD PRODUCT TO SUPABASE ---
@@ -142,7 +134,6 @@ export function StoreProvider({ children }) {
         return { data, error: null };
       } catch (err) {
         console.error("Error adding product:", err.message);
-        alert("Failed to add product.");
         return { data: null, error: err };
       }
     },
@@ -153,25 +144,28 @@ export function StoreProvider({ children }) {
   const editProduct = useCallback(
     async (id, updatedFields) => {
       try {
-        const { error: sbError } = await supabase
+        const { data, error: sbError } = await supabase
           .from("products")
           .update(updatedFields)
-          .eq("id", id);
+          .eq("id", id)
+          .select()
+          .single();
 
         if (sbError) throw sbError;
 
         updateProductsAndCache((prev) => {
-          if (updatedFields.in_stock === false) {
+          if (data?.in_stock === false) {
             return prev.filter((p) => p.id !== id);
           }
-          return prev.map((p) =>
-            p.id === id ? { ...p, ...updatedFields } : p,
-          );
+          const exists = prev.some((p) => p.id === id);
+          if (!exists && data?.in_stock) {
+            return [...prev, data].sort((a, b) => a.id - b.id);
+          }
+          return prev.map((p) => (p.id === id ? { ...p, ...data } : p));
         });
         return { success: true, error: null };
       } catch (err) {
         console.error("Error updating product:", err.message);
-        alert("Failed to update product.");
         return { success: false, error: err };
       }
     },
@@ -193,7 +187,6 @@ export function StoreProvider({ children }) {
         return { success: true, error: null };
       } catch (err) {
         console.error("Error deleting product:", err.message);
-        alert("Failed to delete product.");
         return { success: false, error: err };
       }
     },
@@ -214,7 +207,7 @@ export function StoreProvider({ children }) {
       products,
       loading,
       error,
-      refreshProducts: () => fetchProducts(true),
+      refreshProducts,
       addProduct,
       editProduct,
       deleteProduct,
@@ -226,7 +219,7 @@ export function StoreProvider({ children }) {
       products,
       loading,
       error,
-      fetchProducts,
+      refreshProducts,
       addProduct,
       editProduct,
       deleteProduct,

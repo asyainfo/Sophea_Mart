@@ -52,6 +52,11 @@ function MainApp() {
 
   const isAdminPage = location.pathname.startsWith("/admin");
 
+  // Scroll to top smoothly when navigating between pages
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   // Isolated barcode listener
   useEffect(() => {
     const handleStoreScan = (e) => {
@@ -63,6 +68,18 @@ function MainApp() {
     return () =>
       window.removeEventListener("store-barcode-scanned", handleStoreScan);
   }, []);
+
+  // Connect global-toast events (from AdminDashboard & CustomerCredits) to Toast UI
+  useEffect(() => {
+    const handleGlobalToast = (e) => {
+      const { message, type = "success" } = e.detail || {};
+      if (message && typeof toast === "function") {
+        toast(message, type);
+      }
+    };
+    window.addEventListener("global-toast", handleGlobalToast);
+    return () => window.removeEventListener("global-toast", handleGlobalToast);
+  }, [toast]);
 
   return (
     <>
@@ -77,9 +94,11 @@ function MainApp() {
       )}
 
       <main
-        className={`max-w-7xl mx-auto px-4 pt-6 flex-grow w-full relative z-10 ${
-          !isAdminPage ? "pb-28 md:pb-12" : "pb-12"
-        }`}
+        className={
+          isAdminPage
+            ? "flex-grow w-full relative z-10"
+            : "max-w-7xl mx-auto px-4 pt-6 pb-28 md:pb-12 flex-grow w-full relative z-10"
+        }
       >
         <Suspense fallback={<PageLoader />}>
           <Routes>

@@ -16,11 +16,23 @@ function ProductCard({
   const [isJustAdded, setIsJustAdded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const timerRef = useRef(null);
+  const prevQtyRef = useRef(product.quantityInCart || 0);
 
   // Reset image error state if product.image changes
   useEffect(() => {
     setImgError(false);
   }, [product?.image]);
+
+  // Only trigger the green checkmark when quantityInCart actually increases from 0 -> 1
+  useEffect(() => {
+    const currentQty = product.quantityInCart || 0;
+    if (prevQtyRef.current === 0 && currentQty > 0) {
+      setIsJustAdded(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setIsJustAdded(false), 900);
+    }
+    prevQtyRef.current = currentQty;
+  }, [product.quantityInCart]);
 
   // Clean up timer on unmount to prevent memory leaks
   useEffect(() => {
@@ -30,8 +42,10 @@ function ProductCard({
   }, []);
 
   // --- LOGIC CHECKS ---
-  const isInCart = product.quantityInCart && product.quantityInCart > 0;
-  const isOutOfStock = product.stock === 0 || product.in_stock === false;
+  const qtyInCart = Number(product.quantityInCart || 0);
+  const stockCount = Number(product.stock ?? 0);
+  const isInCart = qtyInCart > 0;
+  const isOutOfStock = stockCount <= 0 || product.in_stock === false;
 
   // Normalize image URL safely so empty strings "" are never passed to <img src>
   const rawImage =
@@ -44,12 +58,15 @@ function ProductCard({
         : `/${rawImage}`;
 
   // --- ACTIONS ---
-  const handleAddToCart = () => {
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
     if (isOutOfStock) return;
     onAddToCart(product);
-    setIsJustAdded(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setIsJustAdded(false), 1000);
+  };
+
+  const handleRemove = (e) => {
+    e.stopPropagation();
+    onRemoveFromCart(product);
   };
 
   const handleHeartClick = (e) => {
@@ -59,18 +76,24 @@ function ProductCard({
     }
   };
 
+  const handleQuickView = () => {
+    if (onQuickView) {
+      onQuickView(product);
+    }
+  };
+
   // --- COMPUTED STYLES ---
   const getStockStatus = () => {
-    if (product.stock > 10)
+    if (stockCount > 10)
       return {
         text: t("quick_view.in_stock", "In Stock"),
         bg: "#DBEAFE",
         color: "#2563EB",
       };
-    if (product.stock > 0)
+    if (stockCount > 0)
       return {
         text: t("quick_view.only_left", "Only {{count}} left", {
-          count: product.stock,
+          count: stockCount,
         }),
         bg: "#FEF3C7",
         color: "#92400E",
@@ -105,7 +128,7 @@ function ProductCard({
     >
       {/* --- IMAGE HEADER --- */}
       <div
-        onClick={onQuickView}
+        onClick={handleQuickView}
         style={{
           height: 140,
           background: "#F8FAFC",
@@ -119,7 +142,9 @@ function ProductCard({
       >
         {/* Favorite Heart Button */}
         <button
+          type="button"
           onClick={handleHeartClick}
+          aria-label="Toggle Favorite"
           style={{
             position: "absolute",
             top: 12,
@@ -232,7 +257,7 @@ function ProductCard({
         }}
       >
         <h3
-          onClick={onQuickView}
+          onClick={handleQuickView}
           style={{
             margin: "0 0 6px",
             fontSize: 16,
@@ -325,6 +350,7 @@ function ProductCard({
           {/* Cart Buttons */}
           {isJustAdded ? (
             <button
+              type="button"
               style={{
                 width: 42,
                 height: 42,
@@ -352,7 +378,8 @@ function ProductCard({
               }}
             >
               <button
-                onClick={() => onRemoveFromCart(product)}
+                type="button"
+                onClick={handleRemove}
                 style={{
                   width: 32,
                   height: "100%",
@@ -374,24 +401,19 @@ function ProductCard({
                   color: "#111827",
                 }}
               >
-                {product.quantityInCart}
+                {qtyInCart}
               </span>
               <button
+                type="button"
                 onClick={handleAddToCart}
-                disabled={product.stock <= product.quantityInCart}
+                disabled={stockCount <= qtyInCart}
                 style={{
                   width: 32,
                   height: "100%",
                   border: "none",
                   background: "transparent",
-                  color:
-                    product.stock <= product.quantityInCart
-                      ? "#D1D5DB"
-                      : "#2563EB",
-                  cursor:
-                    product.stock <= product.quantityInCart
-                      ? "not-allowed"
-                      : "pointer",
+                  color: stockCount <= qtyInCart ? "#D1D5DB" : "#2563EB",
+                  cursor: stockCount <= qtyInCart ? "not-allowed" : "pointer",
                   fontSize: 16,
                 }}
               >
@@ -400,6 +422,7 @@ function ProductCard({
             </div>
           ) : (
             <button
+              type="button"
               onClick={handleAddToCart}
               disabled={isOutOfStock}
               style={{
@@ -435,5 +458,22 @@ function ProductCard({
   );
 }
 
-// Wrap with React.memo so unchanged cards don't re-render when cart/favorites change
-export default memo(ProductCard);
+// Custom deep-value check so inline props in HomePage don't cause all 271 cards to re-render
+function arePropsEqual(prev, next) {
+  const p1 = prev.product;
+  const p2 = next.product;
+  return (
+    prev.isFavorite === next.isFavorite &&
+    p1.id === p2.id &&
+    p1.quantityInCart === p2.quantityInCart &&
+    p1.stock === p2.stock &&
+    p1.in_stock === p2.in_stock &&
+    p1.price === p2.price &&
+    p1.name === p2.name &&
+    p1.image === p2.image &&
+    p1.sizes === p2.sizes &&
+    p1.description === p2.description
+  );
+}
+
+export default memo(ProductCard, arePropsEqual);

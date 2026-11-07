@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useStore } from "../hooks/useStore";
 import { useCart } from "../hooks/useCart";
@@ -9,10 +9,13 @@ import Hero from "../components/layout/Hero";
 import ProductCard from "../components/product/ProductCard";
 import LoginModal from "../components/auth/LoginModal";
 import RegisterModal from "../components/auth/RegisterModal";
+import ForgotPasswordModal from "../components/auth/ForgotPasswordModal";
 import QuickViewModal from "../components/product/QuickViewModal";
 import { useToast } from "../components/ui/Toast";
 import Button from "../components/ui/Button";
 import { useTranslation } from "react-i18next";
+
+const INITIAL_BATCH_SIZE = 36;
 
 const styles = {
   page: {
@@ -55,19 +58,30 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("All");
+  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH_SIZE);
 
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
+
+  const pendingFavsRef = useRef(new Set());
+  const loadMoreRef = useRef(null);
 
   // 1. Background Performance: 200ms debounce so typing in search is smooth
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search.trim().toLowerCase());
+      setVisibleCount(INITIAL_BATCH_SIZE);
     }, 200);
     return () => clearTimeout(timer);
   }, [search]);
+
+  // Reset visible batch when switching categories
+  useEffect(() => {
+    setVisibleCount(INITIAL_BATCH_SIZE);
+  }, [category]);
 
   // 2. Background Performance: Only fetch favorites when user.id actually changes
   const fetchFavorites = useCallback(async (userId) => {
@@ -103,7 +117,7 @@ export default function HomePage() {
     return map;
   }, [cart]);
 
-  // 4. Memoized Filtering
+  // 4. Memoized Filtering (Supports Name, Description, and Barcode)
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
     return products.filter((product) => {
@@ -113,10 +127,36 @@ export default function HomePage() {
 
       const searchMatch =
         product.name?.toLowerCase().includes(debouncedSearch) ||
-        product.description?.toLowerCase().includes(debouncedSearch);
+        product.description?.toLowerCase().includes(debouncedSearch) ||
+        product.barcode?.toLowerCase().includes(debouncedSearch);
       return searchMatch;
     });
   }, [products, debouncedSearch, category]);
+
+  // 5. Progressive DOM Rendering: Automatically load next batch as user scrolls
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || visibleCount >= filteredProducts.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) =>
+            Math.min(prev + INITIAL_BATCH_SIZE, filteredProducts.length),
+          );
+        }
+      },
+      { rootMargin: "400px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, filteredProducts.length]);
+
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleCount),
+    [filteredProducts, visibleCount],
+  );
 
   const handleAddToCart = useCallback(
     (product) => {
@@ -129,7 +169,8 @@ export default function HomePage() {
         return;
       }
 
-      if (product.in_stock === false || product.stock <= 0) {
+      const maxStock = Number(product.stock ?? 0);
+      if (product.in_stock === false || maxStock <= 0) {
         toast(
           t(
             "store.out_of_stock_toast",
@@ -140,10 +181,19 @@ export default function HomePage() {
         return;
       }
 
+      const currentQty = cartQuantityMap.get(product.id) || 0;
+      if (currentQty >= maxStock) {
+        toast(
+          t("store.max_stock_reached", `Only ${maxStock} available in stock!`),
+          "error",
+        );
+        return;
+      }
+
       dispatch({ type: "ADD", product });
       toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
     },
-    [user, dispatch, toast, t],
+    [user, cartQuantityMap, dispatch, toast, t],
   );
 
   const handleRemoveFromCart = useCallback(
@@ -153,42 +203,53 @@ export default function HomePage() {
     [dispatch],
   );
 
-  const handleToggleFavorite = async (product) => {
-    if (!user) {
-      toast(
-        t("store.sign_in_favorite", "Please sign in to save favorites!"),
-        "error",
-      );
-      setLoginOpen(true);
-      return;
-    }
-
-    const isCurrentlyFavorited = favoriteIds.has(product.id);
-
-    setFavoriteIds((prev) => {
-      const newFavs = new Set(prev);
-      if (isCurrentlyFavorited) newFavs.delete(product.id);
-      else newFavs.add(product.id);
-      return newFavs;
-    });
-
-    try {
-      if (isCurrentlyFavorited) {
-        await supabase
-          .from("favorites")
-          .delete()
-          .match({ user_id: user.id, product_id: product.id });
-      } else {
-        await supabase
-          .from("favorites")
-          .insert([{ user_id: user.id, product_id: product.id }]);
+  const handleToggleFavorite = useCallback(
+    async (product) => {
+      if (!user) {
+        toast(
+          t("store.sign_in_favorite", "Please sign in to save favorites!"),
+          "error",
+        );
+        setLoginOpen(true);
+        return;
       }
-    } catch (error) {
-      console.error("Error updating favorite:", error.message);
-      fetchFavorites(user.id);
-      toast(t("store.fav_failed", "Failed to update favorite."), "error");
-    }
-  };
+
+      // Prevent duplicate requests from rapid clicks
+      if (pendingFavsRef.current.has(product.id)) return;
+      pendingFavsRef.current.add(product.id);
+
+      const isCurrentlyFavorited = favoriteIds.has(product.id);
+
+      setFavoriteIds((prev) => {
+        const newFavs = new Set(prev);
+        if (isCurrentlyFavorited) newFavs.delete(product.id);
+        else newFavs.add(product.id);
+        return newFavs;
+      });
+
+      try {
+        if (isCurrentlyFavorited) {
+          const { error } = await supabase
+            .from("favorites")
+            .delete()
+            .match({ user_id: user.id, product_id: product.id });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from("favorites")
+            .insert([{ user_id: user.id, product_id: product.id }]);
+          if (error) throw error;
+        }
+      } catch (error) {
+        console.error("Error updating favorite:", error.message);
+        fetchFavorites(user.id);
+        toast(t("store.fav_failed", "Failed to update favorite."), "error");
+      } finally {
+        pendingFavsRef.current.delete(product.id);
+      }
+    },
+    [user, favoriteIds, fetchFavorites, toast, t],
+  );
 
   const clearFilters = () => {
     setSearch("");
@@ -207,8 +268,6 @@ export default function HomePage() {
     <div style={styles.page}>
       <style>
         {`
-          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
           .responsive-grid {
             display: grid;
             gap: 12px; 
@@ -253,24 +312,31 @@ export default function HomePage() {
         </div>
 
         {filteredProducts.length ? (
-          <div className="responsive-grid">
-            {filteredProducts.map((product) => {
-              const quantityInCart = cartQuantityMap.get(product.id) || 0;
-              const productWithCartData = { ...product, quantityInCart };
+          <>
+            <div className="responsive-grid">
+              {visibleProducts.map((product) => {
+                const quantityInCart = cartQuantityMap.get(product.id) || 0;
+                const productWithCartData = { ...product, quantityInCart };
 
-              return (
-                <ProductCard
-                  key={product.id}
-                  product={productWithCartData}
-                  onAddToCart={handleAddToCart}
-                  onRemoveFromCart={handleRemoveFromCart}
-                  isFavorite={favoriteIds.has(product.id)}
-                  onToggleFavorite={handleToggleFavorite}
-                  onQuickView={() => setSelectedProduct(product)}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <ProductCard
+                    key={product.id}
+                    product={productWithCartData}
+                    onAddToCart={handleAddToCart}
+                    onRemoveFromCart={handleRemoveFromCart}
+                    isFavorite={favoriteIds.has(product.id)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onQuickView={() => setSelectedProduct(product)}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Invisible scroll trigger to smoothly render remaining products */}
+            {visibleCount < filteredProducts.length && (
+              <div ref={loadMoreRef} style={{ height: 20, width: "100%" }} />
+            )}
+          </>
         ) : (
           <div style={styles.empty}>
             <div
@@ -310,6 +376,10 @@ export default function HomePage() {
           setLoginOpen(false);
           setRegisterOpen(true);
         }}
+        onSwitchForgot={() => {
+          setLoginOpen(false);
+          setForgotOpen(true);
+        }}
         toast={toast}
       />
 
@@ -318,6 +388,16 @@ export default function HomePage() {
         onClose={() => setRegisterOpen(false)}
         onSwitchLogin={() => {
           setRegisterOpen(false);
+          setLoginOpen(true);
+        }}
+        toast={toast}
+      />
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        onClose={() => setForgotOpen(false)}
+        onSwitchLogin={() => {
+          setForgotOpen(false);
           setLoginOpen(true);
         }}
         toast={toast}
