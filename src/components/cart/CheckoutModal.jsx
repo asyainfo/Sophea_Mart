@@ -22,6 +22,7 @@ import { sendOrderNotification } from "../../services/telegram";
 // ⚡ Background Helper: Compress bank receipt screenshot before uploading
 async function compressReceiptImage(file, maxWidth = 1000, quality = 0.8) {
   if (!file || !file.type?.startsWith("image/")) return file;
+  if (file.type === "image/webp" && file.size < 60 * 1024) return file;
 
   return new Promise((resolve) => {
     const img = new Image();
@@ -31,7 +32,7 @@ async function compressReceiptImage(file, maxWidth = 1000, quality = 0.8) {
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
       const canvas = document.createElement("canvas");
-      const scale = Math.min(1, maxWidth / img.width);
+      const scale = Math.min(1, maxWidth / (img.width || 1));
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
 
@@ -63,11 +64,12 @@ export default function CheckoutModal({
 }) {
   const { t } = useTranslation();
   const { items, total, dispatch } = useCart();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { refreshProducts } = useStore() || {};
 
   const [confirmed, setConfirmed] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const submittingRef = useRef(false);
 
   const [paymentMethod, setPaymentMethod] = useState("bank");
   const [selectedBank, setSelectedBank] = useState("ABA");
@@ -77,10 +79,13 @@ export default function CheckoutModal({
   const [verificationStatus, setVerificationStatus] = useState("unverified");
   const [otpCode, setOtpCode] = useState(["", "", "", ""]);
   const [isVerifyingLoading, setIsVerifyingLoading] = useState(false);
-  const otpRefs = [useRef(), useRef(), useRef(), useRef()];
+  const otpRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
 
-  const discountUsd = appliedVoucher ? appliedVoucher.discount_khr / 4000 : 0;
-  const finalTotalUsd = Math.max(total - discountUsd, 0);
+  const discountUsd = appliedVoucher
+    ? Number(appliedVoucher.discount_khr || 0) / 4000
+    : 0;
+  const finalTotalUsd =
+    Math.round(Math.max(Number(total || 0) - discountUsd, 0) * 100) / 100;
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -89,24 +94,24 @@ export default function CheckoutModal({
   };
 
   const handleOtpChange = (index, value) => {
-    if (isNaN(value)) return;
+    if (value && !/^\d+$/.test(value)) return;
     const newOtp = [...otpCode];
     newOtp[index] = value.substring(value.length - 1);
     setOtpCode(newOtp);
-    if (value && index < 3) otpRefs[index + 1].current.focus();
+    if (value && index < 3) otpRefs[index + 1].current?.focus();
   };
 
   const handleOtpKeyDown = (index, e) => {
     if (e.key === "Backspace" && !otpCode[index] && index > 0) {
-      otpRefs[index - 1].current.focus();
+      otpRefs[index - 1].current?.focus();
     }
   };
 
   const handleDownloadQR = () => {
+    const isABA = selectedBank === "ABA";
     const downloadLink = document.createElement("a");
-    downloadLink.href =
-      selectedBank === "ABA" ? "/aba-qr.png" : "/acleda-qr.JPG";
-    downloadLink.download = `SopheaMart_${selectedBank}_QR.png`;
+    downloadLink.href = isABA ? "/aba-qr.png" : "/acleda-qr.JPG";
+    downloadLink.download = `SopheaMart_${selectedBank}_QR.${isABA ? "png" : "jpg"}`;
     document.body.appendChild(downloadLink);
     downloadLink.click();
     document.body.removeChild(downloadLink);
@@ -145,24 +150,30 @@ export default function CheckoutModal({
   // HANDLERS: CHECKOUT & DATABASE
   // ==========================================
   const confirm = async () => {
+    if (submittingRef.current || isProcessing) return;
     if (!user) return toast(t("checkout.toasts.sign_in_required"), "error");
+    if (!items || items.length === 0) return;
     if (paymentMethod === "bank" && !receiptFile)
       return toast(t("checkout.toasts.upload_receipt"), "error");
     if (paymentMethod === "cash" && verificationStatus !== "verified")
       return toast(t("checkout.toasts.verify_phone_first"), "error");
 
+    submittingRef.current = true;
     setIsProcessing(true);
 
     try {
-      const orderId = `ORD-${String(Date.now()).slice(-4)}`;
-      let receiptUrl = null;
+      // Collision-safe Order ID (e.g., ORD-849201)
+      const randomDigits = String(Math.floor(10 + Math.random() * 90));
+      const orderId = `ORD-${String(Date.now()).slice(-4)}${randomDigits}`;
 
-      // 1. Fetch Customer Name & Compress/Upload Receipt in Parallel
-      const profilePromise = supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .maybeSingle();
+      // 1. Use already-loaded profile name from AuthContext (0 extra DB queries!)
+      const profilePromise = profile?.full_name
+        ? Promise.resolve({ data: { full_name: profile.full_name } })
+        : supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", user.id)
+            .maybeSingle();
 
       const receiptPromise = (async () => {
         if (paymentMethod === "bank" && receiptFile) {
@@ -185,13 +196,15 @@ export default function CheckoutModal({
         return null;
       })();
 
-      const [{ data: profileData }, uploadedReceiptUrl] = await Promise.all([
+      const [{ data: profileData }, receiptUrl] = await Promise.all([
         profilePromise,
         receiptPromise,
       ]);
 
-      const customerName = profileData?.full_name || "Registered Customer";
-      receiptUrl = uploadedReceiptUrl;
+      const customerName =
+        profileData?.full_name ||
+        user.user_metadata?.full_name ||
+        "Registered Customer";
 
       // 2. Create Order Record
       const totalKhrValue = Math.round(finalTotalUsd * 4000);
@@ -199,6 +212,10 @@ export default function CheckoutModal({
         (sum, item) => sum + (item.quantity || 1),
         0,
       );
+      const formattedPhone =
+        paymentMethod === "cash"
+          ? `+855${phoneNumber.trim().replace(/^0/, "")}`
+          : null;
 
       const newOrder = {
         id: orderId,
@@ -209,10 +226,7 @@ export default function CheckoutModal({
         status: "pending",
         payment_method: paymentMethod,
         bank_name: paymentMethod === "bank" ? selectedBank : null,
-        phone_number:
-          paymentMethod === "cash"
-            ? `+855${phoneNumber.replace(/^0/, "")}`
-            : null,
+        phone_number: formattedPhone,
         payment_proof_url: receiptUrl,
         receipt_url: receiptUrl,
       };
@@ -236,44 +250,41 @@ export default function CheckoutModal({
         .insert(orderItemsToSave);
       if (itemsError) throw itemsError;
 
-      // 4. Update Stock Quantities in Parallel (Much Faster!)
+      // 4. Update Stock Quantities & Burn Voucher in Parallel
       const regularItems = items.filter((item) => !item.isGift);
-      await Promise.all(
-        regularItems.map(async (item) => {
-          const { data: liveProduct, error: fetchError } = await supabase
-            .from("products")
-            .select("stock")
-            .eq("id", item.id)
-            .single();
+      const stockUpdatePromises = regularItems.map(async (item) => {
+        const { data: liveProduct, error: fetchError } = await supabase
+          .from("products")
+          .select("stock")
+          .eq("id", item.id)
+          .single();
 
-          if (fetchError || !liveProduct) return;
+        if (fetchError || !liveProduct) return;
 
-          const qtyBought = item.quantity || 1;
-          const newStockLevel = Math.max(0, liveProduct.stock - qtyBought);
+        const qtyBought = item.quantity || 1;
+        const newStockLevel = Math.max(0, liveProduct.stock - qtyBought);
 
-          await supabase
-            .from("products")
-            .update({ stock: newStockLevel })
-            .eq("id", item.id);
-        }),
-      );
+        await supabase
+          .from("products")
+          .update({ stock: newStockLevel })
+          .eq("id", item.id);
+      });
 
-      // Refresh local storefront cache so new stock levels appear
+      const voucherPromise = appliedVoucher
+        ? supabase
+            .from("user_vouchers")
+            .update({ is_used: true })
+            .eq("id", appliedVoucher.id)
+        : Promise.resolve();
+
+      await Promise.all([...stockUpdatePromises, voucherPromise]);
+
+      // Refresh local storefront cache so new stock levels appear immediately
       if (typeof refreshProducts === "function") {
         refreshProducts();
       }
 
-      // 5. Burn the Voucher
-      if (appliedVoucher) {
-        const { error: voucherError } = await supabase
-          .from("user_vouchers")
-          .update({ is_used: true })
-          .eq("id", appliedVoucher.id);
-        if (voucherError)
-          console.error("Failed to mark voucher as used:", voucherError);
-      }
-
-      // 6. SECURE TELEGRAM BOT NOTIFICATION
+      // 5. SECURE TELEGRAM BOT NOTIFICATION (Now includes Receipt URL, Bank/Phone & Items)
       const formattedDate = new Date().toLocaleString("en-US", {
         timeZone: "Asia/Phnom_Penh",
         dateStyle: "medium",
@@ -287,6 +298,15 @@ export default function CheckoutModal({
         totalUsd: finalTotalUsd,
         totalKhr: totalKhrValue,
         itemCount: totalItemsCount,
+        paymentMethod,
+        bankName: paymentMethod === "bank" ? selectedBank : null,
+        phoneNumber: formattedPhone,
+        receiptUrl,
+        items: items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity || 1,
+          price: i.price,
+        })),
       });
 
       setConfirmed(true);
@@ -294,11 +314,13 @@ export default function CheckoutModal({
       console.error("Error during checkout:", error.message);
       toast(t("checkout.toasts.checkout_failed"), "error");
     } finally {
+      submittingRef.current = false;
       setIsProcessing(false);
     }
   };
 
   const close = () => {
+    if (isProcessing) return;
     if (confirmed) dispatch({ type: "CLEAR" });
     setConfirmed(false);
     setReceiptFile(null);
@@ -336,6 +358,7 @@ export default function CheckoutModal({
           {verificationStatus === "entering_phone" && (
             <div style={styles.verifyContainer}>
               <button
+                type="button"
                 onClick={() => setVerificationStatus("unverified")}
                 style={styles.backButton}
               >
@@ -371,6 +394,7 @@ export default function CheckoutModal({
           {verificationStatus === "entering_otp" && (
             <div style={styles.verifyContainerCenter}>
               <button
+                type="button"
                 onClick={() => setVerificationStatus("entering_phone")}
                 style={styles.backButton}
               >
@@ -389,6 +413,7 @@ export default function CheckoutModal({
                     key={index}
                     ref={otpRefs[index]}
                     type="text"
+                    inputMode="numeric"
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
@@ -621,13 +646,15 @@ export default function CheckoutModal({
                   {items.map((item) => (
                     <div key={item.id} style={styles.summaryItem}>
                       <div style={styles.summaryItemLeft}>
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          loading="lazy"
-                          decoding="async"
-                          style={styles.summaryItemImg}
-                        />
+                        {item.image && (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            loading="lazy"
+                            decoding="async"
+                            style={styles.summaryItemImg}
+                          />
+                        )}
                         <span>
                           {item.name}{" "}
                           <span style={styles.summaryItemQty}>
