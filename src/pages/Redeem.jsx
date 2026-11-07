@@ -1,193 +1,223 @@
-import { useState, useEffect } from "react";
-import { FiClock, FiGift, FiAward, FiX } from "react-icons/fi";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { FiClock, FiAward, FiX } from "react-icons/fi";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../services/supabase";
 import { useTranslation } from "react-i18next";
 
 // --- CONSTANTS ---
-// 🏆 Added 'key' so we can translate the titles dynamically
 const VOUCHERS = [
   { id: 1, cost: 200, valueKhr: 5000, key: "voucher_5k" },
   { id: 2, cost: 800, valueKhr: 20000, key: "voucher_20k" },
   { id: 3, cost: 2000, valueKhr: 50000, key: "voucher_50k" },
 ];
 
+const VOUCHER_COST_MAP = {
+  5000: 200,
+  20000: 800,
+  50000: 2000,
+};
+
 const BRAND_BLUE = "#2563EB";
 const BRAND_BLUE_LIGHT = "#60A5FA";
 
+const notifyUser = (message, type = "success") => {
+  window.dispatchEvent(
+    new CustomEvent("global-toast", { detail: { message, type } }),
+  );
+};
+
 export default function Redeem() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const userId = user?.id ?? null;
 
   const [points, setPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const redeemingRef = useRef(false);
+
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyData, setHistoryData] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [rawOrders, setRawOrders] = useState([]);
+  const [rawVouchers, setRawVouchers] = useState([]);
 
-  // --- DATA FETCHING ---
-  useEffect(() => {
-    async function fetchPoints() {
-      if (!user) return;
-      try {
-        const { data: orders } = await supabase
+  // --- DATA FETCHING (Parallel & Cached for Instant History Modal) ---
+  const fetchPointsAndHistory = useCallback(async () => {
+    if (!userId) {
+      setPoints(0);
+      setRawOrders([]);
+      setRawVouchers([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Fetch completed orders and redeemed vouchers in parallel (2x faster!)
+      const [ordersRes, vouchersRes] = await Promise.all([
+        supabase
           .from("Orders")
-          .select("total_usd")
-          .eq("user_id", user.id)
-          .eq("status", "completed");
-
-        const { data: vouchers } = await supabase
+          .select("id, created_at, total_usd")
+          .eq("user_id", userId)
+          .eq("status", "completed"),
+        supabase
           .from("user_vouchers")
-          .select("discount_khr")
-          .eq("user_id", user.id);
+          .select("id, created_at, discount_khr")
+          .eq("user_id", userId),
+      ]);
 
-        let earnedPoints = 0;
-        if (orders) {
-          orders.forEach((order) => {
-            earnedPoints += Math.floor(order.total_usd / 1.25);
-          });
-        }
+      const orders = ordersRes.data || [];
+      const vouchers = vouchersRes.data || [];
 
-        let spentPoints = 0;
-        if (vouchers) {
-          vouchers.forEach((voucher) => {
-            if (voucher.discount_khr === 5000) spentPoints += 200;
-            if (voucher.discount_khr === 20000) spentPoints += 800;
-            if (voucher.discount_khr === 50000) spentPoints += 2000;
-          });
-        }
+      setRawOrders(orders);
+      setRawVouchers(vouchers);
 
-        const trueBalance = Math.max(0, earnedPoints - spentPoints);
-        setPoints(trueBalance);
+      let earnedPoints = 0;
+      orders.forEach((order) => {
+        earnedPoints += Math.floor(Number(order.total_usd || 0) / 1.25);
+      });
 
+      let spentPoints = 0;
+      vouchers.forEach((voucher) => {
+        spentPoints += VOUCHER_COST_MAP[voucher.discount_khr] || 0;
+      });
+
+      const trueBalance = Math.max(0, earnedPoints - spentPoints);
+      setPoints(trueBalance);
+
+      // Only write to profiles table if the stored point balance is out of sync
+      if (profile?.points !== trueBalance) {
         await supabase
           .from("profiles")
           .update({ points: trueBalance })
-          .eq("id", user.id);
-      } catch (error) {
-        console.error("Error fetching points:", error);
-      } finally {
-        setIsLoading(false);
+          .eq("id", userId);
       }
+    } catch (error) {
+      console.error("Error fetching points:", error);
+    } finally {
+      setIsLoading(false);
     }
-    fetchPoints();
-  }, [user]);
+  }, [userId, profile?.points]);
+
+  useEffect(() => {
+    fetchPointsAndHistory();
+  }, [fetchPointsAndHistory]);
 
   // --- HANDLERS ---
   const handleRedeem = async (voucher) => {
-    if (points < voucher.cost) {
-      // 🏆 Translated Alert
-      alert(
-        `${t("redeem.need_more_1", "You need")} ${voucher.cost - points} ${t("redeem.need_more_2", "more points to redeem this reward!")}`,
+    if (redeemingRef.current || isRedeeming) return;
+
+    if (!userId) {
+      notifyUser(
+        t("orders.please_sign_in", "Please sign in to redeem rewards."),
+        "error",
       );
       return;
     }
 
-    // 🏆 Translated Confirm Box
+    if (points < voucher.cost) {
+      notifyUser(
+        `${t("redeem.need_more_1", "You need")} ${voucher.cost - points} ${t("redeem.need_more_2", "more points to redeem this reward!")}`,
+        "error",
+      );
+      return;
+    }
+
     const confirmRedeem = window.confirm(
       `${t("redeem.confirm_1", "Redeem")} ${t(`redeem.${voucher.key}`)} ${t("redeem.confirm_2", "for")} ${voucher.cost} ${t("redeem.points", "points")}?`,
     );
     if (!confirmRedeem) return;
 
+    redeemingRef.current = true;
     setIsRedeeming(true);
+
     try {
-      const newPointBalance = points - voucher.cost;
+      const newPointBalance = Math.max(0, points - voucher.cost);
 
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ points: newPointBalance })
-        .eq("id", user.id);
-
-      if (profileError) throw profileError;
-
-      const { error: voucherError } = await supabase
+      // 1. Insert the voucher first so the user is guaranteed their reward
+      const { data: insertedVoucher, error: voucherError } = await supabase
         .from("user_vouchers")
         .insert([
           {
-            user_id: user.id,
+            user_id: userId,
             discount_khr: voucher.valueKhr,
             is_used: false,
           },
-        ]);
+        ])
+        .select("id, created_at, discount_khr")
+        .maybeSingle();
 
       if (voucherError) throw voucherError;
 
+      // 2. Sync updated point balance to profile
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ points: newPointBalance })
+        .eq("id", userId);
+
+      if (profileError) {
+        console.warn("Could not sync profile points:", profileError.message);
+      }
+
+      // 3. Update local state & history immediately (0 extra DB queries!)
       setPoints(newPointBalance);
-      alert(
+      setRawVouchers((prev) => [
+        insertedVoucher || {
+          id: `temp-${Date.now()}`,
+          created_at: new Date().toISOString(),
+          discount_khr: voucher.valueKhr,
+        },
+        ...prev,
+      ]);
+
+      notifyUser(
         t(
           "redeem.success",
           "🎉 Voucher successfully redeemed! It has been added to your wallet.",
         ),
+        "success",
       );
     } catch (error) {
       console.error("Error redeeming voucher:", error);
-      alert(t("redeem.error", "Failed to redeem voucher. Please try again."));
+      notifyUser(
+        t("redeem.error", "Failed to redeem voucher. Please try again."),
+        "error",
+      );
     } finally {
+      redeemingRef.current = false;
       setIsRedeeming(false);
     }
   };
 
-  const handleOpenHistory = async () => {
-    setHistoryOpen(true);
-    setIsLoadingHistory(true);
+  // Build sorted timeline directly from cached state (opens in 0ms!)
+  const historyData = (() => {
+    const timeline = [];
 
-    try {
-      const { data: orders } = await supabase
-        .from("Orders")
-        .select("id, created_at, total_usd")
-        .eq("user_id", user.id)
-        .eq("status", "completed");
-
-      const { data: vouchers } = await supabase
-        .from("user_vouchers")
-        .select("id, created_at, discount_khr")
-        .eq("user_id", user.id);
-
-      const timeline = [];
-
-      if (orders) {
-        orders.forEach((order) => {
-          const earned = Math.floor(order.total_usd / 1.25);
-          if (earned > 0) {
-            timeline.push({
-              id: `order-${order.id}`,
-              date: new Date(order.created_at),
-              // 🏆 Translated Timeline Order
-              title: `${t("redeem.order", "Order")} ${order.id}`,
-              amount: `+${earned}`,
-              type: "earn",
-            });
-          }
+    rawOrders.forEach((order) => {
+      const earned = Math.floor(Number(order.total_usd || 0) / 1.25);
+      if (earned > 0) {
+        timeline.push({
+          id: `order-${order.id}`,
+          date: new Date(order.created_at),
+          title: `${t("redeem.order", "Order")} ${order.id}`,
+          amount: `+${earned}`,
+          type: "earn",
         });
       }
+    });
 
-      if (vouchers) {
-        vouchers.forEach((voucher) => {
-          let spent = 0;
-          if (voucher.discount_khr === 5000) spent = 200;
-          if (voucher.discount_khr === 20000) spent = 800;
-          if (voucher.discount_khr === 50000) spent = 2000;
+    rawVouchers.forEach((voucher) => {
+      const spent = VOUCHER_COST_MAP[voucher.discount_khr] || 0;
+      timeline.push({
+        id: `voucher-${voucher.id}`,
+        date: new Date(voucher.created_at),
+        title: `${t("redeem.redeemed", "Redeemed")} ${Number(voucher.discount_khr || 0).toLocaleString()}៛ ${t("redeem.voucher_word", "Voucher")}`,
+        amount: `-${spent}`,
+        type: "spend",
+      });
+    });
 
-          timeline.push({
-            id: `voucher-${voucher.id}`,
-            date: new Date(voucher.created_at),
-            // 🏆 Translated Timeline Voucher
-            title: `${t("redeem.redeemed", "Redeemed")} ${voucher.discount_khr.toLocaleString()}៛ ${t("redeem.voucher_word", "Voucher")}`,
-            amount: `-${spent}`,
-            type: "spend",
-          });
-        });
-      }
-
-      timeline.sort((a, b) => b.date - a.date);
-      setHistoryData(timeline);
-    } catch (error) {
-      console.error("Error fetching history:", error);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
+    return timeline.sort((a, b) => b.date - a.date);
+  })();
 
   return (
     <div style={styles.pageContainer}>
@@ -210,7 +240,8 @@ export default function Redeem() {
             </span>
           </div>
           <button
-            onClick={handleOpenHistory}
+            type="button"
+            onClick={() => setHistoryOpen(true)}
             style={styles.historyButton}
             onMouseOver={(e) =>
               (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)")
@@ -281,13 +312,14 @@ export default function Redeem() {
       </div>
 
       {historyOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
+        <div style={styles.modalOverlay} onClick={() => setHistoryOpen(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h3 style={styles.modalTitle}>
                 {t("redeem.point_history", "Point history")}
               </h3>
               <button
+                type="button"
                 onClick={() => setHistoryOpen(false)}
                 style={styles.modalCloseButton}
               >
@@ -295,7 +327,7 @@ export default function Redeem() {
               </button>
             </div>
             <div style={styles.modalBody}>
-              {isLoadingHistory ? (
+              {isLoading ? (
                 <div style={styles.emptyState}>
                   {t("redeem.loading_history", "Loading history...")}
                 </div>

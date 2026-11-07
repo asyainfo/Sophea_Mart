@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { FiPackage, FiShoppingBag, FiArrowLeft } from "react-icons/fi";
 import { supabase } from "../services/supabase";
 import { useAuth } from "../hooks/useAuth";
@@ -9,7 +10,10 @@ import { useTranslation } from "react-i18next";
 
 export default function OrderHistory() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,51 +21,67 @@ export default function OrderHistory() {
   const [selectedOrderId, setSelectedOrderId] = useState(null);
 
   // --- DATA FETCHING ---
-  const fetchMyOrders = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("Orders")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+  const fetchMyOrders = useCallback(
+    async (showSpinner = true) => {
+      if (!userId) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
 
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error("Error fetching orders:", error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (showSpinner) setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("Orders")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
 
-  // 1. Initial Load
+        if (error) throw error;
+        setOrders(data || []);
+      } catch (error) {
+        console.error("Error fetching orders:", error.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [userId],
+  );
+
+  // 1. Initial Load (Only runs when userId actually changes)
   useEffect(() => {
-    if (user) {
-      fetchMyOrders();
-    } else {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    fetchMyOrders(true);
+  }, [fetchMyOrders]);
 
-  // --- SILENT SUPABASE REALTIME LISTENER ---
+  // 2. Zero-Query Supabase Realtime Listener (Updates state directly in memory!)
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     const channel = supabase
-      .channel(`customer-orders-refresh-${user.id}`)
+      .channel(`customer-orders-refresh-${userId}`)
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "Orders",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
-        () => {
-          fetchMyOrders();
+        (payload) => {
+          if (payload.eventType === "UPDATE" && payload.new) {
+            setOrders((prev) =>
+              prev.map((o) =>
+                o.id === payload.new.id ? { ...o, ...payload.new } : o,
+              ),
+            );
+          } else if (payload.eventType === "INSERT" && payload.new) {
+            setOrders((prev) => {
+              if (prev.some((o) => o.id === payload.new.id)) return prev;
+              return [payload.new, ...prev];
+            });
+          } else if (payload.eventType === "DELETE" && payload.old) {
+            setOrders((prev) => prev.filter((o) => o.id !== payload.old.id));
+          }
         },
       )
       .subscribe();
@@ -69,10 +89,21 @@ export default function OrderHistory() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [userId]);
+
+  const getStatusBadgeStyle = (status) => {
+    const normalized = String(status || "pending").toLowerCase();
+    if (normalized === "completed") {
+      return { background: "#D1FAE5", color: "#065F46" };
+    }
+    if (normalized === "cancelled" || normalized === "rejected") {
+      return { background: "#FEE2E2", color: "#991B1B" };
+    }
+    return { background: "#FEF3C7", color: "#92400E" };
+  };
 
   // --- RENDER: UN-AUTHENTICATED STATE ---
-  if (!loading && !user) {
+  if (!loading && !userId) {
     return (
       <div style={{ textAlign: "center", padding: "100px 20px" }}>
         <FiShoppingBag
@@ -82,13 +113,13 @@ export default function OrderHistory() {
         />
 
         <h2>{t("orders.please_sign_in", "Please Sign In")}</h2>
-        <p style={{ color: "#6B7280" }}>
+        <p style={{ color: "#6B7280", marginBottom: 20 }}>
           {t(
             "orders.sign_in_desc",
             "You must log in to view your order history.",
           )}
         </p>
-        <Button onClick={() => (window.location.href = "/")}>
+        <Button onClick={() => navigate("/")}>
           {t("orders.back_to_store", "Back to Store")}
         </Button>
       </div>
@@ -106,7 +137,8 @@ export default function OrderHistory() {
       >
         <div style={{ maxWidth: 800, margin: "0 auto" }}>
           <button
-            onClick={() => (window.location.href = "/")}
+            type="button"
+            onClick={() => navigate("/")}
             style={{
               background: "rgba(255,255,255,0.2)",
               border: "none",
@@ -170,94 +202,98 @@ export default function OrderHistory() {
                 "Looks like you haven't made any purchases.",
               )}
             </p>
-            <Button onClick={() => (window.location.href = "/")}>
+            <Button onClick={() => navigate("/")}>
               {t("orders.start_shopping", "Start Shopping")}
             </Button>
           </div>
         ) : (
           /* Populated List */
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {orders.map((order) => (
-              <div
-                key={order.id}
-                style={{
-                  background: "white",
-                  borderRadius: 16,
-                  padding: 24,
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                  border: "1px solid #F3F4F6",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 16,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <h3 style={{ margin: 0, color: "#111827" }}>{order.id}</h3>
-                    <span
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 20,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background:
-                          order.status === "completed" ? "#D1FAE5" : "#FEF3C7",
-                        color:
-                          order.status === "completed" ? "#065F46" : "#92400E",
-                      }}
-                    >
-                      {order.status}
-                    </span>
-                  </div>
-                  <div style={{ color: "#6B7280", fontSize: 14 }}>
-                    {new Date(order.created_at).toLocaleDateString()} •{" "}
-                    {order.total_items} {t("store.items", "items")}
-                  </div>
-                </div>
-
+            {orders.map((order) => {
+              const badgeStyle = getStatusBadgeStyle(order.status);
+              return (
                 <div
+                  key={order.id}
                   style={{
-                    textAlign: "right",
+                    background: "white",
+                    borderRadius: 16,
+                    padding: 24,
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                    border: "1px solid #F3F4F6",
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: 20,
+                    flexWrap: "wrap",
+                    gap: 16,
                   }}
                 >
                   <div>
                     <div
                       style={{
-                        fontSize: 18,
-                        fontWeight: 700,
-                        color: "#2563EB",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        marginBottom: 8,
                       }}
                     >
-                      {fmt(order.total_usd)}
+                      <h3 style={{ margin: 0, color: "#111827" }}>
+                        {order.id}
+                      </h3>
+                      <span
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 20,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          ...badgeStyle,
+                        }}
+                      >
+                        {order.status}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 13, color: "#9CA3AF" }}>
-                      {fmtKHR(order.total_usd)}
+                    <div style={{ color: "#6B7280", fontSize: 14 }}>
+                      {order.created_at
+                        ? new Date(order.created_at).toLocaleDateString()
+                        : ""}{" "}
+                      • {order.total_items || 0} {t("store.items", "items")}
                     </div>
                   </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSelectedOrderId(order.id);
-                      setShowOrderModal(true);
+
+                  <div
+                    style={{
+                      textAlign: "right",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 20,
                     }}
                   >
-                    {t("orders.view_details", "View Details")}
-                  </Button>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 18,
+                          fontWeight: 700,
+                          color: "#2563EB",
+                        }}
+                      >
+                        {fmt(order.total_usd)}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#9CA3AF" }}>
+                        {fmtKHR(order.total_usd)}
+                      </div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setSelectedOrderId(order.id);
+                        setShowOrderModal(true);
+                      }}
+                    >
+                      {t("orders.view_details", "View Details")}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

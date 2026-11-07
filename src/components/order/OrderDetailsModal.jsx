@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   FiPackage,
   FiCheckCircle,
@@ -7,6 +7,7 @@ import {
   FiPrinter,
 } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
+import { useStore } from "../../hooks/useStore";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { fmt, fmtKHR } from "../../utils/currency";
@@ -14,84 +15,85 @@ import { useTranslation } from "react-i18next";
 
 export default function OrderDetailsModal({ open, onClose, orderId }) {
   const { t } = useTranslation();
+  const { products: cachedProducts = [] } = useStore() || {};
+
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [brokenImages, setBrokenImages] = useState({});
 
-  useEffect(() => {
-    if (open && orderId) {
-      fetchOrderDetails();
-    }
-  }, [open, orderId]);
-
-  const fetchOrderDetails = async () => {
+  const fetchOrderDetails = useCallback(async () => {
+    if (!orderId) return;
     setIsLoading(true);
+    setBrokenImages({});
+
     try {
-      // 1. Fetch the Order details
-      const { data: orderData, error: orderError } = await supabase
-        .from("Orders")
-        .select("*")
-        .eq("id", orderId)
-        .single();
+      // 1. Fetch Order & Order Items in Parallel (2x Faster!)
+      const [orderRes, itemsRes] = await Promise.all([
+        supabase.from("Orders").select("*").eq("id", orderId).single(),
+        supabase.from("order_items").select("*").eq("order_id", orderId),
+      ]);
 
-      if (orderError) throw orderError;
-      setOrder(orderData);
+      if (orderRes.error) throw orderRes.error;
+      if (itemsRes.error) throw itemsRes.error;
 
-      // 2. Fetch the Order Items
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", orderId);
+      setOrder(orderRes.data);
+      let mergedItems = itemsRes.data || [];
 
-      if (itemsError) throw itemsError;
-
-      let mergedItems = itemsData || [];
-
-      // 🏆 3. THE FIX: Smart Image Fetching for Products AND Free Gifts
+      // 🏆 2. Smart Image Resolution: Use Local Cache First (0 DB Calls!), Fallback to DB Only If Needed
       if (mergedItems.length > 0) {
-        // Separate standard items (have ID) and gifts (null ID)
-        const productIds = mergedItems.map((i) => i.product_id).filter(Boolean);
-        const giftNames = mergedItems
-          .filter((i) => !i.product_id)
-          .map((i) => i.product_name);
+        const localProductMap = new Map(
+          (cachedProducts || []).map((p) => [p.id, p.image]),
+        );
 
-        let allProducts = [];
-        let allGifts = [];
+        const missingProductIds = [
+          ...new Set(
+            mergedItems
+              .map((i) => i.product_id)
+              .filter((id) => id && !localProductMap.has(id)),
+          ),
+        ];
 
-        // Fetch standard item images by ID
-        if (productIds.length > 0) {
-          const { data: idData } = await supabase
-            .from("products")
-            .select("id, name, image")
-            .in("id", productIds);
-          if (idData) allProducts = idData;
+        const hasGifts = mergedItems.some(
+          (i) => !i.product_id && i.product_name,
+        );
+
+        // Fetch any uncached products & free gifts in parallel
+        const [missingProdsRes, giftsRes] = await Promise.all([
+          missingProductIds.length > 0
+            ? supabase
+                .from("products")
+                .select("id, image")
+                .in("id", missingProductIds)
+            : Promise.resolve({ data: [] }),
+          hasGifts
+            ? supabase.from("free_gifts").select("name, image_url")
+            : Promise.resolve({ data: [] }),
+        ]);
+
+        if (missingProdsRes.data) {
+          missingProdsRes.data.forEach((p) => {
+            if (p.id && p.image) localProductMap.set(p.id, p.image);
+          });
         }
 
-        // Fetch gift images from the 'free_gifts' table matching the exact name
-        if (giftNames.length > 0) {
-          const { data: giftData } = await supabase
-            .from("free_gifts")
-            .select("name, image_url") // 🏆 Grabbing the correct column name!
-            .in("name", giftNames);
-          if (giftData) allGifts = giftData;
-        }
+        const allGifts = giftsRes.data || [];
 
-        // Map the correct images back to the order items
         mergedItems = mergedItems.map((item) => {
           let matchedImage = null;
 
           if (item.product_id) {
-            // It's a regular product
-            const matchedProduct = allProducts.find(
-              (p) => p.id === item.product_id,
-            );
-            if (matchedProduct) matchedImage = matchedProduct.image;
+            matchedImage = localProductMap.get(item.product_id) || null;
           } else if (item.product_name) {
-            // It's a free gift - search case-insensitive
-            const matchedGift = allGifts.find(
-              (g) => g.name.toLowerCase() === item.product_name.toLowerCase(),
-            );
-            if (matchedGift) matchedImage = matchedGift.image_url; // 🏆 Assigning the image_url
+            const cleanItemName = item.product_name.trim().toLowerCase();
+            const matchedGift = allGifts.find((g) => {
+              const gName = (g.name || "").trim().toLowerCase();
+              return (
+                gName &&
+                (gName === cleanItemName || cleanItemName.includes(gName))
+              );
+            });
+            if (matchedGift) matchedImage = matchedGift.image_url;
           }
 
           return {
@@ -107,7 +109,13 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId, cachedProducts]);
+
+  useEffect(() => {
+    if (open && orderId) {
+      fetchOrderDetails();
+    }
+  }, [open, orderId, fetchOrderDetails]);
 
   // --- PRINT FUNCTION ---
   const handlePrint = () => {
@@ -129,6 +137,12 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
   }
 
   if (!order) return null;
+
+  const receiptImageUrl = order.receipt_url || order.payment_proof_url || null;
+  const totalQuantitiesCount = items.reduce(
+    (sum, i) => sum + Number(i.quantity || 1),
+    0,
+  );
 
   return (
     <>
@@ -176,23 +190,29 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
           <div className="r-bold">{t("order_modal.receipt", "RECEIPT")}</div>
           <div style={{ fontSize: 10, marginTop: 4 }}>
             {t("order_modal.order", "Order")} #{order.id} <br />
-            {new Date(order.created_at).toLocaleString()}
+            {order.created_at
+              ? new Date(order.created_at).toLocaleString()
+              : ""}
           </div>
           <div className="r-line"></div>
         </div>
 
         <div>
-          {items.map((item) => (
-            <div key={item.id}>
-              <div className="r-item-name">{item.product_name}</div>
-              <div className="r-item-calc">
-                <span>
-                  {item.quantity} x {fmt(item.price)}
-                </span>
-                <span>{fmt(item.price * item.quantity)}</span>
+          {items.map((item) => {
+            const qty = Number(item.quantity || 1);
+            const price = Number(item.price || 0);
+            return (
+              <div key={item.id}>
+                <div className="r-item-name">{item.product_name}</div>
+                <div className="r-item-calc">
+                  <span>
+                    {qty} x {fmt(price)}
+                  </span>
+                  <span>{fmt(Math.round(price * qty * 100) / 100)}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="r-line"></div>
@@ -210,6 +230,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
           <span>{t("order_modal.payment_method", "Payment Method:")}</span>
           <span style={{ textTransform: "capitalize" }}>
             {order.payment_method || t("order_modal.cash", "Cash")}
+            {order.bank_name ? ` (${order.bank_name})` : ""}
           </span>
         </div>
 
@@ -236,7 +257,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                 {t("order_modal.items_purchased", "Items Purchased")}
               </h3>
               <span style={styles.badge}>
-                {items.length} {t("store.items", "items")}
+                {totalQuantitiesCount} {t("store.items", "items")}
               </span>
             </div>
 
@@ -256,30 +277,43 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                     )}
                   </div>
                 ) : (
-                  items.map((item) => (
-                    <div key={item.id} style={styles.itemRow}>
-                      <div style={styles.imageBox}>
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.product_name}
-                            style={styles.productImage}
-                          />
-                        ) : (
-                          <FiPackage size={20} color="#9CA3AF" />
-                        )}
-                      </div>
-                      <div style={styles.itemDetails}>
-                        <div style={styles.itemName}>{item.product_name}</div>
-                        <div style={styles.itemMeta}>
-                          {fmt(item.price)} × {item.quantity}
+                  items.map((item) => {
+                    const qty = Number(item.quantity || 1);
+                    const price = Number(item.price || 0);
+                    const showImg = item.image && !brokenImages[item.id];
+                    return (
+                      <div key={item.id} style={styles.itemRow}>
+                        <div style={styles.imageBox}>
+                          {showImg ? (
+                            <img
+                              src={item.image}
+                              alt={item.product_name || "Item"}
+                              loading="lazy"
+                              decoding="async"
+                              onError={() =>
+                                setBrokenImages((prev) => ({
+                                  ...prev,
+                                  [item.id]: true,
+                                }))
+                              }
+                              style={styles.productImage}
+                            />
+                          ) : (
+                            <FiPackage size={20} color="#9CA3AF" />
+                          )}
+                        </div>
+                        <div style={styles.itemDetails}>
+                          <div style={styles.itemName}>{item.product_name}</div>
+                          <div style={styles.itemMeta}>
+                            {fmt(price)} × {qty}
+                          </div>
+                        </div>
+                        <div style={styles.itemTotal}>
+                          {fmt(Math.round(price * qty * 100) / 100)}
                         </div>
                       </div>
-                      <div style={styles.itemTotal}>
-                        {fmt(item.price * item.quantity)}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -326,6 +360,7 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
                   }}
                 >
                   {order.payment_method || t("order_modal.cash", "Cash")}
+                  {order.bank_name ? ` (${order.bank_name})` : ""}
                 </span>
               </div>
 
@@ -369,20 +404,22 @@ export default function OrderDetailsModal({ open, onClose, orderId }) {
               )}
             </div>
 
-            {order.payment_method === "bank" && order.receipt_url ? (
+            {order.payment_method === "bank" && receiptImageUrl ? (
               <div style={styles.receiptBox}>
                 <div style={styles.receiptHeader}>
                   {t("order_modal.receipt_upload", "Customer Receipt Upload")}
                 </div>
                 <a
-                  href={order.receipt_url}
+                  href={receiptImageUrl}
                   target="_blank"
                   rel="noreferrer"
                   style={{ display: "block" }}
                 >
                   <img
-                    src={order.receipt_url}
+                    src={receiptImageUrl}
                     alt="Payment Receipt"
+                    loading="lazy"
+                    decoding="async"
                     style={styles.receiptImage}
                   />
                 </a>
