@@ -15,6 +15,12 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 
+const notifyUser = (message, type = "error") => {
+  window.dispatchEvent(
+    new CustomEvent("global-toast", { detail: { message, type } }),
+  );
+};
+
 // MASTER CATEGORY LIST: Matches your Supabase ENUM exactly
 const CATEGORIES = [
   "ភេសជ្ជៈ",
@@ -49,6 +55,15 @@ const CATEGORIES = [
   "អាហារកំប៉ុង",
   "សម្ភារៈទូទៅ",
 ];
+
+// Helper: Extract storage file path from a Supabase product-images public URL
+function extractStorageFileName(url) {
+  if (!url || typeof url !== "string") return null;
+  const marker = "/storage/v1/object/public/product-images/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length).split("?")[0]);
+}
 
 // ⚡ Background Helper: Shrinks 3MB+ photos to ~35KB WebP automatically before uploading
 async function compressProductImage(file, maxSize = 800, quality = 0.82) {
@@ -107,7 +122,9 @@ export default function ProductFormModal({
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+
   const objectUrlRef = useRef(null);
+  const submittingRef = useRef(false);
 
   const isBusy = isUploading || isSaving;
 
@@ -120,6 +137,8 @@ export default function ProductFormModal({
 
   // Sync state when modal opens or product changes
   useEffect(() => {
+    if (!open) return;
+
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
@@ -127,7 +146,11 @@ export default function ProductFormModal({
 
     if (product && Object.keys(product).length > 0) {
       setName(product.name || "");
-      setCategory(product.category || CATEGORIES[0]);
+      setCategory(
+        CATEGORIES.includes(product.category)
+          ? product.category
+          : CATEGORIES[0],
+      );
       setPrice(product.price?.toString() ?? "");
       setStock(product.stock?.toString() ?? "");
       setBarcode(product.barcode || "");
@@ -168,34 +191,40 @@ export default function ProductFormModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isBusy) return;
+    if (submittingRef.current || isBusy) return;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
     const isNewProduct = !product?.id;
     if (isNewProduct && !imageFile) {
-      alert(
+      notifyUser(
         t(
           "product_form.alert_image_required",
           "Please choose a product image before saving!",
         ),
+        "error",
       );
       return;
     }
 
+    submittingRef.current = true;
     setIsUploading(true);
 
     try {
-      let finalImageUrl = product?.image || "";
+      const oldImageUrl = product?.image || "";
+      let finalImageUrl = oldImageUrl;
 
       // ⚡ Upload Compressed WebP Image to Supabase with 1-Year Cache
       if (imageFile) {
         const optimizedFile = await compressProductImage(imageFile);
         const fileExt = optimizedFile.name.split(".").pop() || "webp";
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        const fileName = `opt-${product?.id || "new"}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("product-images")
           .upload(fileName, optimizedFile, {
-            cacheControl: "31536000", // Cache for 1 year to save Supabase Cached Egress!
+            cacheControl: "31536000",
             contentType: optimizedFile.type || "image/webp",
             upsert: false,
           });
@@ -209,15 +238,30 @@ export default function ProductFormModal({
         finalImageUrl = data.publicUrl;
       }
 
-      const parsedPrice = parseFloat(price) || 0;
+      const parsedPrice = Math.max(
+        0,
+        Math.round((parseFloat(price) || 0) * 100) / 100,
+      );
       const parsedStock = Math.max(0, parseInt(stock, 10) || 0);
 
+      // Smart in_stock calculation:
+      // - If stock is 0 -> false
+      // - If restocking from 0 to >0 -> true
+      // - Otherwise preserve existing toggle state (or true for new products)
+      const wasOutOfStock = Number(product?.stock || 0) <= 0;
+      const computedInStock =
+        parsedStock === 0
+          ? false
+          : isNewProduct || wasOutOfStock
+            ? true
+            : Boolean(product?.in_stock ?? true);
+
       const payload = {
-        name: name.trim(),
+        name: trimmedName,
         category,
         price: parsedPrice,
         stock: parsedStock,
-        in_stock: product?.in_stock ?? parsedStock > 0,
+        in_stock: computedInStock,
         barcode: barcode.trim(),
         sizes: sizes.trim(),
         description: description.trim(),
@@ -225,12 +269,25 @@ export default function ProductFormModal({
       };
 
       await onSave(payload);
+
+      // Clean up old replaced image from Supabase storage so no orphan files accumulate
+      if (imageFile && oldImageUrl && oldImageUrl !== finalImageUrl) {
+        const oldStorageFile = extractStorageFileName(oldImageUrl);
+        if (oldStorageFile) {
+          supabase.storage
+            .from("product-images")
+            .remove([oldStorageFile])
+            .catch(() => {});
+        }
+      }
     } catch (error) {
       console.error("Save Error:", error.message);
-      alert(
+      notifyUser(
         `${t("product_form.alert_save_failed", "Failed to save product: ")} ${error.message}`,
+        "error",
       );
     } finally {
+      submittingRef.current = false;
       setIsUploading(false);
     }
   };
@@ -238,7 +295,9 @@ export default function ProductFormModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!isBusy) onClose();
+      }}
       title={
         product?.id
           ? t("product_form.title_edit", "Edit Product")
@@ -289,7 +348,8 @@ export default function ProductFormModal({
                   padding: "6px 12px",
                   borderRadius: 20,
                   fontSize: 13,
-                  cursor: "pointer",
+                  cursor: isBusy ? "not-allowed" : "pointer",
+                  opacity: isBusy ? 0.6 : 1,
                 }}
               >
                 {previewUrl
@@ -298,6 +358,7 @@ export default function ProductFormModal({
                 <input
                   type="file"
                   accept="image/*"
+                  disabled={isBusy}
                   onChange={handleFileChange}
                   style={{ display: "none" }}
                 />
@@ -378,6 +439,9 @@ export default function ProductFormModal({
               style={inputStyle}
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
               placeholder={t(
                 "product_form.placeholder_barcode",
                 "Scan or type...",

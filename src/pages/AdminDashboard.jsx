@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   FiBox,
   FiDollarSign,
@@ -29,6 +30,7 @@ import { supabase } from "../services/supabase";
 import { adminApi } from "../services/adminApi";
 import OrderDetailsModal from "../components/order/OrderDetailsModal";
 import { useAuth } from "../hooks/useAuth";
+import { useStore } from "../hooks/useStore";
 import { fmt, fmtKHR } from "../utils/currency";
 
 import Button from "../components/ui/Button";
@@ -57,6 +59,16 @@ const triggerGlobalToast = (message, type = "success") => {
     new CustomEvent("global-toast", { detail: { message, type } }),
   );
 };
+
+// Helper: Get YYYY-MM-DD in Cambodia timezone (Asia/Phnom_Penh)
+function toCambodiaDateKey(dateInput) {
+  try {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Phnom_Penh" });
+  } catch {
+    return "";
+  }
+}
 
 // ⚡ Compress Free Gift image to lightweight WebP before uploading
 async function compressGiftImage(file, maxSize = 600, quality = 0.82) {
@@ -99,7 +111,9 @@ async function compressGiftImage(file, maxSize = 600, quality = 0.82) {
 
 export default function AdminDashboard() {
   const { t, i18n } = useTranslation();
-  const { logout, profile } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout, signOut, profile } = useAuth();
+  const { refreshProducts } = useStore() || {};
 
   const [tab, setTab] = useState("overview");
 
@@ -107,6 +121,7 @@ export default function AdminDashboard() {
   const [processingId, setProcessingId] = useState(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Modals State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -151,11 +166,12 @@ export default function AdminDashboard() {
         t("admin.toasts.access_denied", "Access Denied: Staff only."),
         "error",
       );
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
+      const timer = setTimeout(() => {
+        navigate("/", { replace: true });
+      }, 1200);
+      return () => clearTimeout(timer);
     }
-  }, [profile, isStaff, t]);
+  }, [profile, isStaff, navigate, t]);
 
   // Clean up object URL on unmount to prevent memory leaks
   useEffect(() => {
@@ -164,8 +180,42 @@ export default function AdminDashboard() {
     };
   }, []);
 
+  // --- SAFE SIGN OUT WITH CONFIRMATION & REDIRECT ---
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    const confirmed = window.confirm(
+      t(
+        "admin.confirm_logout",
+        "Are you sure you want to sign out of the Admin Dashboard?",
+      ),
+    );
+    if (!confirmed) return;
+
+    setIsLoggingOut(true);
+    try {
+      if (typeof logout === "function") {
+        await logout();
+      } else if (typeof signOut === "function") {
+        await signOut();
+      } else {
+        await supabase.auth.signOut();
+      }
+      triggerGlobalToast(
+        t("admin.toasts.signed_out", "Signed out successfully!"),
+        "info",
+      );
+      navigate("/", { replace: true });
+    } catch (err) {
+      console.error("Error signing out:", err);
+      navigate("/", { replace: true });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   // --- DASHBOARD DATA FETCHING (Parallel & Fast) ---
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [
         { data: ordersData, error: ordersError },
@@ -177,7 +227,9 @@ export default function AdminDashboard() {
           .select("*")
           .order("created_at", { ascending: false }),
         supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("order_items").select("*"),
+        supabase
+          .from("order_items")
+          .select("order_id, product_name, quantity, price"),
       ]);
 
       if (ordersError) throw ordersError;
@@ -187,29 +239,39 @@ export default function AdminDashboard() {
       const safeOrders = ordersData || [];
 
       const totalRev = safeOrders.reduce((sum, order) => {
-        if (order.status === "completed") return sum + (order.total_usd || 0);
+        if (order.status === "completed")
+          return sum + Number(order.total_usd || 0);
         return sum;
       }, 0);
 
+      // Build last 7 days keys in Cambodia timezone
       const last7Days = [...Array(7)].map((_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
-        return d.toISOString().split("T")[0];
+        return {
+          key: toCambodiaDateKey(d),
+          dateObj: d,
+        };
       });
 
-      const generatedChartData = last7Days.map((date) => {
-        const dayTotal = safeOrders
-          .filter(
-            (o) =>
-              o.status === "completed" &&
-              typeof o.created_at === "string" &&
-              o.created_at.startsWith(date),
-          )
-          .reduce((sum, o) => sum + (o.total_usd || 0), 0);
+      const revenueByDayMap = new Map();
+      safeOrders.forEach((o) => {
+        if (o.status === "completed" && o.created_at) {
+          const key = toCambodiaDateKey(o.created_at);
+          revenueByDayMap.set(
+            key,
+            (revenueByDayMap.get(key) || 0) + Number(o.total_usd || 0),
+          );
+        }
+      });
 
-        const displayDate = new Date(date).toLocaleDateString(
+      const generatedChartData = last7Days.map(({ key, dateObj }) => {
+        const dayTotal =
+          Math.round((revenueByDayMap.get(key) || 0) * 100) / 100;
+        const displayDate = dateObj.toLocaleDateString(
           i18n.language === "km" ? "km-KH" : "en-US",
           {
+            timeZone: "Asia/Phnom_Penh",
             month: "short",
             day: "numeric",
           },
@@ -232,7 +294,7 @@ export default function AdminDashboard() {
           }
 
           itemSales[productName].qty += quantity;
-          itemSales[productName].revenue += quantity * (item.price || 0);
+          itemSales[productName].revenue += quantity * Number(item.price || 0);
         }
       });
 
@@ -241,7 +303,7 @@ export default function AdminDashboard() {
         .slice(0, 5);
 
       setDbOrders(safeOrders);
-      setDbRevenue(totalRev);
+      setDbRevenue(Math.round(totalRev * 100) / 100);
       setDbUsersCount(usersCount || 0);
       setChartData(generatedChartData);
       setTopItems(generatedTopItems);
@@ -255,33 +317,40 @@ export default function AdminDashboard() {
         "error",
       );
     }
-  };
+  }, [i18n.language, t]);
 
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     const { value } = await adminApi.getSetting("enable_promotions");
     setPromotionsEnabled(value);
-  };
+  }, []);
 
-  const fetchGifts = async () => {
+  const fetchGifts = useCallback(async () => {
     const { data, error } = await adminApi.fetchGifts();
     if (!error) setDbGifts(data || []);
-  };
+  }, []);
 
-  const fetchProducts = async () => {
-    const { data, error } = await adminApi.fetchProducts();
-    if (error) {
-      triggerGlobalToast(
-        t("admin.toasts.failed_load_products", "Failed to load products"),
-        "error",
-      );
-    } else {
-      setDbProducts(data || []);
-    }
-  };
+  const fetchProducts = useCallback(
+    async (syncStoreCache = false) => {
+      const { data, error } = await adminApi.fetchProducts();
+      if (error) {
+        triggerGlobalToast(
+          t("admin.toasts.failed_load_products", "Failed to load products"),
+          "error",
+        );
+      } else {
+        setDbProducts(data || []);
+        // Sync global StoreContext cache so customer storefront has latest changes immediately
+        if (syncStoreCache && typeof refreshProducts === "function") {
+          refreshProducts();
+        }
+      }
+    },
+    [refreshProducts, t],
+  );
 
   useEffect(() => {
     fetchDashboardData();
-    fetchProducts();
+    fetchProducts(false);
     fetchSettings();
     fetchGifts();
 
@@ -302,7 +371,7 @@ export default function AdminDashboard() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchDashboardData, fetchProducts, fetchSettings, fetchGifts]);
 
   const handleAddProduct = async (productData) => {
     if (!isAdmin) return;
@@ -315,7 +384,7 @@ export default function AdminDashboard() {
       t("admin.toasts.product_added", "Product added successfully!"),
       "success",
     );
-    fetchProducts();
+    fetchProducts(true);
   };
 
   const handleUpdateProduct = async (id, productData) => {
@@ -329,7 +398,7 @@ export default function AdminDashboard() {
       t("admin.toasts.product_updated", "Product updated successfully!"),
       "success",
     );
-    fetchProducts();
+    fetchProducts(true);
   };
 
   const handleDeleteProduct = async (id, name) => {
@@ -352,7 +421,7 @@ export default function AdminDashboard() {
         `${name} ${t("admin.toasts.deleted", "deleted!")}`,
         "success",
       );
-      fetchProducts();
+      fetchProducts(true);
     }
     setProcessingId(null);
   };
@@ -377,7 +446,7 @@ export default function AdminDashboard() {
         `${name} ${t("admin.toasts.is_now", "is now")} ${statusText}`,
         "success",
       );
-      fetchProducts();
+      fetchProducts(true);
     }
     setProcessingId(null);
   };
@@ -409,7 +478,7 @@ export default function AdminDashboard() {
   };
 
   const handleAddGift = async () => {
-    if (!newGift.name)
+    if (!newGift.name.trim())
       return triggerGlobalToast(
         t("admin.toasts.gift_name_req", "Gift name is required"),
         "error",
@@ -433,7 +502,7 @@ export default function AdminDashboard() {
     }
 
     const { error } = await adminApi.addGift({
-      name: newGift.name,
+      name: newGift.name.trim(),
       image_url: finalImageUrl,
     });
     setIsSavingGift(false);
@@ -485,7 +554,12 @@ export default function AdminDashboard() {
   ) => {
     setProcessingId(orderId);
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
-    const pointsToAward = Math.floor((totalUsd || 0) / 1.25);
+    const pointsToAward = Math.floor(Number(totalUsd || 0) / 1.25);
+
+    // Optimistic UI update so the status badge flips immediately
+    setDbOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
+    );
 
     try {
       const { error: orderError } = await supabase
@@ -494,51 +568,54 @@ export default function AdminDashboard() {
         .eq("id", orderId);
       if (orderError) throw orderError;
 
-      if (newStatus === "completed" && pointsToAward > 0) {
+      if (orderUserId && pointsToAward > 0) {
         const { data: profileData } = await supabase
           .from("profiles")
           .select("points")
           .eq("id", orderUserId)
-          .single();
-        const newPointsTotal = (profileData?.points || 0) + pointsToAward;
+          .maybeSingle();
+
+        const currentPoints = Number(profileData?.points || 0);
+        const newPointsTotal =
+          newStatus === "completed"
+            ? currentPoints + pointsToAward
+            : Math.max(0, currentPoints - pointsToAward);
+
         await supabase
           .from("profiles")
           .update({ points: newPointsTotal })
           .eq("id", orderUserId);
-        triggerGlobalToast(
-          `🎉 ${t("admin.toasts.order_completed_points", "Order completed! Points added: ")}${pointsToAward}`,
-          "success",
-        );
-      } else if (newStatus === "pending" && pointsToAward > 0) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("points")
-          .eq("id", orderUserId)
-          .single();
-        const newPointsTotal = Math.max(
-          0,
-          (profileData?.points || 0) - pointsToAward,
-        );
-        await supabase
-          .from("profiles")
-          .update({ points: newPointsTotal })
-          .eq("id", orderUserId);
-        triggerGlobalToast(
-          t(
-            "admin.toasts.order_reverted",
-            "Order reverted to pending. Points deducted.",
-          ),
-          "info",
-        );
+
+        if (newStatus === "completed") {
+          triggerGlobalToast(
+            `🎉 ${t("admin.toasts.order_completed_points", "Order completed! Points added: ")}${pointsToAward}`,
+            "success",
+          );
+        } else {
+          triggerGlobalToast(
+            t(
+              "admin.toasts.order_reverted",
+              "Order reverted to pending. Points deducted.",
+            ),
+            "info",
+          );
+        }
       } else {
         triggerGlobalToast(
           `${t("admin.toasts.order_updated", "Order updated to")} ${newStatus}`,
           "success",
         );
       }
+
       fetchDashboardData();
     } catch (error) {
       console.error("Error updating status:", error.message);
+      // Rollback optimistic update on failure
+      setDbOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: currentStatus } : o,
+        ),
+      );
       triggerGlobalToast(
         t("admin.toasts.failed_status", "Failed to update status"),
         "error",
@@ -596,7 +673,8 @@ export default function AdminDashboard() {
 
   const filteredOrdersRevenue = useMemo(() => {
     return filteredOrders.reduce((sum, order) => {
-      if (order.status === "completed") return sum + (order.total_usd || 0);
+      if (order.status === "completed")
+        return sum + Number(order.total_usd || 0);
       return sum;
     }, 0);
   }, [filteredOrders]);
@@ -684,7 +762,15 @@ export default function AdminDashboard() {
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            onClick={() => navigate("/")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              cursor: "pointer",
+            }}
+          >
             <img
               src="/Sophea Mart no1.png"
               alt="Logo"
@@ -722,7 +808,7 @@ export default function AdminDashboard() {
             <Button
               small
               variant="secondary"
-              onClick={() => (window.location.href = "/")}
+              onClick={() => navigate("/")}
               className="mobile-icon-btn"
               style={{ display: "flex", alignItems: "center" }}
             >
@@ -734,13 +820,14 @@ export default function AdminDashboard() {
             <Button
               small
               variant="danger"
-              onClick={logout}
+              onClick={handleLogout}
+              disabled={isLoggingOut}
               className="mobile-icon-btn"
               style={{ display: "flex", alignItems: "center" }}
             >
               <FiLogOut size={16} />{" "}
               <span className="hide-mobile-text">
-                {t("nav.sign_out", "Sign Out")}
+                {isLoggingOut ? "..." : t("nav.sign_out", "Sign Out")}
               </span>
             </Button>
           </div>
@@ -1087,121 +1174,127 @@ export default function AdminDashboard() {
                   </thead>
                   <tbody>
                     {recentOrders.length > 0 ? (
-                      recentOrders.map((o) => (
-                        <tr
-                          key={o.id}
-                          style={{ borderTop: `1px solid ${COLORS.border}` }}
-                        >
-                          <td
-                            style={{
-                              ...tableCell,
-                              color: COLORS.primary,
-                              fontWeight: 700,
-                            }}
+                      recentOrders.map((o) => {
+                        const receiptUrl =
+                          o.receipt_url || o.payment_proof_url || null;
+                        return (
+                          <tr
+                            key={o.id}
+                            style={{ borderTop: `1px solid ${COLORS.border}` }}
                           >
-                            {o.id}
-                          </td>
-                          <td style={tableCell}>
-                            {o.created_at
-                              ? new Date(o.created_at)
-                                  .toISOString()
-                                  .split("T")[0]
-                              : "-"}
-                          </td>
-                          <td style={tableCell}>
-                            <div
+                            <td
                               style={{
-                                fontWeight: 600,
-                                textTransform: "capitalize",
+                                ...tableCell,
+                                color: COLORS.primary,
+                                fontWeight: 700,
                               }}
                             >
-                              {o.payment_method || "cash"}
-                            </div>
-                            {o.payment_method === "bank" && o.receipt_url && (
-                              <button
-                                onClick={() => setReceiptImage(o.receipt_url)}
+                              {o.id}
+                            </td>
+                            <td style={tableCell}>
+                              {o.created_at
+                                ? toCambodiaDateKey(o.created_at)
+                                : "-"}
+                            </td>
+                            <td style={tableCell}>
+                              <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  background: "none",
-                                  border: "none",
-                                  color: COLORS.primary,
-                                  padding: "2px 0",
-                                  fontSize: 11,
                                   fontWeight: 600,
-                                  cursor: "pointer",
+                                  textTransform: "capitalize",
                                 }}
                               >
-                                <FiImage size={12} />{" "}
-                                {t(
-                                  "admin.overview_table.view_receipt",
-                                  "View Receipt",
-                                )}
+                                {o.payment_method || "cash"}
+                                {o.bank_name ? ` (${o.bank_name})` : ""}
+                              </div>
+                              {o.payment_method === "bank" && receiptUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReceiptImage(receiptUrl)}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    background: "none",
+                                    border: "none",
+                                    color: COLORS.primary,
+                                    padding: "2px 0",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <FiImage size={12} />{" "}
+                                  {t(
+                                    "admin.overview_table.view_receipt",
+                                    "View Receipt",
+                                  )}
+                                </button>
+                              )}
+                            </td>
+                            <td style={{ ...tableCell, fontWeight: 700 }}>
+                              {fmt(o.total_usd)}
+                            </td>
+                            <td style={tableCell}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  toggleOrderStatus(
+                                    o.id,
+                                    o.status,
+                                    o.user_id,
+                                    o.total_usd,
+                                  )
+                                }
+                                disabled={processingId === o.id}
+                                style={{
+                                  padding: "6px 12px",
+                                  borderRadius: 10,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  border: "none",
+                                  cursor:
+                                    processingId === o.id
+                                      ? "not-allowed"
+                                      : "pointer",
+                                  whiteSpace: "nowrap",
+                                  textTransform: "capitalize",
+                                  background:
+                                    o.status === "completed"
+                                      ? "#d1fae5"
+                                      : "#fef9c3",
+                                  color:
+                                    o.status === "completed"
+                                      ? "#065f46"
+                                      : "#713f12",
+                                  opacity: processingId === o.id ? 0.6 : 1,
+                                }}
+                              >
+                                {processingId === o.id ? "..." : o.status}
                               </button>
-                            )}
-                          </td>
-                          <td style={{ ...tableCell, fontWeight: 700 }}>
-                            {fmt(o.total_usd)}
-                          </td>
-                          <td style={tableCell}>
-                            <button
-                              onClick={() =>
-                                toggleOrderStatus(
-                                  o.id,
-                                  o.status,
-                                  o.user_id,
-                                  o.total_usd,
-                                )
-                              }
-                              disabled={processingId === o.id}
-                              style={{
-                                padding: "6px 12px",
-                                borderRadius: 10,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                border: "none",
-                                cursor:
-                                  processingId === o.id
-                                    ? "not-allowed"
-                                    : "pointer",
-                                whiteSpace: "nowrap",
-                                textTransform: "capitalize",
-                                background:
-                                  o.status === "completed"
-                                    ? "#d1fae5"
-                                    : "#fef9c3",
-                                color:
-                                  o.status === "completed"
-                                    ? "#065f46"
-                                    : "#713f12",
-                                opacity: processingId === o.id ? 0.6 : 1,
-                              }}
-                            >
-                              {processingId === o.id ? "..." : o.status}
-                            </button>
-                          </td>
-                          <td style={tableCell}>
-                            <button
-                              onClick={() => {
-                                setSelectedOrderId(o.id);
-                                setShowOrderModal(true);
-                              }}
-                              style={{
-                                background: "#F3F4F6",
-                                border: "none",
-                                padding: "4px 10px",
-                                borderRadius: 8,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600,
-                              }}
-                            >
-                              {t("admin.overview_table.items", "Items")}
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td style={tableCell}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedOrderId(o.id);
+                                  setShowOrderModal(true);
+                                }}
+                                style={{
+                                  background: "#F3F4F6",
+                                  border: "none",
+                                  padding: "4px 10px",
+                                  borderRadius: 8,
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {t("admin.overview_table.items", "Items")}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
                         <td
@@ -1402,125 +1495,133 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((o) => (
-                      <tr
-                        key={o.id}
-                        style={{ borderTop: `1px solid ${COLORS.border}` }}
-                      >
-                        <td
-                          style={{
-                            ...tableCell,
-                            color: COLORS.primary,
-                            fontWeight: 600,
-                          }}
+                    filteredOrders.map((o) => {
+                      const receiptUrl =
+                        o.receipt_url || o.payment_proof_url || null;
+                      return (
+                        <tr
+                          key={o.id}
+                          style={{ borderTop: `1px solid ${COLORS.border}` }}
                         >
-                          {o.id}
-                        </td>
-                        <td style={tableCell}>
-                          {o.created_at
-                            ? new Date(o.created_at).toISOString().split("T")[0]
-                            : "-"}
-                        </td>
-                        <td style={tableCell}>
-                          <div
+                          <td
                             style={{
+                              ...tableCell,
+                              color: COLORS.primary,
                               fontWeight: 600,
-                              textTransform: "capitalize",
                             }}
                           >
-                            {o.payment_method || "cash"}
-                          </div>
-                          {o.payment_method === "bank" && o.receipt_url && (
-                            <button
-                              onClick={() => setReceiptImage(o.receipt_url)}
+                            {o.id}
+                          </td>
+                          <td style={tableCell}>
+                            {o.created_at
+                              ? toCambodiaDateKey(o.created_at)
+                              : "-"}
+                          </td>
+                          <td style={tableCell}>
+                            <div
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                background: "none",
-                                border: "none",
-                                color: COLORS.primary,
-                                padding: "2px 0",
-                                fontSize: 11,
                                 fontWeight: 600,
-                                cursor: "pointer",
+                                textTransform: "capitalize",
                               }}
                             >
-                              <FiImage size={12} />{" "}
-                              {t(
-                                "admin.overview_table.view_receipt",
-                                "View Receipt",
-                              )}
+                              {o.payment_method || "cash"}
+                              {o.bank_name ? ` (${o.bank_name})` : ""}
+                            </div>
+                            {o.payment_method === "bank" && receiptUrl && (
+                              <button
+                                type="button"
+                                onClick={() => setReceiptImage(receiptUrl)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  background: "none",
+                                  border: "none",
+                                  color: COLORS.primary,
+                                  padding: "2px 0",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <FiImage size={12} />{" "}
+                                {t(
+                                  "admin.overview_table.view_receipt",
+                                  "View Receipt",
+                                )}
+                              </button>
+                            )}
+                          </td>
+                          <td style={tableCell}>
+                            {o.total_items} {t("store.items", "items")}
+                          </td>
+                          <td style={{ ...tableCell, fontWeight: 700 }}>
+                            {fmt(o.total_usd)}
+                          </td>
+                          <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
+                          <td style={tableCell}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleOrderStatus(
+                                  o.id,
+                                  o.status,
+                                  o.user_id,
+                                  o.total_usd,
+                                )
+                              }
+                              disabled={processingId === o.id}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 10,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                border: "none",
+                                cursor:
+                                  processingId === o.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                                whiteSpace: "nowrap",
+                                textTransform: "capitalize",
+                                background:
+                                  o.status === "completed"
+                                    ? "#d1fae5"
+                                    : "#fef9c3",
+                                color:
+                                  o.status === "completed"
+                                    ? "#065f46"
+                                    : "#713f12",
+                                opacity: processingId === o.id ? 0.6 : 1,
+                              }}
+                            >
+                              {processingId === o.id ? "..." : o.status}
                             </button>
-                          )}
-                        </td>
-                        <td style={tableCell}>
-                          {o.total_items} {t("store.items", "items")}
-                        </td>
-                        <td style={{ ...tableCell, fontWeight: 700 }}>
-                          {fmt(o.total_usd)}
-                        </td>
-                        <td style={tableCell}>{fmtKHR(o.total_usd)}</td>
-                        <td style={tableCell}>
-                          <button
-                            onClick={() =>
-                              toggleOrderStatus(
-                                o.id,
-                                o.status,
-                                o.user_id,
-                                o.total_usd,
-                              )
-                            }
-                            disabled={processingId === o.id}
-                            style={{
-                              padding: "6px 12px",
-                              borderRadius: 10,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              border: "none",
-                              cursor:
-                                processingId === o.id
-                                  ? "not-allowed"
-                                  : "pointer",
-                              whiteSpace: "nowrap",
-                              textTransform: "capitalize",
-                              background:
-                                o.status === "completed"
-                                  ? "#d1fae5"
-                                  : "#fef9c3",
-                              color:
-                                o.status === "completed"
-                                  ? "#065f46"
-                                  : "#713f12",
-                              opacity: processingId === o.id ? 0.6 : 1,
-                            }}
-                          >
-                            {processingId === o.id ? "..." : o.status}
-                          </button>
-                        </td>
-                        <td style={tableCell}>
-                          <button
-                            onClick={() => {
-                              setSelectedOrderId(o.id);
-                              setShowOrderModal(true);
-                            }}
-                            style={{
-                              background: "#DBEAFE",
-                              color: "#1D4ED8",
-                              border: "none",
-                              padding: "6px 12px",
-                              borderRadius: 10,
-                              cursor: "pointer",
-                              fontSize: 12,
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {t("admin.orders_tab.view_items", "View Items")}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td style={tableCell}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrderId(o.id);
+                                setShowOrderModal(true);
+                              }}
+                              style={{
+                                background: "#DBEAFE",
+                                color: "#1D4ED8",
+                                border: "none",
+                                padding: "6px 12px",
+                                borderRadius: 10,
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {t("admin.orders_tab.view_items", "View Items")}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1593,6 +1694,7 @@ export default function AdminDashboard() {
 
               {/* iOS Style Toggle Switch */}
               <button
+                type="button"
                 onClick={handleTogglePromotions}
                 disabled={isLoadingSettings}
                 style={{
@@ -1776,6 +1878,7 @@ export default function AdminDashboard() {
                             </td>
                             <td style={{ ...tableCell, textAlign: "right" }}>
                               <button
+                                type="button"
                                 onClick={() =>
                                   handleDeleteGift(gift.id, gift.name)
                                 }
@@ -1889,6 +1992,7 @@ export default function AdminDashboard() {
             }}
           >
             <button
+              type="button"
               onClick={() => {
                 setShowGiftModal(false);
                 setGiftImageFile(null);
@@ -2093,6 +2197,7 @@ export default function AdminDashboard() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
+              type="button"
               onClick={() => setReceiptImage(null)}
               style={{
                 position: "absolute",

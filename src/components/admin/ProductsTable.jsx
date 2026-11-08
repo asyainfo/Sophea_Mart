@@ -8,6 +8,7 @@ import {
   FiChevronRight,
   FiImage,
   FiAlertTriangle,
+  FiX,
 } from "react-icons/fi";
 import { fmt } from "../../utils/currency";
 
@@ -37,12 +38,12 @@ const Spinner = ({ color = "#6B7280" }) => (
       fill="currentColor"
       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
     ></path>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </svg>
 );
 
 export default function ProductsTable({
   products = [],
+  isAdmin = false,
   onEdit,
   onDelete,
   onToggleStock,
@@ -52,14 +53,25 @@ export default function ProductsTable({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [brokenImages, setBrokenImages] = useState({});
   const itemsPerPage = 10;
 
-  // --- 🚀 BARCODE SCANNER LISTENER ---
+  // --- 🚀 BARCODE SCANNER LISTENER (Ignores typing inside inputs/modals) ---
   useEffect(() => {
     let barcodeBuffer = "";
     let lastKeyTime = Date.now();
 
     const handleKeyDown = (e) => {
+      const tag = e.target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        e.target?.isContentEditable
+      ) {
+        return;
+      }
+
       const currentTime = Date.now();
 
       if (currentTime - lastKeyTime > 50) {
@@ -67,7 +79,8 @@ export default function ProductsTable({
       }
 
       if (e.key === "Enter" && barcodeBuffer.length > 3) {
-        setSearchQuery(barcodeBuffer);
+        e.preventDefault();
+        setSearchQuery(barcodeBuffer.trim());
         setCurrentPage(1);
         barcodeBuffer = "";
       } else if (e.key !== "Enter" && e.key.length === 1) {
@@ -88,9 +101,10 @@ export default function ProductsTable({
   }, [products]);
 
   const filteredProducts = useMemo(() => {
+    const searchLower = searchQuery.trim().toLowerCase();
     return products.filter((prod) => {
-      const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
+        !searchLower ||
         prod.name?.toLowerCase().includes(searchLower) ||
         prod.barcode?.toLowerCase().includes(searchLower);
 
@@ -101,12 +115,16 @@ export default function ProductsTable({
     });
   }, [products, searchQuery, selectedCategory]);
 
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredProducts.length / itemsPerPage),
+  );
+  const safeCurrentPage = Math.min(currentPage, totalPages);
 
   const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
+    const startIndex = (safeCurrentPage - 1) * itemsPerPage;
     return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredProducts, currentPage]);
+  }, [filteredProducts, safeCurrentPage]);
 
   return (
     <div style={styles.card}>
@@ -127,6 +145,27 @@ export default function ProductsTable({
             }}
             style={styles.searchInput}
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setCurrentPage(1);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#9ca3af",
+                cursor: "pointer",
+                padding: 2,
+                display: "flex",
+                alignItems: "center",
+              }}
+              aria-label="Clear search"
+            >
+              <FiX size={16} />
+            </button>
+          )}
         </div>
 
         {categories.length > 1 && (
@@ -161,12 +200,15 @@ export default function ProductsTable({
           <div style={{ flex: 1 }}>
             {t("products_table.header_status", "Status")}
           </div>
-          <div style={{ flex: 1, textAlign: "right" }}>
-            {t("products_table.header_actions", "Actions")}
-          </div>
+          {isAdmin && (
+            <div style={{ flex: 1, textAlign: "right" }}>
+              {t("products_table.header_actions", "Actions")}
+            </div>
+          )}
         </div>
 
         <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
           .mobile-view { display: none !important; }
           .desktop-view { display: flex; }
           
@@ -183,8 +225,12 @@ export default function ProductsTable({
         ) : (
           paginatedProducts.map((p) => {
             const isProcessing = processingId === p.id;
-            const stockQty = p.stock || 0;
+            const stockQty = Number(p.stock || 0);
             const isLowStock = stockQty < 5 && p.in_stock;
+            const hasValidImg =
+              typeof p.image === "string" &&
+              p.image.trim().length > 0 &&
+              !brokenImages[p.id];
 
             return (
               <div
@@ -210,12 +256,18 @@ export default function ProductsTable({
                     }}
                   >
                     <div style={styles.imageBox}>
-                      {p.image ? (
+                      {hasValidImg ? (
                         <img
                           src={p.image}
                           alt={p.name}
                           loading="lazy"
                           decoding="async"
+                          onError={() =>
+                            setBrokenImages((prev) => ({
+                              ...prev,
+                              [p.id]: true,
+                            }))
+                          }
                           style={styles.image}
                         />
                       ) : (
@@ -272,6 +324,7 @@ export default function ProductsTable({
                       style={{ display: "flex", alignItems: "center", gap: 10 }}
                     >
                       <button
+                        type="button"
                         onClick={() => onToggleStock(p.id, p.in_stock, p.name)}
                         disabled={isProcessing}
                         style={{
@@ -314,34 +367,38 @@ export default function ProductsTable({
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      flex: 1,
-                      textAlign: "right",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 8,
-                    }}
-                  >
-                    <button
-                      onClick={() => onEdit(p)}
-                      disabled={isProcessing}
-                      style={styles.editBtn}
+                  {isAdmin && (
+                    <div
+                      style={{
+                        flex: 1,
+                        textAlign: "right",
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: 8,
+                      }}
                     >
-                      <FiEdit2 size={15} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(p.id, p.name)}
-                      disabled={isProcessing}
-                      style={styles.deleteBtn}
-                    >
-                      {isProcessing ? (
-                        <Spinner color="#DC2626" />
-                      ) : (
-                        <FiTrash2 size={15} />
-                      )}
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => onEdit(p)}
+                        disabled={isProcessing}
+                        style={styles.editBtn}
+                      >
+                        <FiEdit2 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(p.id, p.name)}
+                        disabled={isProcessing}
+                        style={styles.deleteBtn}
+                      >
+                        {isProcessing ? (
+                          <Spinner color="#DC2626" />
+                        ) : (
+                          <FiTrash2 size={15} />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* --- MOBILE APP CARD --- */}
@@ -361,8 +418,20 @@ export default function ProductsTable({
                       border: "1px solid #e5e7eb",
                     }}
                   >
-                    {p.image ? (
-                      <img src={p.image} alt={p.name} style={styles.image} />
+                    {hasValidImg ? (
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        loading="lazy"
+                        decoding="async"
+                        onError={() =>
+                          setBrokenImages((prev) => ({
+                            ...prev,
+                            [p.id]: true,
+                          }))
+                        }
+                        style={styles.image}
+                      />
                     ) : (
                       <FiImage color="#9ca3af" size={24} />
                     )}
@@ -418,6 +487,7 @@ export default function ProductsTable({
                       }}
                     >
                       <button
+                        type="button"
                         onClick={() => onToggleStock(p.id, p.in_stock, p.name)}
                         disabled={isProcessing}
                         style={{
@@ -474,26 +544,30 @@ export default function ProductsTable({
                       >
                         {fmt(p.price)}
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          onClick={() => onEdit(p)}
-                          disabled={isProcessing}
-                          style={styles.editBtn}
-                        >
-                          <FiEdit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => onDelete(p.id, p.name)}
-                          disabled={isProcessing}
-                          style={styles.deleteBtn}
-                        >
-                          {isProcessing ? (
-                            <Spinner color="#DC2626" />
-                          ) : (
-                            <FiTrash2 size={16} />
-                          )}
-                        </button>
-                      </div>
+                      {isAdmin && (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => onEdit(p)}
+                            disabled={isProcessing}
+                            style={styles.editBtn}
+                          >
+                            <FiEdit2 size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(p.id, p.name)}
+                            disabled={isProcessing}
+                            style={styles.deleteBtn}
+                          >
+                            {isProcessing ? (
+                              <Spinner color="#DC2626" />
+                            ) : (
+                              <FiTrash2 size={16} />
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -508,26 +582,30 @@ export default function ProductsTable({
         <div style={styles.paginationBar}>
           <span style={{ fontSize: 13, color: "#6b7280" }}>
             {t("products_table.showing_page", "Showing page")}{" "}
-            <strong>{currentPage}</strong> {t("products_table.of", "of")}{" "}
+            <strong>{safeCurrentPage}</strong> {t("products_table.of", "of")}{" "}
             <strong>{totalPages}</strong>
           </span>
           <div style={{ display: "flex", gap: 6 }}>
             <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => prev - 1)}
+              type="button"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => setCurrentPage(Math.max(1, safeCurrentPage - 1))}
               style={{
                 ...styles.pageBtn,
-                opacity: currentPage === 1 ? 0.5 : 1,
+                opacity: safeCurrentPage <= 1 ? 0.5 : 1,
               }}
             >
               <FiChevronLeft size={16} />
             </button>
             <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => prev + 1)}
+              type="button"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage(Math.min(totalPages, safeCurrentPage + 1))
+              }
               style={{
                 ...styles.pageBtn,
-                opacity: currentPage === totalPages ? 0.5 : 1,
+                opacity: safeCurrentPage >= totalPages ? 0.5 : 1,
               }}
             >
               <FiChevronRight size={16} />
