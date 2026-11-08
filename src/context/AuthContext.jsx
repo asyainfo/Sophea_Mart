@@ -62,6 +62,20 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
+    // Failsafe: if user lands on homepage with a recovery hash/token, route to /reset-password
+    if (
+      typeof window !== "undefined" &&
+      window.location.hash.includes("type=recovery") &&
+      window.location.pathname !== "/reset-password"
+    ) {
+      window.history.replaceState(
+        null,
+        "",
+        `/reset-password${window.location.search}${window.location.hash}`,
+      );
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+
     const syncSession = (sessionUser, forceProfile = false) => {
       if (!isMounted) return;
 
@@ -101,7 +115,17 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") {
+      if (event === "PASSWORD_RECOVERY") {
+        syncSession(session?.user ?? null, false);
+        // Automatically ensure the browser is on /reset-password when recovery link is clicked
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/reset-password"
+        ) {
+          window.history.replaceState(null, "", "/reset-password");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      } else if (event === "SIGNED_OUT") {
         syncSession(null, false);
       } else if (event === "USER_UPDATED") {
         syncSession(session?.user ?? null, true);
@@ -131,7 +155,7 @@ export function AuthProvider({ children }) {
       isRegisteringRef.current = true;
       try {
         const cleanName = (name || "").trim();
-        const cleanEmail = (email || "").trim();
+        const cleanEmail = (email || "").trim().toLowerCase();
 
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
@@ -171,9 +195,11 @@ export function AuthProvider({ children }) {
     setProfile(null);
   }, []);
 
+  // 🏆 3. FIXED REDIRECT URL: Points to /reset-password (matching App.jsx route!)
   const sendPasswordReset = useCallback(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) {
       console.error("Error sending reset email:", error.message);
