@@ -15,6 +15,7 @@ import {
   FiAward,
   FiGift,
   FiUploadCloud,
+  FiZap,
 } from "react-icons/fi";
 import {
   LineChart,
@@ -37,6 +38,7 @@ import Button from "../components/ui/Button";
 import ProductFormModal from "../components/product/ProductFormModal";
 import ProductsTable from "../components/admin/ProductsTable";
 import CustomerDebts from "../components/admin/CustomerCredits";
+import PosCashierTab from "../components/admin/PosCashierTab";
 import { useTranslation } from "react-i18next";
 
 const COLORS = {
@@ -339,7 +341,6 @@ export default function AdminDashboard() {
         );
       } else {
         setDbProducts(data || []);
-        // Sync global StoreContext cache so customer storefront has latest changes immediately
         if (syncStoreCache && typeof refreshProducts === "function") {
           refreshProducts();
         }
@@ -556,7 +557,6 @@ export default function AdminDashboard() {
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
     const pointsToAward = Math.floor(Number(totalUsd || 0) / 1.25);
 
-    // Optimistic UI update so the status badge flips immediately
     setDbOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
     );
@@ -610,7 +610,6 @@ export default function AdminDashboard() {
       fetchDashboardData();
     } catch (error) {
       console.error("Error updating status:", error.message);
-      // Rollback optimistic update on failure
       setDbOrders((prev) =>
         prev.map((o) =>
           o.id === orderId ? { ...o, status: currentStatus } : o,
@@ -681,11 +680,17 @@ export default function AdminDashboard() {
 
   const availableTabs = [
     "overview",
+    "pos",
     "products",
     "orders",
     "credits",
     isAdmin ? "settings" : null,
   ].filter(Boolean);
+
+  const getTabLabel = (tabName) => {
+    if (tabName === "pos") return t("admin.tabs.pos", "⚡ POS Cashier");
+    return t(`admin.tabs.${tabName}`, tabName);
+  };
 
   return (
     <div
@@ -807,6 +812,21 @@ export default function AdminDashboard() {
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <Button
               small
+              onClick={() => setTab("pos")}
+              className="mobile-icon-btn"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                background: tab === "pos" ? "#10B981" : COLORS.primary,
+              }}
+            >
+              <FiZap size={16} />{" "}
+              <span className="hide-mobile-text">
+                {t("nav.pos_scanner", "POS Scanner")}
+              </span>
+            </Button>
+            <Button
+              small
               variant="secondary"
               onClick={() => navigate("/")}
               className="mobile-icon-btn"
@@ -900,7 +920,7 @@ export default function AdminDashboard() {
                   transition: "all 0.2s",
                 }}
               >
-                {t(`admin.tabs.${tabName}`, tabName)}
+                {getTabLabel(tabName)}
               </button>
             ))}
           </div>
@@ -912,6 +932,19 @@ export default function AdminDashboard() {
         className="admin-content-padding"
         style={{ maxWidth: 1200, margin: "0 auto" }}
       >
+        {/* --- POS CASHIER TAB (Admin + Cashier) --- */}
+        {tab === "pos" && (
+          <PosCashierTab
+            products={dbProducts}
+            user={user}
+            profile={profile}
+            triggerToast={triggerGlobalToast}
+            onSaleCompleted={() => {
+              fetchDashboardData();
+            }}
+          />
+        )}
+
         {/* --- OVERVIEW TAB --- */}
         {tab === "overview" && (
           <>
@@ -1692,7 +1725,6 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
-              {/* iOS Style Toggle Switch */}
               <button
                 type="button"
                 onClick={handleTogglePromotions}
