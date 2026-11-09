@@ -47,17 +47,29 @@ export default function ResetPassword() {
     setFormResetKey((prev) => prev + 1);
   }, []);
 
-  // Safely exit recovery mode and return to the storefront without a redirect loop
+  // Safely exit recovery mode, strip any recovery hash, and go straight to homepage
   const handleBackToStore = useCallback(() => {
+    if (redirectTimerRef.current) {
+      clearTimeout(redirectTimerRef.current);
+      redirectTimerRef.current = null;
+    }
     wipeFields();
     clearPasswordRecovery?.();
-    if (typeof window !== "undefined" && window.location.hash) {
-      window.history.replaceState(null, "", window.location.pathname);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("sophea_password_recovery");
+      } catch {
+        // Ignore storage error
+      }
+      if (window.location.hash || window.location.search) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
     }
     navigate("/", { replace: true });
   }, [wipeFields, clearPasswordRecovery, navigate]);
 
   // Verify recovery token/session from email link on mount
+  // NOTE: Do NOT include isPasswordRecovery in dependency array so clearing it doesn't kill redirectTimerRef!
   useEffect(() => {
     let isMounted = true;
     let fallbackTimer = null;
@@ -71,14 +83,12 @@ export default function ResetPassword() {
 
     const verifyRecoverySession = async () => {
       try {
-        // 1. Check if URL contains a PKCE ?code=... parameter
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
         if (code) {
           await supabase.auth.exchangeCodeForSession(code);
         }
 
-        // 2. Check active session
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -89,7 +99,6 @@ export default function ResetPassword() {
           setHasValidSession(true);
           setVerifyingLink(false);
         } else if (urlHasRecoveryToken || isPasswordRecovery) {
-          // Give Supabase onAuthStateChange a brief moment to finish parsing the URL hash
           fallbackTimer = setTimeout(() => {
             if (isMounted) {
               setVerifyingLink(false);
@@ -127,9 +136,9 @@ export default function ResetPassword() {
       if (fallbackTimer) clearTimeout(fallbackTimer);
       if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
       subscription.unsubscribe();
-      wipeFields();
     };
-  }, [wipeFields, isPasswordRecovery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Also mark valid immediately if AuthContext user is already present
   useEffect(() => {
@@ -177,10 +186,22 @@ export default function ResetPassword() {
       if (isOk) {
         wipeFields();
         clearPasswordRecovery?.();
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem("sophea_password_recovery");
+          } catch {
+            // Ignore
+          }
+          if (window.location.hash || window.location.search) {
+            window.history.replaceState(null, "", "/reset-password");
+          }
+        }
         setIsSuccess(true);
+
+        // Automatically redirect to homepage after 1.2 seconds
         redirectTimerRef.current = setTimeout(() => {
           navigate("/", { replace: true });
-        }, 1800);
+        }, 1200);
       } else {
         setNewPassword("");
         setConfirmPassword("");
@@ -244,14 +265,23 @@ export default function ResetPassword() {
             </p>
           </div>
         ) : isSuccess ? (
-          <div style={styles.successBanner}>
-            <FiCheckCircle size={20} style={{ flexShrink: 0 }} />
-            <span>
-              {t(
-                "reset_password.success",
-                "Password updated securely! Redirecting to store...",
-              )}
-            </span>
+          <div>
+            <div style={{ ...styles.successBanner, marginBottom: "16px" }}>
+              <FiCheckCircle size={20} style={{ flexShrink: 0 }} />
+              <span>
+                {t(
+                  "reset_password.success",
+                  "Password updated securely! Redirecting to store...",
+                )}
+              </span>
+            </div>
+
+            <Button onClick={handleBackToStore} full>
+              <div style={styles.btnContent}>
+                <FiArrowLeft size={16} />{" "}
+                {t("reset_password.back_home", "Back to Store")}
+              </div>
+            </Button>
           </div>
         ) : !hasValidSession ? (
           <div style={{ textAlign: "center" }}>

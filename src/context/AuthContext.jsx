@@ -10,29 +10,13 @@ import { supabase } from "../services/supabase";
 
 export const AuthContext = createContext(null);
 
-const RECOVERY_STORAGE_KEY = "sophea_password_recovery";
-
 // 🔒 Capture recovery intent immediately at module load BEFORE Supabase strips the URL hash!
-function detectInitialRecovery() {
-  if (typeof window === "undefined") return false;
-  try {
-    const hasUrlRecovery =
-      window.location.hash.includes("type=recovery") ||
-      window.location.search.includes("type=recovery") ||
-      window.location.pathname === "/reset-password" ||
-      window.location.pathname === "/update-password";
-
-    if (hasUrlRecovery) {
-      sessionStorage.setItem(RECOVERY_STORAGE_KEY, "1");
-      return true;
-    }
-    return sessionStorage.getItem(RECOVERY_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-const initialUrlHasRecovery = detectInitialRecovery();
+const initialUrlHasRecovery =
+  typeof window !== "undefined" &&
+  (window.location.hash.includes("type=recovery") ||
+    window.location.search.includes("type=recovery") ||
+    window.location.pathname === "/reset-password" ||
+    window.location.pathname === "/update-password");
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -45,19 +29,6 @@ export function AuthProvider({ children }) {
   const loadedUserIdRef = useRef(null);
   const inFlightUserIdRef = useRef(null);
   const isRegisteringRef = useRef(false);
-
-  const setRecoveryMode = useCallback((active) => {
-    setIsPasswordRecovery(active);
-    try {
-      if (active) {
-        sessionStorage.setItem(RECOVERY_STORAGE_KEY, "1");
-      } else {
-        sessionStorage.removeItem(RECOVERY_STORAGE_KEY);
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }, []);
 
   const fetchProfile = useCallback(async (userId, force = false) => {
     if (!userId) {
@@ -101,6 +72,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
+    // If URL had recovery token or old /update-password path, force browser to /reset-password
+    if (
+      typeof window !== "undefined" &&
+      initialUrlHasRecovery &&
+      window.location.pathname !== "/reset-password"
+    ) {
+      window.location.replace(
+        `/reset-password${window.location.search}${window.location.hash}`,
+      );
+      return;
+    }
+
     const syncSession = (sessionUser, forceProfile = false) => {
       if (!isMounted) return;
 
@@ -128,32 +111,26 @@ export function AuthProvider({ children }) {
       }
     };
 
-    // 1. Check if URL has a PKCE ?code= on initial load (for email recovery links)
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (
-      code &&
-      (window.location.pathname === "/reset-password" ||
-        window.location.pathname === "/update-password" ||
-        initialUrlHasRecovery)
-    ) {
-      setRecoveryMode(true);
-    }
-
-    // 2. Get initial session
+    // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       syncSession(session?.user ?? null, false);
     });
 
-    // 3. Subscribe to auth events (SPA state transition — no hard page reload!)
+    // 2. Subscribe to auth events
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        setRecoveryMode(true);
+        setIsPasswordRecovery(true);
         syncSession(session?.user ?? null, false);
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/reset-password"
+        ) {
+          window.location.replace("/reset-password");
+        }
       } else if (event === "SIGNED_OUT") {
-        setRecoveryMode(false);
+        setIsPasswordRecovery(false);
         syncSession(null, false);
       } else if (event === "USER_UPDATED") {
         syncSession(session?.user ?? null, true);
@@ -166,21 +143,15 @@ export function AuthProvider({ children }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, setRecoveryMode]);
+  }, [fetchProfile]);
 
-  const login = useCallback(
-    async (email, password) => {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (!error) {
-        setRecoveryMode(false);
-      }
-      return { success: !error, error: error?.message };
-    },
-    [setRecoveryMode],
-  );
+  const login = useCallback(async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { success: !error, error: error?.message };
+  }, []);
 
   const register = useCallback(
     async (name, email, password) => {
@@ -210,23 +181,22 @@ export function AuthProvider({ children }) {
           await fetchProfile(data.user.id, true);
         }
 
-        setRecoveryMode(false);
         return { success: true };
       } finally {
         isRegisteringRef.current = false;
       }
     },
-    [fetchProfile, setRecoveryMode],
+    [fetchProfile],
   );
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     loadedUserIdRef.current = null;
     inFlightUserIdRef.current = null;
-    setRecoveryMode(false);
+    setIsPasswordRecovery(false);
     setUser(null);
     setProfile(null);
-  }, [setRecoveryMode]);
+  }, []);
 
   // 🏆 Always send reset link to /reset-password
   const sendPasswordReset = useCallback(async (email) => {
@@ -236,29 +206,24 @@ export function AuthProvider({ children }) {
     });
     if (error) {
       console.error("Error sending reset email:", error.message);
-      return { success: false, error: error.message };
+      return false;
     }
-    return { success: true };
+    return true;
   }, []);
 
-  const updatePassword = useCallback(
-    async (newPassword) => {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) {
-        console.error("Error updating password:", error.message);
-        return { success: false, error: error.message };
-      }
-      setRecoveryMode(false);
-      return { success: true };
-    },
-    [setRecoveryMode],
-  );
+  const updatePassword = useCallback(async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      console.error("Error updating password:", error.message);
+      return false;
+    }
+    setIsPasswordRecovery(false);
+    return true;
+  }, []);
 
   const clearPasswordRecovery = useCallback(() => {
-    setRecoveryMode(false);
-  }, [setRecoveryMode]);
+    setIsPasswordRecovery(false);
+  }, []);
 
   const refreshProfile = useCallback(() => {
     if (user?.id) {
