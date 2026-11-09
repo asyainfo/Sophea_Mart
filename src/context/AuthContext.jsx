@@ -10,14 +10,54 @@ import { supabase } from "../services/supabase";
 
 export const AuthContext = createContext(null);
 
+const RECOVERY_STORAGE_KEY = "sophea_password_recovery";
+
+// 🔒 Capture recovery intent immediately at module load BEFORE Supabase strips the URL hash!
+function detectInitialRecovery() {
+  if (typeof window === "undefined") return false;
+  try {
+    const hasUrlRecovery =
+      window.location.hash.includes("type=recovery") ||
+      window.location.search.includes("type=recovery") ||
+      window.location.pathname === "/reset-password" ||
+      window.location.pathname === "/update-password";
+
+    if (hasUrlRecovery) {
+      sessionStorage.setItem(RECOVERY_STORAGE_KEY, "1");
+      return true;
+    }
+    return sessionStorage.getItem(RECOVERY_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const initialUrlHasRecovery = detectInitialRecovery();
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+    initialUrlHasRecovery,
+  );
 
   // Track which user ID is currently loaded or in-flight to prevent duplicate fetches
   const loadedUserIdRef = useRef(null);
   const inFlightUserIdRef = useRef(null);
   const isRegisteringRef = useRef(false);
+
+  const setRecoveryMode = useCallback((active) => {
+    setIsPasswordRecovery(active);
+    try {
+      if (active) {
+        sessionStorage.setItem(RECOVERY_STORAGE_KEY, "1");
+      } else {
+        sessionStorage.removeItem(RECOVERY_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   const fetchProfile = useCallback(async (userId, force = false) => {
     if (!userId) {
@@ -27,7 +67,6 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    // Skip if already fetched for this exact user or currently fetching (unless forced)
     if (
       !force &&
       (loadedUserIdRef.current === userId ||
@@ -62,24 +101,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Failsafe: if user lands on homepage with a recovery hash/token, route to /reset-password
-    if (
-      typeof window !== "undefined" &&
-      window.location.hash.includes("type=recovery") &&
-      window.location.pathname !== "/reset-password"
-    ) {
-      window.history.replaceState(
-        null,
-        "",
-        `/reset-password${window.location.search}${window.location.hash}`,
-      );
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    }
-
     const syncSession = (sessionUser, forceProfile = false) => {
       if (!isMounted) return;
 
-      // Avoid whole-app re-renders if the user ID and email haven't changed
       setUser((prev) => {
         if (!prev && !sessionUser) return null;
         if (
@@ -92,9 +116,7 @@ export function AuthProvider({ children }) {
       });
 
       if (sessionUser?.id) {
-        // Skip auto-fetch while register() is actively upserting the new profile
         if (!isRegisteringRef.current) {
-          // Defer outside onAuthStateChange lock to prevent Supabase v2 auth deadlock
           setTimeout(() => {
             if (isMounted) fetchProfile(sessionUser.id, forceProfile);
           }, 0);
@@ -106,26 +128,32 @@ export function AuthProvider({ children }) {
       }
     };
 
-    // 1. Get initial session
+    // 1. Check if URL has a PKCE ?code= on initial load (for email recovery links)
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (
+      code &&
+      (window.location.pathname === "/reset-password" ||
+        window.location.pathname === "/update-password" ||
+        initialUrlHasRecovery)
+    ) {
+      setRecoveryMode(true);
+    }
+
+    // 2. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       syncSession(session?.user ?? null, false);
     });
 
-    // 2. Subscribe to auth events
+    // 3. Subscribe to auth events (SPA state transition — no hard page reload!)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
         syncSession(session?.user ?? null, false);
-        // Automatically ensure the browser is on /reset-password when recovery link is clicked
-        if (
-          typeof window !== "undefined" &&
-          window.location.pathname !== "/reset-password"
-        ) {
-          window.history.replaceState(null, "", "/reset-password");
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        }
       } else if (event === "SIGNED_OUT") {
+        setRecoveryMode(false);
         syncSession(null, false);
       } else if (event === "USER_UPDATED") {
         syncSession(session?.user ?? null, true);
@@ -138,18 +166,22 @@ export function AuthProvider({ children }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, setRecoveryMode]);
 
-  // 🏆 1. LOGIN FUNCTION: Safely returns the success state and error message
-  const login = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { success: !error, error: error?.message };
-  }, []);
+  const login = useCallback(
+    async (email, password) => {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (!error) {
+        setRecoveryMode(false);
+      }
+      return { success: !error, error: error?.message };
+    },
+    [setRecoveryMode],
+  );
 
-  // 🏆 2. REGISTER FUNCTION: Force the customer's Name into the profiles table immediately
   const register = useCallback(
     async (name, email, password) => {
       isRegisteringRef.current = true;
@@ -175,27 +207,28 @@ export function AuthProvider({ children }) {
             },
           ]);
 
-          // Force-fetch the newly created profile now that upsert is complete
           await fetchProfile(data.user.id, true);
         }
 
+        setRecoveryMode(false);
         return { success: true };
       } finally {
         isRegisteringRef.current = false;
       }
     },
-    [fetchProfile],
+    [fetchProfile, setRecoveryMode],
   );
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     loadedUserIdRef.current = null;
     inFlightUserIdRef.current = null;
+    setRecoveryMode(false);
     setUser(null);
     setProfile(null);
-  }, []);
+  }, [setRecoveryMode]);
 
-  // 🏆 3. FIXED REDIRECT URL: Points to /reset-password (matching App.jsx route!)
+  // 🏆 Always send reset link to /reset-password
   const sendPasswordReset = useCallback(async (email) => {
     const cleanEmail = (email || "").trim().toLowerCase();
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
@@ -203,19 +236,29 @@ export function AuthProvider({ children }) {
     });
     if (error) {
       console.error("Error sending reset email:", error.message);
-      return false;
+      return { success: false, error: error.message };
     }
-    return true;
+    return { success: true };
   }, []);
 
-  const updatePassword = useCallback(async (newPassword) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      console.error("Error updating password:", error.message);
-      return false;
-    }
-    return true;
-  }, []);
+  const updatePassword = useCallback(
+    async (newPassword) => {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (error) {
+        console.error("Error updating password:", error.message);
+        return { success: false, error: error.message };
+      }
+      setRecoveryMode(false);
+      return { success: true };
+    },
+    [setRecoveryMode],
+  );
+
+  const clearPasswordRecovery = useCallback(() => {
+    setRecoveryMode(false);
+  }, [setRecoveryMode]);
 
   const refreshProfile = useCallback(() => {
     if (user?.id) {
@@ -228,6 +271,8 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       profile,
+      isPasswordRecovery,
+      clearPasswordRecovery,
       refreshProfile,
       login,
       logout,
@@ -238,6 +283,8 @@ export function AuthProvider({ children }) {
     [
       user,
       profile,
+      isPasswordRecovery,
+      clearPasswordRecovery,
       refreshProfile,
       login,
       logout,

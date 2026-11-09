@@ -16,7 +16,8 @@ import { useTranslation } from "react-i18next";
 
 export default function ResetPassword() {
   const { t } = useTranslation();
-  const { updatePassword, user } = useAuth();
+  const { updatePassword, user, isPasswordRecovery, clearPasswordRecovery } =
+    useAuth();
   const navigate = useNavigate();
 
   const [formResetKey, setFormResetKey] = useState(0);
@@ -33,7 +34,9 @@ export default function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
+
   const submittingRef = useRef(false);
+  const redirectTimerRef = useRef(null);
 
   const wipeFields = useCallback(() => {
     setNewPassword("");
@@ -44,9 +47,27 @@ export default function ResetPassword() {
     setFormResetKey((prev) => prev + 1);
   }, []);
 
+  // Safely exit recovery mode and return to the storefront without a redirect loop
+  const handleBackToStore = useCallback(() => {
+    wipeFields();
+    clearPasswordRecovery?.();
+    if (typeof window !== "undefined" && window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    navigate("/", { replace: true });
+  }, [wipeFields, clearPasswordRecovery, navigate]);
+
   // Verify recovery token/session from email link on mount
   useEffect(() => {
     let isMounted = true;
+    let fallbackTimer = null;
+
+    const urlHasRecoveryToken =
+      typeof window !== "undefined" &&
+      (window.location.hash.includes("access_token") ||
+        window.location.hash.includes("type=recovery") ||
+        window.location.search.includes("code=") ||
+        window.location.search.includes("type=recovery"));
 
     const verifyRecoverySession = async () => {
       try {
@@ -62,10 +83,19 @@ export default function ResetPassword() {
           data: { session },
         } = await supabase.auth.getSession();
 
-        if (isMounted) {
-          if (session?.user) {
-            setHasValidSession(true);
-          }
+        if (!isMounted) return;
+
+        if (session?.user) {
+          setHasValidSession(true);
+          setVerifyingLink(false);
+        } else if (urlHasRecoveryToken || isPasswordRecovery) {
+          // Give Supabase onAuthStateChange a brief moment to finish parsing the URL hash
+          fallbackTimer = setTimeout(() => {
+            if (isMounted) {
+              setVerifyingLink(false);
+            }
+          }, 1500);
+        } else {
           setVerifyingLink(false);
         }
       } catch {
@@ -86,6 +116,7 @@ export default function ResetPassword() {
         event === "SIGNED_IN" ||
         session?.user
       ) {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         setHasValidSession(true);
         setVerifyingLink(false);
       }
@@ -93,12 +124,14 @@ export default function ResetPassword() {
 
     return () => {
       isMounted = false;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
       subscription.unsubscribe();
       wipeFields();
     };
-  }, [wipeFields]);
+  }, [wipeFields, isPasswordRecovery]);
 
-  // Also mark valid if AuthContext user finishes loading
+  // Also mark valid immediately if AuthContext user is already present
   useEffect(() => {
     if (user?.id) {
       setHasValidSession(true);
@@ -143,8 +176,9 @@ export default function ResetPassword() {
 
       if (isOk) {
         wipeFields();
+        clearPasswordRecovery?.();
         setIsSuccess(true);
-        setTimeout(() => {
+        redirectTimerRef.current = setTimeout(() => {
           navigate("/", { replace: true });
         }, 1800);
       } else {
@@ -160,6 +194,10 @@ export default function ResetPassword() {
         );
       }
     } catch {
+      setNewPassword("");
+      setConfirmPassword("");
+      setPwReadOnly(true);
+      setConfirmReadOnly(true);
       setErrorMsg(
         t(
           "reset_password.error",
@@ -226,7 +264,7 @@ export default function ResetPassword() {
                 )}
               </span>
             </div>
-            <Button onClick={() => navigate("/", { replace: true })} full>
+            <Button onClick={handleBackToStore} full>
               <div style={styles.btnContent}>
                 <FiArrowLeft size={16} />{" "}
                 {t("reset_password.back_home", "Back to Store")}
@@ -344,6 +382,15 @@ export default function ResetPassword() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   style={styles.input}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={isLoading}
+                  style={styles.eyeBtn}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                </button>
               </div>
             </div>
 
@@ -360,7 +407,7 @@ export default function ResetPassword() {
 
             <button
               type="button"
-              onClick={() => navigate("/", { replace: true })}
+              onClick={handleBackToStore}
               disabled={isLoading}
               style={styles.cancelBtn}
             >

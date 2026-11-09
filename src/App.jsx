@@ -1,8 +1,16 @@
 import { useState, useEffect, Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { FiLoader } from "react-icons/fi";
 
 import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./hooks/useAuth";
 import { StoreProvider } from "./context/StoreContext";
 import { CartProvider } from "./context/CartContext";
 
@@ -41,6 +49,8 @@ const PageLoader = () => (
 function MainApp() {
   const { show: toast } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isPasswordRecovery } = useAuth();
 
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -51,6 +61,22 @@ function MainApp() {
   const [appliedVoucher, setAppliedVoucher] = useState(null);
 
   const isAdminPage = location.pathname.startsWith("/admin");
+
+  // 🔒 Automatically route to /reset-password whenever a Supabase password recovery link is opened
+  useEffect(() => {
+    const hasRecoveryHash =
+      typeof window !== "undefined" &&
+      (window.location.hash.includes("type=recovery") ||
+        window.location.search.includes("type=recovery"));
+
+    if (
+      (isPasswordRecovery || hasRecoveryHash) &&
+      location.pathname !== "/reset-password" &&
+      location.pathname !== "/update-password"
+    ) {
+      navigate("/reset-password", { replace: true });
+    }
+  }, [isPasswordRecovery, location.pathname, navigate]);
 
   // Scroll to top smoothly when navigating between pages
   useEffect(() => {
@@ -105,6 +131,7 @@ function MainApp() {
             <Route path="/" element={<HomePage />} />
             <Route path="/order-history" element={<OrderHistory />} />
             <Route path="/favorites" element={<Favorites />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/update-password" element={<ResetPassword />} />
             <Route path="/redeem" element={<Redeem />} />
             <Route
@@ -112,6 +139,7 @@ function MainApp() {
               element={<Cart onCheckout={() => setCheckoutOpen(true)} />}
             />
             <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>
