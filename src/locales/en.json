@@ -68,7 +68,8 @@
     "back_store": "Back Store",
     "sign_out": "Sign Out",
     "admin_dashboard": "Admin Dashboard",
-    "cashier_portal": "Cashier Portal"
+    "cashier_portal": "Cashier Portal",
+    "pos_scanner": "POS Scanner"
   },
   "hero": {
     "badge": "FRESH DAILY",
@@ -419,7 +420,8 @@
       "products": "Products",
       "orders": "Orders",
       "credits": "Credits",
-      "settings": "Settings"
+      "settings": "Settings",
+      "pos": "⚡ POS Cashier"
     },
     "stats": {
       "total_products": "Total Products",
@@ -543,5 +545,51 @@
     "error_generic": "Could not access camera. Please check your browser permissions.",
     "close": "Close Scanner",
     "not_found_desc": "Sorry, this barcode does not exist in our system yet."
+  },
+  "pos": {
+    "title": "Fast POS Counter Scanner",
+    "subtitle": "Scan multiple items continuously by phone or select products below",
+    "rate_label": "Rate",
+    "beep_on": "Scanner Beep",
+    "muted": "Muted",
+    "test_sound": "Test",
+    "start_camera": "Scan with Phone Camera",
+    "stop_camera": "Close Camera",
+    "continuous_mode": "Continuous Scan Mode (Camera stays open)",
+    "tap_rescan": "Tap camera to scan same item again",
+    "ready_scan": "Ready! Hold barcode in front of camera",
+    "starting_camera": "Starting back-camera laser scanner...",
+    "barcode_not_found": "Barcode not found",
+    "search_placeholder": "Search product name or scan/type barcode...",
+    "clear": "Clear",
+    "all_categories": "All Products",
+    "no_barcode_filter": "No Barcode",
+    "showing_count": "Showing",
+    "products_unit": "products",
+    "scroll_vertical": "Up / Down",
+    "scroll_horizontal": "Left / Right",
+    "current_bill": "Current Counter Bill",
+    "items_unit": "items",
+    "empty_bill": "Scan a barcode with your phone camera or tap any product on the left to start a bill.",
+    "total_due_usd": "TOTAL DUE (USD)",
+    "total_due_khr": "TOTAL DUE (KHR)",
+    "cash_payment": "Cash",
+    "khqr_payment": "ABA KHQR",
+    "cash_calculator_title": "Cash Received & Change Calculator",
+    "reset_cash": "Reset Cash",
+    "received_usd": "Received USD ($)",
+    "received_khr": "Received Riel (៛)",
+    "exact_amount": "Exact",
+    "usd_notes": "Quick USD",
+    "khr_notes": "Quick Riel",
+    "change_due": "CHANGE DUE",
+    "give_customer": "Suggested Change Breakdown",
+    "still_short": "Still short by",
+    "complete_sale": "Complete Sale",
+    "recording_sale": "Recording Sale...",
+    "print_receipt": "Print Receipt",
+    "next_customer": "Next Customer",
+    "receipt_title": "Walk-In Receipt",
+    "cashier_label": "Cashier"
   }
 }

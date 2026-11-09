@@ -16,41 +16,191 @@ import {
   FiZap,
   FiVolume2,
   FiVolumeX,
+  FiX,
+  FiArrowDown,
+  FiArrowRight,
+  FiTag,
 } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
-import { fmt, fmtKHR } from "../../utils/currency";
+import { fmt } from "../../utils/currency";
 import Button from "../ui/Button";
 import { useTranslation } from "react-i18next";
 
-const DEFAULT_EXCHANGE_RATE = 4100;
-const SAME_BARCODE_COOLDOWN_MS = 1250;
+const DEFAULT_EXCHANGE_RATE = 4000;
+const SAME_BARCODE_COOLDOWN_MS = 1200;
 
-// Crisp Web Audio API Cashier Beep (Zero external MP3 dependency or lag)
-function playCashierBeep(success = true) {
+// Built-in Khmer & English fallback dictionary so translations work 100% even if i18n keys are cached
+const POS_DICT = {
+  en: {
+    title: "Fast POS Counter Scanner",
+    subtitle:
+      "Scan multiple items continuously by phone or select products below",
+    rate_label: "1$ =",
+    beep_on: "Laser Beep",
+    muted: "Muted",
+    test_sound: "Test Beep",
+    start_camera: "Scan with Phone Camera",
+    stop_camera: "Close Camera",
+    continuous_mode: "Continuous Scan Mode (Camera stays open)",
+    tap_rescan: "Tap camera to scan same item again",
+    ready_scan: "Ready! Hold barcode in front of camera",
+    starting_camera: "Starting back-camera barcode scanner...",
+    barcode_not_found: "Barcode not found",
+    search_placeholder: "Search product name or scan/type barcode...",
+    clear: "Clear",
+    all_categories: "All Products",
+    no_barcode_filter: "No Barcode",
+    showing_count: "Showing",
+    products_unit: "products",
+    scroll_vertical: "Up / Down",
+    scroll_horizontal: "Left / Right",
+    current_bill: "Current Counter Bill",
+    items_unit: "items",
+    empty_bill:
+      "Scan a barcode with your phone camera or tap any product on the left to start a bill.",
+    total_due_usd: "TOTAL DUE (USD)",
+    total_due_khr: "TOTAL DUE (KHR)",
+    cash_payment: "Cash",
+    khqr_payment: "ABA KHQR",
+    cash_calculator_title: "Cash Received & Change Calculator",
+    reset_cash: "Reset Cash",
+    received_usd: "Received USD ($)",
+    received_khr: "Received Riel (៛)",
+    exact_amount: "Exact",
+    usd_notes: "USD Notes ($)",
+    khr_notes: "Riel Notes (៛)",
+    change_due: "CHANGE DUE:",
+    give_customer: "Suggested Change:",
+    still_short: "Still short by",
+    complete_sale: "Complete Sale",
+    recording_sale: "Recording Sale...",
+    print_receipt: "Print Receipt",
+    next_customer: "Next Customer",
+    cashier_label: "Cashier",
+  },
+  km: {
+    title: "ម៉ាស៊ីនគិតលុយរហ័ស (POS)",
+    subtitle:
+      "ស្កេនបាកូដទំនិញជាប់ៗគ្នាដោយទូរស័ព្ទ ឬចុចជ្រើសរើសទំនិញទាំងអស់ខាងក្រោម",
+    rate_label: "1$ =",
+    beep_on: "សំឡេងស្កេន",
+    muted: "បិទសំឡេង",
+    test_sound: "សាកសំឡេង",
+    start_camera: "បើកកាមេរ៉ាស្កេនទំនិញ",
+    stop_camera: "បិទកាមេរ៉ា",
+    continuous_mode: "ប្រព័ន្ធស្កេនជាប់ៗគ្នា (កាមេរ៉ាបើកជានិច្ច)",
+    tap_rescan: "ចុចលើកាមេរ៉ាដើម្បីស្កេនទំនិញដដែលម្តងទៀត",
+    ready_scan: "រួចរាល់! សូមដាក់បាកូដនៅមុខកាមេរ៉ា",
+    starting_camera: "កំពុងបើកកាមេរ៉ាស្កេនបាកូដ...",
+    barcode_not_found: "រកមិនឃើញបាកូដនេះទេ",
+    search_placeholder: "ស្វែងរកឈ្មោះទំនិញ ឬវាយលេខបាកូដ...",
+    clear: "សម្អាត",
+    all_categories: "ទំនិញទាំងអស់",
+    no_barcode_filter: "គ្មានបាកូដ",
+    showing_count: "បង្ហាញ",
+    products_unit: "មុខទំនិញ",
+    scroll_vertical: "អូសលើ-ក្រោម",
+    scroll_horizontal: "អូសឆ្វេង-ស្តាំ",
+    current_bill: "វិក្កយបត្រគិតលុយបច្ចុប្បន្ន",
+    items_unit: "មុខ",
+    empty_bill:
+      "សូមស្កេនបាកូដទំនិញ ឬចុចជ្រើសរើសទំនិញនៅខាងឆ្វេងដើម្បីគិតលុយ។",
+    total_due_usd: "សរុបជាប្រាក់ដុល្លារ (USD)",
+    total_due_khr: "សរុបជាប្រាក់រៀល (KHR)",
+    cash_payment: "សាច់ប្រាក់សុទ្ធ",
+    khqr_payment: "ABA KHQR",
+    cash_calculator_title: "គណនាប្រាក់ទទួល និងប្រាក់អាប់",
+    reset_cash: "កំណត់ឡើងវិញ",
+    received_usd: "ប្រាក់ទទួលជាដុល្លារ ($)",
+    received_khr: "ប្រាក់ទទួលជារៀល (៛)",
+    exact_amount: "គ្រប់ចំនួន",
+    usd_notes: "ក្រដាសប្រាក់ដុល្លារ ($)",
+    khr_notes: "ក្រដាសប្រាក់រៀល (៛)",
+    change_due: "ប្រាក់ត្រូវអាប់ជូនអតិថិជន:",
+    give_customer: "ណែនាំរបៀបអាប់ប្រាក់:",
+    still_short: "ខ្វះទឹកប្រាក់ចំនួន",
+    complete_sale: "បញ្ចប់ការលក់",
+    recording_sale: "កំពុងរក្សាទុកវិក្កយបត្រ...",
+    print_receipt: "បោះពុម្ពវិក្កយបត្រ",
+    next_customer: "អតិថិជនបន្ទាប់",
+    cashier_label: "អ្នកគិតលុយ",
+  },
+};
+
+// 🔊 Authentic Supermarket Laser Barcode Scanner Sound (Zebra/Honeywell 2650Hz Harmonic Pulse)
+let sharedAudioCtx = null;
+function playSupermarketScannerSound(type = "scan") {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+      sharedAudioCtx = new AudioCtx();
+    }
+    if (sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume();
+    }
 
-    osc.type = success ? "sine" : "sawtooth";
-    osc.frequency.setValueAtTime(success ? 1350 : 280, ctx.currentTime);
+    const now = sharedAudioCtx.currentTime;
 
-    gain.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      ctx.currentTime + (success ? 0.09 : 0.22),
-    );
+    if (type === "scan") {
+      // Crisp 2650Hz + 5300Hz dual-oscillator supermarket laser beep (68ms)
+      const osc1 = sharedAudioCtx.createOscillator();
+      const osc2 = sharedAudioCtx.createOscillator();
+      const gain = sharedAudioCtx.createGain();
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+      osc1.type = "triangle";
+      osc2.type = "square";
+      osc1.frequency.setValueAtTime(2650, now);
+      osc2.frequency.setValueAtTime(5300, now);
 
-    osc.start();
-    osc.stop(ctx.currentTime + (success ? 0.09 : 0.22));
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 300);
+      const osc2Gain = sharedAudioCtx.createGain();
+      osc2Gain.gain.setValueAtTime(0.18, now);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.32, now + 0.005);
+      gain.gain.setValueAtTime(0.32, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
+
+      osc1.connect(gain);
+      osc2.connect(osc2Gain);
+      osc2Gain.connect(gain);
+      gain.connect(sharedAudioCtx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.075);
+      osc2.stop(now + 0.075);
+    } else if (type === "complete") {
+      // Cheerful double-beep register confirmation (2100Hz -> 2800Hz)
+      [2100, 2800].forEach((freq, idx) => {
+        const osc = sharedAudioCtx.createOscillator();
+        const gain = sharedAudioCtx.createGain();
+        const start = now + idx * 0.085;
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.28, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.075);
+        osc.connect(gain);
+        gain.connect(sharedAudioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.08);
+      });
+    } else {
+      // Low error double-buzz (240Hz) when barcode is not found
+      [0, 0.12].forEach((offset) => {
+        const osc = sharedAudioCtx.createOscillator();
+        const gain = sharedAudioCtx.createGain();
+        const start = now + offset;
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(240, start);
+        gain.gain.setValueAtTime(0.22, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.09);
+        osc.connect(gain);
+        gain.connect(sharedAudioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.095);
+      });
+    }
   } catch {
     // Ignore audio context restrictions
   }
@@ -63,11 +213,21 @@ export default function PosCashierTab({
   onSaleCompleted,
   triggerToast,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isKm = (i18n.language || "").toLowerCase().startsWith("km");
+  const L = useCallback(
+    (key) => {
+      const dict = isKm ? POS_DICT.km : POS_DICT.en;
+      return t(`pos.${key}`, dict[key] || POS_DICT.en[key] || key);
+    },
+    [t, isKm],
+  );
 
-  // POS Cart & Search State
+  // POS Cart & Product Browsing State
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [scrollDirection, setScrollDirection] = useState("vertical"); // "vertical" | "horizontal"
   const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "bank"
   const [exchangeRate, setExchangeRate] = useState(DEFAULT_EXCHANGE_RATE);
 
@@ -87,49 +247,95 @@ export default function PosCashierTab({
   const lastScanRef = useRef({ code: "", time: 0 });
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
+  const productScrollRef = useRef(null);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
 
-  // Fast O(1) barcode lookup map + available products list
-  const { barcodeMap, activeProducts } = useMemo(() => {
-    const map = new Map();
-    const active = [];
+  const safeRate = useMemo(() => {
+    const num = Number(exchangeRate);
+    return num >= 100 ? num : DEFAULT_EXCHANGE_RATE;
+  }, [exchangeRate]);
 
-    (products || []).forEach((p) => {
-      if (p.in_stock === false) return;
-      active.push(p);
+  const formatKhrWithRate = useCallback(
+    (usdAmount) => {
+      const khr = Math.round((Number(usdAmount || 0) * safeRate) / 100) * 100;
+      return `${khr.toLocaleString()} ៛`;
+    },
+    [safeRate],
+  );
 
-      const rawCodes = [p.barcode, p.code, p.sku, String(p.id)]
-        .filter(Boolean)
-        .map((c) => String(c).trim().toLowerCase());
+  // Fast O(1) barcode lookup map + ALL active products + category list
+  const { barcodeMap, activeProducts, categories, noBarcodeCount } =
+    useMemo(() => {
+      const map = new Map();
+      const active = [];
+      const catSet = new Set();
+      let missingBarcode = 0;
 
-      rawCodes.forEach((code) => {
-        if (code) map.set(code, p);
+      (products || []).forEach((p) => {
+        if (p.in_stock === false) return;
+        active.push(p);
+
+        if (p.category && String(p.category).trim()) {
+          catSet.add(String(p.category).trim());
+        }
+
+        const hasBarcode = Boolean(
+          (p.barcode && String(p.barcode).trim()) ||
+            (p.code && String(p.code).trim()) ||
+            (p.sku && String(p.sku).trim()),
+        );
+        if (!hasBarcode) missingBarcode += 1;
+
+        const rawCodes = [p.barcode, p.code, p.sku, String(p.id)]
+          .filter(Boolean)
+          .map((c) => String(c).trim().toLowerCase());
+
+        rawCodes.forEach((code) => {
+          if (code) map.set(code, p);
+        });
       });
-    });
 
-    return { barcodeMap: map, activeProducts: active };
-  }, [products]);
+      return {
+        barcodeMap: map,
+        activeProducts: active,
+        categories: Array.from(catSet),
+        noBarcodeCount: missingBarcode,
+      };
+    }, [products]);
 
-  // Filtered quick-select products for manual search or non-barcoded items
+  // ALL matching products (No 12-item cutoff! Admin & Cashier can select any product)
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return activeProducts.slice(0, 12);
-    return activeProducts
-      .filter(
-        (p) =>
-          (p.name || "").toLowerCase().includes(q) ||
-          String(p.barcode || "")
-            .toLowerCase()
-            .includes(q) ||
-          String(p.category || "")
-            .toLowerCase()
-            .includes(q),
-      )
-      .slice(0, 16);
-  }, [activeProducts, searchQuery]);
+    return activeProducts.filter((p) => {
+      if (selectedCategory === "__no_barcode__") {
+        const hasBarcode = Boolean(
+          (p.barcode && String(p.barcode).trim()) ||
+            (p.code && String(p.code).trim()) ||
+            (p.sku && String(p.sku).trim()),
+        );
+        if (hasBarcode) return false;
+      } else if (
+        selectedCategory !== "all" &&
+        String(p.category || "").trim() !== selectedCategory
+      ) {
+        return false;
+      }
+
+      if (!q) return true;
+      return (
+        (p.name || "").toLowerCase().includes(q) ||
+        String(p.barcode || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(p.category || "")
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [activeProducts, searchQuery, selectedCategory]);
 
   const showScanFeedback = useCallback((text, isError = false) => {
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
@@ -168,9 +374,9 @@ export default function PosCashierTab({
         ];
       });
 
-      if (soundEnabledRef.current) playCashierBeep(true);
+      if (soundEnabledRef.current) playSupermarketScannerSound("scan");
       try {
-        if (navigator.vibrate) navigator.vibrate(45);
+        if (navigator.vibrate) navigator.vibrate(40);
       } catch {
         // Ignore vibration permission
       }
@@ -222,13 +428,14 @@ export default function PosCashierTab({
     if (matchedProduct) {
       addItemToBill(matchedProduct);
     } else {
-      if (soundEnabledRef.current) playCashierBeep(false);
+      if (soundEnabledRef.current) playSupermarketScannerSound("error");
       try {
         if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
       } catch {
         // Ignore
       }
-      showScanFeedback(`Barcode not found: ${cleanCode}`, true);
+      showScanFeedback(`${L("barcode_not_found")}: ${cleanCode}`, true);
+      setSelectedCategory("all");
       setSearchQuery(cleanCode);
     }
   };
@@ -275,7 +482,7 @@ export default function PosCashierTab({
         await qr.start(
           { facingMode: "environment" },
           {
-            fps: 15,
+            fps: 18,
             qrbox: { width: 250, height: 120 },
             aspectRatio: 1.777,
           },
@@ -318,28 +525,31 @@ export default function PosCashierTab({
     const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
     const totalUsd =
       Math.round(cart.reduce((sum, i) => sum + i.price * i.qty, 0) * 100) / 100;
-    const rate = Number(exchangeRate) > 0 ? Number(exchangeRate) : 4100;
-    const totalKhr = Math.round((totalUsd * rate) / 100) * 100;
+    const totalKhr = Math.round((totalUsd * safeRate) / 100) * 100;
 
     const givenUsd = parseFloat(tenderedUsd) || 0;
     const givenKhr = parseFloat(tenderedKhr) || 0;
-    const totalGivenInUsd = givenUsd + givenKhr / rate;
+    const totalGivenInUsd = givenUsd + givenKhr / safeRate;
 
     const changeUsdRaw = totalGivenInUsd - totalUsd;
     const changeUsd =
       changeUsdRaw > 0.004 ? Math.round(changeUsdRaw * 100) / 100 : 0;
     const changeKhr =
-      changeUsdRaw > 0.004 ? Math.round((changeUsdRaw * rate) / 100) * 100 : 0;
+      changeUsdRaw > 0.004
+        ? Math.round((changeUsdRaw * safeRate) / 100) * 100
+        : 0;
 
     // Smart Mixed Change Breakdown: Whole USD notes + remainder in Riel
     const wholeUsdChange = Math.floor(changeUsd + 0.001);
     const remainderKhrChange =
-      Math.round(((changeUsd - wholeUsdChange) * rate) / 100) * 100;
+      Math.round(((changeUsd - wholeUsdChange) * safeRate) / 100) * 100;
 
     return {
       totalItems,
       totalUsd,
       totalKhr,
+      givenUsd,
+      givenKhr,
       totalGivenInUsd,
       changeUsd,
       changeKhr,
@@ -350,7 +560,7 @@ export default function PosCashierTab({
         (givenUsd === 0 && givenKhr === 0) ||
         totalGivenInUsd + 0.005 >= totalUsd,
     };
-  }, [cart, exchangeRate, tenderedUsd, tenderedKhr, paymentMethod]);
+  }, [cart, safeRate, tenderedUsd, tenderedKhr, paymentMethod]);
 
   // Handle Enter key in search box to immediately add exact barcode match
   const handleSearchKeyDown = (e) => {
@@ -377,7 +587,9 @@ export default function PosCashierTab({
       triggerToast?.(
         t(
           "pos.insufficient_cash",
-          "Cash received is less than the bill total!",
+          isKm
+            ? "ប្រាក់ទទួលតិចជាងទឹកប្រាក់សរុប!"
+            : "Cash received is less than the bill total!",
         ),
         "error",
       );
@@ -390,7 +602,6 @@ export default function PosCashierTab({
       profile?.full_name || user?.email?.split("@")[0] || "Cashier";
 
     try {
-      // 1. Insert completed Walk-In POS Order into Orders table
       const orderPayload = {
         id: orderId,
         user_id: user?.id || null,
@@ -406,7 +617,6 @@ export default function PosCashierTab({
         .insert([orderPayload]);
 
       if (orderErr) {
-        // Fallback minimal payload in case customer_name column doesn't exist in Orders schema
         const { error: fallbackErr } = await supabase.from("Orders").insert([
           {
             id: orderId,
@@ -420,7 +630,6 @@ export default function PosCashierTab({
         if (fallbackErr) throw fallbackErr;
       }
 
-      // 2. Insert line items into order_items so Top Selling Items & OrderDetailsModal work seamlessly
       const orderItemsPayload = cart.map((item) => ({
         order_id: orderId,
         product_id: item.id,
@@ -437,12 +646,11 @@ export default function PosCashierTab({
         console.warn("Note inserting POS order_items:", itemsErr.message);
       }
 
-      if (soundEnabledRef.current) playCashierBeep(true);
+      if (soundEnabledRef.current) playSupermarketScannerSound("complete");
 
-      // Save receipt snapshot for instant display/printing
       setCompletedReceipt({
         id: orderId,
-        date: new Date().toLocaleString("en-US", {
+        date: new Date().toLocaleString(isKm ? "km-KH" : "en-US", {
           timeZone: "Asia/Phnom_Penh",
         }),
         cashier: cashierName,
@@ -450,8 +658,8 @@ export default function PosCashierTab({
         paymentMethod,
         totalUsd: totals.totalUsd,
         totalKhr: totals.totalKhr,
-        givenUsd: parseFloat(tenderedUsd) || 0,
-        givenKhr: parseFloat(tenderedKhr) || 0,
+        givenUsd: totals.givenUsd,
+        givenKhr: totals.givenKhr,
         changeUsd: totals.changeUsd,
         changeKhr: totals.changeKhr,
         wholeUsdChange: totals.wholeUsdChange,
@@ -462,7 +670,7 @@ export default function PosCashierTab({
       setTenderedUsd("");
       setTenderedKhr("");
       triggerToast?.(
-        `✅ POS Sale ${orderId} completed (${fmt(totals.totalUsd)})!`,
+        `✅ ${orderId} (${fmt(totals.totalUsd)})`,
         "success",
       );
       onSaleCompleted?.();
@@ -481,17 +689,60 @@ export default function PosCashierTab({
     <div style={{ width: "100%" }}>
       <style>
         {`
+          /* Hide ugly browser number input arrows */
+          .pos-no-spin::-webkit-outer-spin-button,
+          .pos-no-spin::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          .pos-no-spin {
+            -moz-appearance: textfield;
+          }
+
           .pos-grid {
             display: grid;
             grid-template-columns: 1.15fr 0.85fr;
             gap: 20px;
             align-items: start;
           }
-          .pos-product-grid {
+
+          /* Vertical Scroll Mode (Up & Down) */
+          .pos-product-grid-vertical {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
             gap: 10px;
+            max-height: 540px;
+            overflow-y: auto;
+            padding-right: 4px;
           }
+
+          /* Horizontal Scroll Mode (Left & Right Swipe) */
+          .pos-product-grid-horizontal {
+            display: grid;
+            grid-template-rows: repeat(2, auto);
+            grid-auto-flow: column;
+            grid-auto-columns: 145px;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+          }
+          .pos-product-grid-horizontal > button {
+            scroll-snap-align: start;
+          }
+
+          .pos-category-chips {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 6px;
+            scrollbar-width: none;
+          }
+          .pos-category-chips::-webkit-scrollbar {
+            display: none;
+          }
+
           @media (max-width: 900px) {
             .pos-grid {
               grid-template-columns: 1fr !important;
@@ -541,19 +792,17 @@ export default function PosCashierTab({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <FiZap size={20} />
           </div>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, color: "#111827" }}>
-              {t("pos.title", "Fast POS Counter Scanner")}
+              {L("title")}
             </h2>
             <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
-              {t(
-                "pos.subtitle",
-                "Scan multiple items continuously by phone or tap items below",
-              )}
+              {L("subtitle")}
             </p>
           </div>
         </div>
@@ -562,63 +811,112 @@ export default function PosCashierTab({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 10,
+            gap: 8,
             flexWrap: "wrap",
           }}
         >
-          {/* Editable Exchange Rate Pill */}
+          {/* Clean Exchange Rate Selector (4000 / 4100 + Custom without Accidental Scroll Spinners) */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
               background: "#F9FAFB",
-              padding: "6px 12px",
+              padding: "5px 10px",
               borderRadius: 10,
               border: "1px solid #E5E7EB",
               fontSize: 13,
               fontWeight: 600,
             }}
           >
-            <span>1$ =</span>
+            <span>{L("rate_label")}</span>
             <input
               type="number"
+              step="50"
+              className="pos-no-spin"
               value={exchangeRate}
               onChange={(e) => setExchangeRate(e.target.value)}
               style={{
-                width: 64,
-                border: "none",
-                background: "transparent",
-                fontWeight: 700,
+                width: 52,
+                border: "1px solid #DBEAFE",
+                borderRadius: 6,
+                padding: "2px 6px",
+                background: "#fff",
+                fontWeight: 800,
                 color: "#0066FF",
                 fontSize: 13,
                 outline: "none",
+                textAlign: "center",
               }}
             />
             <span>៛</span>
+            {[4000, 4100].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setExchangeRate(preset)}
+                style={{
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "3px 7px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  background:
+                    Number(exchangeRate) === preset ? "#0066FF" : "#E5E7EB",
+                  color: Number(exchangeRate) === preset ? "#fff" : "#374151",
+                }}
+              >
+                {preset}
+              </button>
+            ))}
           </div>
 
-          {/* Beep Sound Toggle */}
-          <button
-            type="button"
-            onClick={() => setSoundEnabled((prev) => !prev)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #E5E7EB",
-              background: soundEnabled ? "#ECFDF5" : "#F3F4F6",
-              color: soundEnabled ? "#059669" : "#6B7280",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            {soundEnabled ? <FiVolume2 size={16} /> : <FiVolumeX size={16} />}
-            {soundEnabled ? "Beep ON" : "Muted"}
-          </button>
+          {/* Supermarket Laser Beep Toggle + Test Sound Button */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                if (next) playSupermarketScannerSound("scan");
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px 0 0 10px",
+                border: "1px solid #E5E7EB",
+                background: soundEnabled ? "#ECFDF5" : "#F3F4F6",
+                color: soundEnabled ? "#059669" : "#6B7280",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {soundEnabled ? <FiVolume2 size={16} /> : <FiVolumeX size={16} />}
+              {soundEnabled ? L("beep_on") : L("muted")}
+            </button>
+            <button
+              type="button"
+              onClick={() => playSupermarketScannerSound("scan")}
+              title="Test supermarket scanner beep"
+              style={{
+                padding: "8px 10px",
+                borderRadius: "0 10px 10px 0",
+                border: "1px solid #E5E7EB",
+                borderLeft: "none",
+                background: "#F9FAFB",
+                color: "#374151",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              🔊 {L("test_sound")}
+            </button>
+          </div>
 
           {/* Toggle Continuous Camera Button */}
           <button
@@ -641,13 +939,11 @@ export default function PosCashierTab({
           >
             {scannerOpen ? (
               <>
-                <FiCameraOff size={18} />{" "}
-                {t("pos.stop_camera", "Close Camera")}
+                <FiCameraOff size={18} /> {L("stop_camera")}
               </>
             ) : (
               <>
-                <FiCamera size={18} />{" "}
-                {t("pos.start_camera", "Scan with Phone Camera")}
+                <FiCamera size={18} /> {L("start_camera")}
               </>
             )}
           </button>
@@ -655,18 +951,14 @@ export default function PosCashierTab({
       </div>
 
       <div className="pos-grid">
-        {/* LEFT COLUMN: Continuous Camera + Instant Product Lookup */}
+        {/* LEFT COLUMN: Continuous Camera + All Products Selector (Vertical/Horizontal Switch) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Continuous Phone Camera Viewfinder */}
           {scannerOpen && (
             <div
               onClick={() => {
-                // Tap camera viewfinder to immediately allow re-scanning the same barcode
                 lastScanRef.current = { code: "", time: 0 };
-                showScanFeedback(
-                  "Ready! Hold barcode in front of camera",
-                  false,
-                );
+                showScanFeedback(L("ready_scan"), false);
               }}
               style={{
                 background: "#111827",
@@ -696,11 +988,10 @@ export default function PosCashierTab({
                     fontWeight: 600,
                   }}
                 >
-                  Starting continuous back-camera scanner...
+                  {L("starting_camera")}
                 </div>
               )}
 
-              {/* Floating Live Scan Feedback Banner */}
               {lastScannedBanner && (
                 <div
                   style={{
@@ -734,17 +1025,19 @@ export default function PosCashierTab({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8,
                 }}
               >
-                <span>🟢 Continuous Scan Mode (Camera stays open)</span>
+                <span>🟢 {L("continuous_mode")}</span>
                 <span style={{ color: "#60A5FA", fontWeight: 600 }}>
-                  Tap camera to scan same item again
+                  {L("tap_rescan")}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Search / Barcode Input + Quick Tap Product Grid */}
+          {/* Product Catalog Browser (All Products + Category Filter + Scroll Direction Switch) */}
           <div
             style={{
               background: "#fff",
@@ -753,7 +1046,8 @@ export default function PosCashierTab({
               border: "1px solid #f3f4f6",
             }}
           >
-            <div style={{ position: "relative", marginBottom: 16 }}>
+            {/* Search Input */}
+            <div style={{ position: "relative", marginBottom: 12 }}>
               <FiSearch
                 size={18}
                 color="#9CA3AF"
@@ -769,10 +1063,7 @@ export default function PosCashierTab({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder={t(
-                  "pos.search_placeholder",
-                  "Type product name or scan/type barcode + press Enter...",
-                )}
+                placeholder={L("search_placeholder")}
                 style={{
                   width: "100%",
                   padding: "12px 14px 12px 42px",
@@ -802,12 +1093,174 @@ export default function PosCashierTab({
                     fontWeight: 600,
                   }}
                 >
-                  Clear
+                  {L("clear")}
                 </button>
               )}
             </div>
 
-            <div className="pos-product-grid">
+            {/* Category Pills + No-Barcode Filter */}
+            <div className="pos-category-chips" style={{ marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("all")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  border: "none",
+                  background:
+                    selectedCategory === "all" ? "#0066FF" : "#F3F4F6",
+                  color: selectedCategory === "all" ? "#fff" : "#374151",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                {L("all_categories")} ({activeProducts.length})
+              </button>
+
+              {noBarcodeCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory("__no_barcode__")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "none",
+                    background:
+                      selectedCategory === "__no_barcode__"
+                        ? "#F59E0B"
+                        : "#FEF3C7",
+                    color:
+                      selectedCategory === "__no_barcode__"
+                        ? "#fff"
+                        : "#B45309",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <FiTag size={12} /> {L("no_barcode_filter")} ({noBarcodeCount}
+                  )
+                </button>
+              )}
+
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "none",
+                    background:
+                      selectedCategory === cat ? "#0066FF" : "#F3F4F6",
+                    color: selectedCategory === cat ? "#fff" : "#374151",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Product Count + Scroll Direction Switcher (Up/Down vs Left/Right) */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}
+              >
+                {L("showing_count")} <strong>{filteredProducts.length}</strong>{" "}
+                {L("products_unit")}
+              </span>
+
+              <div
+                style={{
+                  display: "flex",
+                  background: "#F3F4F6",
+                  padding: 3,
+                  borderRadius: 10,
+                  gap: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setScrollDirection("vertical")}
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    background:
+                      scrollDirection === "vertical" ? "#fff" : "transparent",
+                    color:
+                      scrollDirection === "vertical" ? "#0066FF" : "#6B7280",
+                    boxShadow:
+                      scrollDirection === "vertical"
+                        ? "0 1px 3px rgba(0,0,0,0.1)"
+                        : "none",
+                  }}
+                >
+                  <FiArrowDown size={13} /> {L("scroll_vertical")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScrollDirection("horizontal")}
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    background:
+                      scrollDirection === "horizontal" ? "#fff" : "transparent",
+                    color:
+                      scrollDirection === "horizontal" ? "#0066FF" : "#6B7280",
+                    boxShadow:
+                      scrollDirection === "horizontal"
+                        ? "0 1px 3px rgba(0,0,0,0.1)"
+                        : "none",
+                  }}
+                >
+                  <FiArrowRight size={13} /> {L("scroll_horizontal")}
+                </button>
+              </div>
+            </div>
+
+            {/* All Products Grid (Vertical or Horizontal) */}
+            <div
+              ref={productScrollRef}
+              className={
+                scrollDirection === "horizontal"
+                  ? "pos-product-grid-horizontal"
+                  : "pos-product-grid-vertical"
+              }
+            >
               {filteredProducts.map((product) => {
                 const price = Number(product.price ?? product.price_usd ?? 0);
                 const inBill = cart.find((c) => c.id === product.id);
@@ -905,7 +1358,7 @@ export default function PosCashierTab({
                       {fmt(price)}
                     </div>
                     <div style={{ fontSize: 11, color: "#6B7280" }}>
-                      {fmtKHR(price)}
+                      {formatKhrWithRate(price)}
                     </div>
                   </button>
                 );
@@ -914,7 +1367,7 @@ export default function PosCashierTab({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Cashier Bill & Dual-Currency Change Calculator */}
+        {/* RIGHT COLUMN: Live Cashier Bill & Upgraded Dual-Currency Cash Calculator */}
         <div
           style={{
             background: "#fff",
@@ -937,10 +1390,10 @@ export default function PosCashierTab({
           >
             <div>
               <h3 style={{ margin: 0, fontSize: 17, color: "#111827" }}>
-                🧾 {t("pos.current_bill", "Current Counter Bill")}
+                🧾 {L("current_bill")}
               </h3>
               <span style={{ fontSize: 12, color: "#6B7280" }}>
-                {totals.totalItems} {t("store.items", "items")}
+                {totals.totalItems} {L("items_unit")}
               </span>
             </div>
             {cart.length > 0 && (
@@ -961,7 +1414,7 @@ export default function PosCashierTab({
                   gap: 4,
                 }}
               >
-                <FiTrash2 size={13} /> Clear
+                <FiTrash2 size={13} /> {L("clear")}
               </button>
             )}
           </div>
@@ -969,7 +1422,7 @@ export default function PosCashierTab({
           {/* Scanned Items List */}
           <div
             style={{
-              maxHeight: 280,
+              maxHeight: 250,
               overflowY: "auto",
               marginBottom: 16,
               display: "flex",
@@ -980,7 +1433,7 @@ export default function PosCashierTab({
             {cart.length === 0 ? (
               <div
                 style={{
-                  padding: "36px 16px",
+                  padding: "32px 16px",
                   textAlign: "center",
                   color: "#9CA3AF",
                   background: "#F9FAFB",
@@ -988,8 +1441,7 @@ export default function PosCashierTab({
                   fontSize: 13,
                 }}
               >
-                Scan a product barcode with your phone camera or tap an item on
-                the left to start a bill.
+                {L("empty_bill")}
               </div>
             ) : (
               cart.map((item) => (
@@ -1022,7 +1474,10 @@ export default function PosCashierTab({
                       {fmt(item.price)} × {item.qty} ={" "}
                       <strong style={{ color: "#0066FF" }}>
                         {fmt(item.price * item.qty)}
-                      </strong>
+                      </strong>{" "}
+                      <span style={{ fontSize: 11 }}>
+                        ({formatKhrWithRate(item.price * item.qty)})
+                      </span>
                     </div>
                   </div>
 
@@ -1104,7 +1559,7 @@ export default function PosCashierTab({
               background: "#EFF6FF",
               borderRadius: 14,
               padding: "14px 16px",
-              marginBottom: 16,
+              marginBottom: 14,
               border: "1px solid #BFDBFE",
             }}
           >
@@ -1116,9 +1571,9 @@ export default function PosCashierTab({
               }}
             >
               <span
-                style={{ fontSize: 13, fontWeight: 600, color: "#1E40AF" }}
+                style={{ fontSize: 13, fontWeight: 700, color: "#1E40AF" }}
               >
-                TOTAL DUE (USD)
+                {L("total_due_usd")}
               </span>
               <span
                 style={{ fontSize: 26, fontWeight: 800, color: "#0066FF" }}
@@ -1135,9 +1590,9 @@ export default function PosCashierTab({
               }}
             >
               <span
-                style={{ fontSize: 12, fontWeight: 600, color: "#1E40AF" }}
+                style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}
               >
-                សរុបជាប្រាក់រៀល (KHR)
+                {L("total_due_khr")}
               </span>
               <span
                 style={{ fontSize: 18, fontWeight: 800, color: "#1D4ED8" }}
@@ -1147,7 +1602,7 @@ export default function PosCashierTab({
             </div>
           </div>
 
-          {/* Payment Method Toggle (Cash vs KHQR) */}
+          {/* Clean Payment Method Toggle (Cash vs ABA KHQR) */}
           <div
             style={{
               display: "grid",
@@ -1177,7 +1632,7 @@ export default function PosCashierTab({
                 gap: 6,
               }}
             >
-              <FiDollarSign size={16} /> 💵 Cash
+              <FiDollarSign size={16} /> {L("cash_payment")}
             </button>
             <button
               type="button"
@@ -1200,11 +1655,11 @@ export default function PosCashierTab({
                 gap: 6,
               }}
             >
-              <FiSmartphone size={16} /> 📱 ABA KHQR
+              <FiSmartphone size={16} /> {L("khqr_payment")}
             </button>
           </div>
 
-          {/* Cash Calculator (USD + KHR Received & Change Due) */}
+          {/* Upgraded Cash Received & Dual-Currency Change Calculator */}
           {paymentMethod === "cash" && cart.length > 0 && (
             <div
               style={{
@@ -1217,163 +1672,303 @@ export default function PosCashierTab({
             >
               <div
                 style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#374151",
-                  marginBottom: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 10,
                 }}
               >
-                Cash Received from Customer (Optional Quick Calculator):
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#374151",
+                  }}
+                >
+                  💵 {L("cash_calculator_title")}
+                </span>
+                {(tenderedUsd || tenderedKhr) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTenderedUsd("");
+                      setTenderedKhr("");
+                    }}
+                    style={{
+                      border: "none",
+                      background: "#FEE2E2",
+                      color: "#DC2626",
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {L("reset_cash")}
+                  </button>
+                )}
               </div>
 
+              {/* Clean USD & KHR Inputs (No Spinner Arrows + Instant Clear Button) */}
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  marginBottom: 10,
+                  gap: 10,
+                  marginBottom: 12,
                 }}
               >
                 <div>
                   <label
                     style={{
                       fontSize: 11,
-                      color: "#6B7280",
-                      fontWeight: 600,
+                      color: "#4B5563",
+                      fontWeight: 700,
+                      display: "block",
+                      marginBottom: 4,
                     }}
                   >
-                    Received USD ($)
+                    {L("received_usd")}
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={tenderedUsd}
-                    onChange={(e) => setTenderedUsd(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #D1D5DB",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      boxSizing: "border-box",
-                      marginTop: 4,
-                    }}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 10,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontWeight: 800,
+                        color: "#059669",
+                        fontSize: 14,
+                      }}
+                    >
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      className="pos-no-spin"
+                      placeholder="0.00"
+                      value={tenderedUsd}
+                      onChange={(e) => setTenderedUsd(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 28px 9px 24px",
+                        borderRadius: 10,
+                        border: tenderedUsd
+                          ? "2px solid #10B981"
+                          : "1px solid #D1D5DB",
+                        fontSize: 15,
+                        fontWeight: 800,
+                        boxSizing: "border-box",
+                        background: "#fff",
+                        outline: "none",
+                      }}
+                    />
+                    {tenderedUsd && (
+                      <button
+                        type="button"
+                        onClick={() => setTenderedUsd("")}
+                        style={{
+                          position: "absolute",
+                          right: 6,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          border: "none",
+                          background: "#F3F4F6",
+                          borderRadius: "50%",
+                          width: 20,
+                          height: 20,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          color: "#6B7280",
+                        }}
+                      >
+                        <FiX size={12} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
                 <div>
                   <label
                     style={{
                       fontSize: 11,
-                      color: "#6B7280",
-                      fontWeight: 600,
+                      color: "#4B5563",
+                      fontWeight: 700,
+                      display: "block",
+                      marginBottom: 4,
                     }}
                   >
-                    Received Riel (៛)
+                    {L("received_khr")}
                   </label>
-                  <input
-                    type="number"
-                    step="100"
-                    placeholder="0"
-                    value={tenderedKhr}
-                    onChange={(e) => setTenderedKhr(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #D1D5DB",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      boxSizing: "border-box",
-                      marginTop: 4,
-                    }}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      step="100"
+                      className="pos-no-spin"
+                      placeholder="0"
+                      value={tenderedKhr}
+                      onChange={(e) => setTenderedKhr(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 38px 9px 10px",
+                        borderRadius: 10,
+                        border: tenderedKhr
+                          ? "2px solid #0066FF"
+                          : "1px solid #D1D5DB",
+                        fontSize: 15,
+                        fontWeight: 800,
+                        boxSizing: "border-box",
+                        background: "#fff",
+                        outline: "none",
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: tenderedKhr ? 28 : 10,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontWeight: 800,
+                        color: "#0066FF",
+                        fontSize: 14,
+                      }}
+                    >
+                      ៛
+                    </span>
+                    {tenderedKhr && (
+                      <button
+                        type="button"
+                        onClick={() => setTenderedKhr("")}
+                        style={{
+                          position: "absolute",
+                          right: 6,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          border: "none",
+                          background: "#F3F4F6",
+                          borderRadius: "50%",
+                          width: 20,
+                          height: 20,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          color: "#6B7280",
+                        }}
+                      >
+                        <FiX size={12} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* 1-Tap Banknote Shortcuts */}
+              {/* Row 1: Exact + USD Banknote Buttons ($1, $5, $10, $20, $50, $100) */}
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 1fr)",
+                  gap: 6,
+                  marginBottom: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTenderedUsd(String(totals.totalUsd));
+                    setTenderedKhr("");
+                  }}
+                  style={{
+                    padding: "6px 4px",
+                    borderRadius: 8,
+                    border: "1px solid #0066FF",
+                    background: "#EFF6FF",
+                    color: "#0066FF",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {L("exact_amount")}
+                </button>
+                {[1, 5, 10, 20, 50].map((usdBill) => (
+                  <button
+                    key={usdBill}
+                    type="button"
+                    onClick={() =>
+                      setTenderedUsd((prev) =>
+                        String(
+                          Math.round(((parseFloat(prev) || 0) + usdBill) * 100) /
+                            100,
+                        ),
+                      )
+                    }
+                    style={{
+                      padding: "6px 4px",
+                      borderRadius: 8,
+                      border: "1px solid #A7F3D0",
+                      background: "#ECFDF5",
+                      color: "#065F46",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    +${usdBill}
+                  </button>
+                ))}
+              </div>
+
+              {/* Row 2: Khmer Riel Banknote Buttons (1k, 5k, 10k, 20k, 50k, 100k) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 1fr)",
                   gap: 6,
                   marginBottom: 10,
                 }}
               >
                 {[
-                  {
-                    label: "Exact",
-                    onClick: () => {
-                      setTenderedUsd(String(totals.totalUsd));
-                      setTenderedKhr("");
-                    },
-                  },
-                  {
-                    label: "$5",
-                    onClick: () =>
-                      setTenderedUsd((prev) =>
-                        String((parseFloat(prev) || 0) + 5),
-                      ),
-                  },
-                  {
-                    label: "$10",
-                    onClick: () =>
-                      setTenderedUsd((prev) =>
-                        String((parseFloat(prev) || 0) + 10),
-                      ),
-                  },
-                  {
-                    label: "$20",
-                    onClick: () =>
-                      setTenderedUsd((prev) =>
-                        String((parseFloat(prev) || 0) + 20),
-                      ),
-                  },
-                  {
-                    label: "10,000៛",
-                    onClick: () =>
-                      setTenderedKhr((prev) =>
-                        String((parseFloat(prev) || 0) + 10000),
-                      ),
-                  },
-                  {
-                    label: "20,000៛",
-                    onClick: () =>
-                      setTenderedKhr((prev) =>
-                        String((parseFloat(prev) || 0) + 20000),
-                      ),
-                  },
-                  {
-                    label: "50,000៛",
-                    onClick: () =>
-                      setTenderedKhr((prev) =>
-                        String((parseFloat(prev) || 0) + 50000),
-                      ),
-                  },
-                ].map((btn) => (
+                  { label: "+1ពាន់", val: 1000, en: "+1k៛" },
+                  { label: "+5ពាន់", val: 5000, en: "+5k៛" },
+                  { label: "+1ម៉ឺន", val: 10000, en: "+10k៛" },
+                  { label: "+2ម៉ឺន", val: 20000, en: "+20k៛" },
+                  { label: "+5ម៉ឺន", val: 50000, en: "+50k៛" },
+                  { label: "+10ម៉ឺន", val: 100000, en: "+100k៛" },
+                ].map((khrBill) => (
                   <button
-                    key={btn.label}
+                    key={khrBill.val}
                     type="button"
-                    onClick={btn.onClick}
+                    onClick={() =>
+                      setTenderedKhr((prev) =>
+                        String((parseFloat(prev) || 0) + khrBill.val),
+                      )
+                    }
                     style={{
-                      padding: "5px 9px",
+                      padding: "6px 2px",
                       borderRadius: 8,
-                      border: "1px solid #D1D5DB",
-                      background: "#fff",
-                      fontSize: 12,
-                      fontWeight: 700,
+                      border: "1px solid #BFDBFE",
+                      background: "#EFF6FF",
+                      color: "#1E40AF",
+                      fontSize: 11,
+                      fontWeight: 800,
                       cursor: "pointer",
-                      color: "#111827",
                     }}
                   >
-                    {btn.label}
+                    {isKm ? khrBill.label : khrBill.en}
                   </button>
                 ))}
               </div>
 
               {/* Change Due Display */}
-              {(parseFloat(tenderedUsd) > 0 || parseFloat(tenderedKhr) > 0) && (
+              {(totals.givenUsd > 0 || totals.givenKhr > 0) && (
                 <div
                   style={{
                     padding: "10px 12px",
@@ -1390,13 +1985,14 @@ export default function PosCashierTab({
                         style={{
                           display: "flex",
                           justifyContent: "space-between",
+                          alignItems: "center",
                           fontWeight: 800,
                           color: "#065F46",
                           fontSize: 15,
                         }}
                       >
-                        <span>CHANGE DUE:</span>
-                        <span>
+                        <span>{L("change_due")}</span>
+                        <span style={{ fontSize: 16 }}>
                           {fmt(totals.changeUsd)} ({totals.changeKhr.toLocaleString()} ៛)
                         </span>
                       </div>
@@ -1410,7 +2006,7 @@ export default function PosCashierTab({
                               fontWeight: 600,
                             }}
                           >
-                            💡 Give customer:{" "}
+                            💡 {L("give_customer")}{" "}
                             <strong>${totals.wholeUsdChange} USD</strong> +{" "}
                             <strong>
                               {totals.remainderKhrChange.toLocaleString()} ៛
@@ -1424,10 +2020,22 @@ export default function PosCashierTab({
                         color: "#DC2626",
                         fontWeight: 700,
                         fontSize: 13,
+                        display: "flex",
+                        justifyContent: "space-between",
                       }}
                     >
-                      Still short by{" "}
-                      {fmt(totals.totalUsd - totals.totalGivenInUsd)}
+                      <span>{L("still_short")}:</span>
+                      <span>
+                        {fmt(totals.totalUsd - totals.totalGivenInUsd)} (
+                        {(
+                          Math.round(
+                            ((totals.totalUsd - totals.totalGivenInUsd) *
+                              safeRate) /
+                              100,
+                          ) * 100
+                        ).toLocaleString()}{" "}
+                        ៛)
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1451,8 +2059,8 @@ export default function PosCashierTab({
             }}
           >
             {isCompleting
-              ? "Recording Sale..."
-              : `✅ Complete Sale (${fmt(totals.totalUsd)})`}
+              ? L("recording_sale")
+              : `✅ ${L("complete_sale")} (${fmt(totals.totalUsd)})`}
           </Button>
         </div>
       </div>
@@ -1491,10 +2099,10 @@ export default function PosCashierTab({
                 SOPHEA MART
               </h3>
               <div style={{ fontSize: 12, color: "#6B7280" }}>
-                Receipt #{completedReceipt.id} • {completedReceipt.date}
+                #{completedReceipt.id} • {completedReceipt.date}
               </div>
               <div style={{ fontSize: 12, color: "#6B7280" }}>
-                Cashier: {completedReceipt.cashier}
+                {L("cashier_label")}: {completedReceipt.cashier}
               </div>
             </div>
 
@@ -1535,7 +2143,7 @@ export default function PosCashierTab({
                   fontSize: 16,
                 }}
               >
-                <span>Total USD:</span>
+                <span>{L("total_due_usd")}:</span>
                 <span>{fmt(completedReceipt.totalUsd)}</span>
               </div>
               <div
@@ -1547,7 +2155,7 @@ export default function PosCashierTab({
                   marginTop: 2,
                 }}
               >
-                <span>Total KHR:</span>
+                <span>{L("total_due_khr")}:</span>
                 <span>{completedReceipt.totalKhr.toLocaleString()} ៛</span>
               </div>
               {completedReceipt.changeUsd > 0 && (
@@ -1560,7 +2168,7 @@ export default function PosCashierTab({
                     marginTop: 6,
                   }}
                 >
-                  <span>Change Due:</span>
+                  <span>{L("change_due")}</span>
                   <span>
                     {fmt(completedReceipt.changeUsd)} (
                     {completedReceipt.changeKhr.toLocaleString()} ៛)
@@ -1587,7 +2195,7 @@ export default function PosCashierTab({
                   gap: 6,
                 }}
               >
-                <FiPrinter size={16} /> Print
+                <FiPrinter size={16} /> {L("print_receipt")}
               </button>
               <button
                 type="button"
@@ -1607,7 +2215,7 @@ export default function PosCashierTab({
                   gap: 6,
                 }}
               >
-                <FiRefreshCw size={16} /> Next Customer
+                <FiRefreshCw size={16} /> {L("next_customer")}
               </button>
             </div>
           </div>

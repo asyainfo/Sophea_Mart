@@ -688,7 +688,7 @@ export default function AdminDashboard() {
   ].filter(Boolean);
 
   const getTabLabel = (tabName) => {
-    if (tabName === "pos") return t("admin.tabs.pos", "⚡ POS Cashier");
+    if (tabName === "pos") return t("admin.tabs.pos", i18n.language?.startsWith("km") ? "⚡ គិតលុយ (POS)" : "⚡ POS Cashier");
     return t(`admin.tabs.${tabName}`, tabName);
   };
 
@@ -822,7 +822,7 @@ export default function AdminDashboard() {
             >
               <FiZap size={16} />{" "}
               <span className="hide-mobile-text">
-                {t("nav.pos_scanner", "POS Scanner")}
+                {t("nav.pos_scanner", i18n.language?.startsWith("km") ? "ម៉ាស៊ីនគិតលុយ POS" : "POS Scanner")}
               </span>
             </Button>
             <Button
