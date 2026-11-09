@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import {
   FiCamera,
@@ -20,6 +20,7 @@ import {
   FiArrowDown,
   FiArrowRight,
   FiTag,
+  FiChevronDown,
 } from "react-icons/fi";
 import { supabase } from "../../services/supabase";
 import { fmt } from "../../utils/currency";
@@ -28,68 +29,66 @@ import { useTranslation } from "react-i18next";
 
 const DEFAULT_EXCHANGE_RATE = 4000;
 const SAME_BARCODE_COOLDOWN_MS = 1200;
+const INITIAL_VISIBLE_COUNT = 36;
 
-// Built-in Khmer & English fallback dictionary so translations work 100% even if i18n keys are cached
 const POS_DICT = {
   en: {
     title: "Fast POS Counter Scanner",
-    subtitle:
-      "Scan multiple items continuously by phone or select products below",
-    rate_label: "1$ =",
-    beep_on: "Laser Beep",
+    subtitle: "Scan barcodes continuously by phone or tap products below",
+    rate_label: "Rate",
+    beep_on: "Beep ON",
     muted: "Muted",
-    test_sound: "Test Beep",
-    start_camera: "Scan with Phone Camera",
+    test_sound: "Test",
+    start_camera: "Scan with Camera",
     stop_camera: "Close Camera",
-    continuous_mode: "Continuous Scan Mode (Camera stays open)",
-    tap_rescan: "Tap camera to scan same item again",
+    continuous_mode: "Continuous Scan (Camera stays open)",
+    tap_rescan: "Tap camera to rescan same item",
     ready_scan: "Ready! Hold barcode in front of camera",
-    starting_camera: "Starting back-camera barcode scanner...",
+    starting_camera: "Starting back-camera scanner...",
     barcode_not_found: "Barcode not found",
-    search_placeholder: "Search product name or scan/type barcode...",
+    search_placeholder: "Search product name or barcode...",
     clear: "Clear",
     all_categories: "All Products",
     no_barcode_filter: "No Barcode",
     showing_count: "Showing",
+    of_total: "of",
     products_unit: "products",
-    scroll_vertical: "Up / Down",
-    scroll_horizontal: "Left / Right",
+    load_more: "Show More Products",
+    scroll_vertical: "Grid",
+    scroll_horizontal: "Swipe",
     current_bill: "Current Counter Bill",
     items_unit: "items",
-    empty_bill:
-      "Scan a barcode with your phone camera or tap any product on the left to start a bill.",
+    empty_bill: "Scan a barcode or tap any product to start a bill.",
     total_due_usd: "TOTAL DUE (USD)",
     total_due_khr: "TOTAL DUE (KHR)",
     cash_payment: "Cash",
     khqr_payment: "ABA KHQR",
-    cash_calculator_title: "Cash Received & Change Calculator",
-    reset_cash: "Reset Cash",
+    cash_calculator_title: "Cash Received & Change",
+    reset_cash: "Reset",
     received_usd: "Received USD ($)",
     received_khr: "Received Riel (៛)",
     exact_amount: "Exact",
-    usd_notes: "USD Notes ($)",
-    khr_notes: "Riel Notes (៛)",
     change_due: "CHANGE DUE:",
-    give_customer: "Suggested Change:",
-    still_short: "Still short by",
+    give_customer: "Give customer:",
+    still_short: "Still short:",
     complete_sale: "Complete Sale",
-    recording_sale: "Recording Sale...",
-    print_receipt: "Print Receipt",
+    recording_sale: "Recording...",
+    print_receipt: "Print",
     next_customer: "Next Customer",
     cashier_label: "Cashier",
+    view_bill: "View Bill / Pay",
   },
   km: {
     title: "ម៉ាស៊ីនគិតលុយរហ័ស (POS)",
-    subtitle:
-      "ស្កេនបាកូដទំនិញជាប់ៗគ្នាដោយទូរស័ព្ទ ឬចុចជ្រើសរើសទំនិញទាំងអស់ខាងក្រោម",
-    rate_label: "1$ =",
+    subtitle: "ស្កេនបាកូដទំនិញជាប់ៗគ្នាដោយទូរស័ព្ទ ឬចុចជ្រើសរើសទំនិញខាងក្រោម",
+    rate_label: "អត្រា",
     beep_on: "សំឡេងស្កេន",
     muted: "បិទសំឡេង",
     test_sound: "សាកសំឡេង",
-    start_camera: "បើកកាមេរ៉ាស្កេនទំនិញ",
+    start_camera: "បើកកាមេរ៉ាស្កេន",
     stop_camera: "បិទកាមេរ៉ា",
-    continuous_mode: "ប្រព័ន្ធស្កេនជាប់ៗគ្នា (កាមេរ៉ាបើកជានិច្ច)",
-    tap_rescan: "ចុចលើកាមេរ៉ាដើម្បីស្កេនទំនិញដដែលម្តងទៀត",
+    continuous_mode: "ស្កេនជាប់ៗគ្នា (កាមេរ៉ាបើកជានិច្ច)",
+    tap_rescan: "ចុចលើកាមេរ៉ាដើម្បីស្កេនម្តងទៀត",
     ready_scan: "រួចរាល់! សូមដាក់បាកូដនៅមុខកាមេរ៉ា",
     starting_camera: "កំពុងបើកកាមេរ៉ាស្កេនបាកូដ...",
     barcode_not_found: "រកមិនឃើញបាកូដនេះទេ",
@@ -98,13 +97,14 @@ const POS_DICT = {
     all_categories: "ទំនិញទាំងអស់",
     no_barcode_filter: "គ្មានបាកូដ",
     showing_count: "បង្ហាញ",
+    of_total: "ក្នុងចំណោម",
     products_unit: "មុខទំនិញ",
+    load_more: "បង្ហាញទំនិញបន្ថែមទៀត",
     scroll_vertical: "អូសលើ-ក្រោម",
     scroll_horizontal: "អូសឆ្វេង-ស្តាំ",
     current_bill: "វិក្កយបត្រគិតលុយបច្ចុប្បន្ន",
     items_unit: "មុខ",
-    empty_bill:
-      "សូមស្កេនបាកូដទំនិញ ឬចុចជ្រើសរើសទំនិញនៅខាងឆ្វេងដើម្បីគិតលុយ។",
+    empty_bill: "សូមស្កេនបាកូដទំនិញ ឬចុចជ្រើសរើសទំនិញដើម្បីគិតលុយ។",
     total_due_usd: "សរុបជាប្រាក់ដុល្លារ (USD)",
     total_due_khr: "សរុបជាប្រាក់រៀល (KHR)",
     cash_payment: "សាច់ប្រាក់សុទ្ធ",
@@ -114,16 +114,15 @@ const POS_DICT = {
     received_usd: "ប្រាក់ទទួលជាដុល្លារ ($)",
     received_khr: "ប្រាក់ទទួលជារៀល (៛)",
     exact_amount: "គ្រប់ចំនួន",
-    usd_notes: "ក្រដាសប្រាក់ដុល្លារ ($)",
-    khr_notes: "ក្រដាសប្រាក់រៀល (៛)",
-    change_due: "ប្រាក់ត្រូវអាប់ជូនអតិថិជន:",
-    give_customer: "ណែនាំរបៀបអាប់ប្រាក់:",
-    still_short: "ខ្វះទឹកប្រាក់ចំនួន",
+    change_due: "ប្រាក់ត្រូវអាប់:",
+    give_customer: "ណែនាំរបៀបអាប់:",
+    still_short: "ខ្វះទឹកប្រាក់:",
     complete_sale: "បញ្ចប់ការលក់",
-    recording_sale: "កំពុងរក្សាទុកវិក្កយបត្រ...",
-    print_receipt: "បោះពុម្ពវិក្កយបត្រ",
+    recording_sale: "កំពុងរក្សាទុក...",
+    print_receipt: "បោះពុម្ព",
     next_customer: "អតិថិជនបន្ទាប់",
     cashier_label: "អ្នកគិតលុយ",
+    view_bill: "មើលវិក្កយបត្រ / គិតលុយ",
   },
 };
 
@@ -143,7 +142,6 @@ function playSupermarketScannerSound(type = "scan") {
     const now = sharedAudioCtx.currentTime;
 
     if (type === "scan") {
-      // Crisp 2650Hz + 5300Hz dual-oscillator supermarket laser beep (68ms)
       const osc1 = sharedAudioCtx.createOscillator();
       const osc2 = sharedAudioCtx.createOscillator();
       const gain = sharedAudioCtx.createGain();
@@ -171,7 +169,6 @@ function playSupermarketScannerSound(type = "scan") {
       osc1.stop(now + 0.075);
       osc2.stop(now + 0.075);
     } else if (type === "complete") {
-      // Cheerful double-beep register confirmation (2100Hz -> 2800Hz)
       [2100, 2800].forEach((freq, idx) => {
         const osc = sharedAudioCtx.createOscillator();
         const gain = sharedAudioCtx.createGain();
@@ -186,7 +183,6 @@ function playSupermarketScannerSound(type = "scan") {
         osc.stop(start + 0.08);
       });
     } else {
-      // Low error double-buzz (240Hz) when barcode is not found
       [0, 0.12].forEach((offset) => {
         const osc = sharedAudioCtx.createOscillator();
         const gain = sharedAudioCtx.createGain();
@@ -206,6 +202,49 @@ function playSupermarketScannerSound(type = "scan") {
   }
 }
 
+// ⚡ Memoized Product Card for 60fps scrolling & zero unnecessary re-renders
+const PosProductCard = memo(function PosProductCard({
+  product,
+  qtyInBill,
+  safeRate,
+  onSelect,
+}) {
+  const price = Number(product.price ?? product.price_usd ?? 0);
+  const khr = Math.round((price * safeRate) / 100) * 100;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(product)}
+      className="pos-product-card"
+      style={{
+        border: qtyInBill > 0 ? "2px solid #0066FF" : "1px solid #E5E7EB",
+        background: qtyInBill > 0 ? "#EFF6FF" : "#FFFFFF",
+      }}
+    >
+      {qtyInBill > 0 && (
+        <span className="pos-card-badge">×{qtyInBill}</span>
+      )}
+      {product.image_url || product.image ? (
+        <img
+          src={product.image_url || product.image}
+          alt={product.name}
+          loading="lazy"
+          decoding="async"
+          className="pos-card-img"
+        />
+      ) : (
+        <div className="pos-card-placeholder">
+          <FiShoppingBag size={20} />
+        </div>
+      )}
+      <div className="pos-card-title">{product.name}</div>
+      <div className="pos-card-usd">{fmt(price)}</div>
+      <div className="pos-card-khr">{khr.toLocaleString()} ៛</div>
+    </button>
+  );
+});
+
 export default function PosCashierTab({
   products = [],
   user,
@@ -218,20 +257,21 @@ export default function PosCashierTab({
   const L = useCallback(
     (key) => {
       const dict = isKm ? POS_DICT.km : POS_DICT.en;
-      return t(`pos.${key}`, dict[key] || POS_DICT.en[key] || key);
+      return dict[key] || POS_DICT.en[key] || key;
     },
-    [t, isKm],
+    [isKm],
   );
 
-  // POS Cart & Product Browsing State
+  // POS Cart & Browsing State
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [scrollDirection, setScrollDirection] = useState("vertical"); // "vertical" | "horizontal"
-  const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "bank"
+  const [scrollDirection, setScrollDirection] = useState("vertical");
+  const [visibleLimit, setVisibleLimit] = useState(INITIAL_VISIBLE_COUNT);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [exchangeRate, setExchangeRate] = useState(DEFAULT_EXCHANGE_RATE);
 
-  // Cash Tendered State (Supports mixed USD + KHR handed by walk-in customer)
+  // Cash Tendered State
   const [tenderedUsd, setTenderedUsd] = useState("");
   const [tenderedKhr, setTenderedKhr] = useState("");
 
@@ -247,24 +287,21 @@ export default function PosCashierTab({
   const lastScanRef = useRef({ code: "", time: 0 });
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
-  const productScrollRef = useRef(null);
+  const billSectionRef = useRef(null);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
 
+  // Reset pagination limit when filter or search changes
+  useEffect(() => {
+    setVisibleLimit(INITIAL_VISIBLE_COUNT);
+  }, [searchQuery, selectedCategory]);
+
   const safeRate = useMemo(() => {
     const num = Number(exchangeRate);
     return num >= 100 ? num : DEFAULT_EXCHANGE_RATE;
   }, [exchangeRate]);
-
-  const formatKhrWithRate = useCallback(
-    (usdAmount) => {
-      const khr = Math.round((Number(usdAmount || 0) * safeRate) / 100) * 100;
-      return `${khr.toLocaleString()} ៛`;
-    },
-    [safeRate],
-  );
 
   // Fast O(1) barcode lookup map + ALL active products + category list
   const { barcodeMap, activeProducts, categories, noBarcodeCount } =
@@ -306,7 +343,7 @@ export default function PosCashierTab({
       };
     }, [products]);
 
-  // ALL matching products (No 12-item cutoff! Admin & Cashier can select any product)
+  // Filter across all 265 products instantaneously
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return activeProducts.filter((p) => {
@@ -337,6 +374,19 @@ export default function PosCashierTab({
     });
   }, [activeProducts, searchQuery, selectedCategory]);
 
+  // Slice for blazing-fast DOM rendering while allowing instant "Show More"
+  const displayedProducts = useMemo(
+    () => filteredProducts.slice(0, visibleLimit),
+    [filteredProducts, visibleLimit],
+  );
+
+  // Fast O(1) map of product quantities currently in bill
+  const cartQtyMap = useMemo(() => {
+    const map = new Map();
+    cart.forEach((item) => map.set(item.id, item.qty));
+    return map;
+  }, [cart]);
+
   const showScanFeedback = useCallback((text, isError = false) => {
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     setLastScannedBanner({ text, isError });
@@ -345,7 +395,6 @@ export default function PosCashierTab({
     }, 2200);
   }, []);
 
-  // Add item to POS Bill
   const addItemToBill = useCallback(
     (product) => {
       if (!product) return;
@@ -408,7 +457,6 @@ export default function PosCashierTab({
     lastScanRef.current = { code: "", time: 0 };
   };
 
-  // Keep latest barcode handler in ref so camera stream never needs to restart when cart updates
   const handleBarcodeDetectedRef = useRef(null);
   handleBarcodeDetectedRef.current = (decodedText) => {
     const cleanCode = String(decodedText || "").trim();
@@ -440,7 +488,6 @@ export default function PosCashierTab({
     }
   };
 
-  // Stop camera cleanly
   const stopScanner = useCallback(async () => {
     const instance = html5QrCodeRef.current;
     html5QrCodeRef.current = null;
@@ -462,7 +509,6 @@ export default function PosCashierTab({
     setCameraStarting(false);
   }, []);
 
-  // Start continuous back-camera scanner
   const startScanner = useCallback(async () => {
     if (cameraStarting || html5QrCodeRef.current) return;
     setScannerOpen(true);
@@ -483,7 +529,7 @@ export default function PosCashierTab({
           { facingMode: "environment" },
           {
             fps: 18,
-            qrbox: { width: 250, height: 120 },
+            qrbox: { width: 240, height: 115 },
             aspectRatio: 1.777,
           },
           (decodedText) => {
@@ -491,9 +537,7 @@ export default function PosCashierTab({
               handleBarcodeDetectedRef.current(decodedText);
             }
           },
-          () => {
-            // Ignore frame parse misses
-          },
+          () => {},
         );
       } catch (err) {
         console.error("POS Camera Error:", err);
@@ -512,7 +556,6 @@ export default function PosCashierTab({
     }, 80);
   }, [cameraStarting, triggerToast, t]);
 
-  // Cleanup camera & timers on unmount
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
@@ -520,7 +563,6 @@ export default function PosCashierTab({
     };
   }, [stopScanner]);
 
-  // Bill Totals & Dual-Currency Change Calculation
   const totals = useMemo(() => {
     const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
     const totalUsd =
@@ -539,7 +581,6 @@ export default function PosCashierTab({
         ? Math.round((changeUsdRaw * safeRate) / 100) * 100
         : 0;
 
-    // Smart Mixed Change Breakdown: Whole USD notes + remainder in Riel
     const wholeUsdChange = Math.floor(changeUsd + 0.001);
     const remainderKhrChange =
       Math.round(((changeUsd - wholeUsdChange) * safeRate) / 100) * 100;
@@ -562,7 +603,6 @@ export default function PosCashierTab({
     };
   }, [cart, safeRate, tenderedUsd, tenderedKhr, paymentMethod]);
 
-  // Handle Enter key in search box to immediately add exact barcode match
   const handleSearchKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -580,17 +620,13 @@ export default function PosCashierTab({
     }
   };
 
-  // Complete Walk-In POS Sale -> Saves to Supabase Orders & order_items
   const handleCompleteSale = async () => {
     if (cart.length === 0 || isCompleting) return;
     if (!totals.isEnoughCash) {
       triggerToast?.(
-        t(
-          "pos.insufficient_cash",
-          isKm
-            ? "ប្រាក់ទទួលតិចជាងទឹកប្រាក់សរុប!"
-            : "Cash received is less than the bill total!",
-        ),
+        isKm
+          ? "ប្រាក់ទទួលតិចជាងទឹកប្រាក់សរុប!"
+          : "Cash received is less than the bill total!",
         "error",
       );
       return;
@@ -662,17 +698,12 @@ export default function PosCashierTab({
         givenKhr: totals.givenKhr,
         changeUsd: totals.changeUsd,
         changeKhr: totals.changeKhr,
-        wholeUsdChange: totals.wholeUsdChange,
-        remainderKhrChange: totals.remainderKhrChange,
       });
 
       setCart([]);
       setTenderedUsd("");
       setTenderedKhr("");
-      triggerToast?.(
-        `✅ ${orderId} (${fmt(totals.totalUsd)})`,
-        "success",
-      );
+      triggerToast?.(`✅ ${orderId} (${fmt(totals.totalUsd)})`, "success");
       onSaleCompleted?.();
     } catch (err) {
       console.error("POS Checkout Error:", err);
@@ -686,10 +717,17 @@ export default function PosCashierTab({
   };
 
   return (
-    <div style={{ width: "100%" }}>
+    <div className="pos-wrapper">
       <style>
         {`
-          /* Hide ugly browser number input arrows */
+          .pos-wrapper, .pos-wrapper * {
+            box-sizing: border-box;
+          }
+          .pos-wrapper {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+          }
           .pos-no-spin::-webkit-outer-spin-button,
           .pos-no-spin::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -699,30 +737,75 @@ export default function PosCashierTab({
             -moz-appearance: textfield;
           }
 
+          /* Top Toolbar */
+          .pos-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+            background: #FFFFFF;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid #F3F4F6;
+            width: 100%;
+          }
+          .pos-toolbar-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+
+          /* Main 2-Column Layout with strict min-width: 0 to prevent horizontal overflow! */
           .pos-grid {
             display: grid;
-            grid-template-columns: 1.15fr 0.85fr;
-            gap: 20px;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+            gap: 18px;
             align-items: start;
+            width: 100%;
+          }
+          .pos-col {
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
           }
 
-          /* Vertical Scroll Mode (Up & Down) */
+          /* Category Chips Scroll Row */
+          .pos-category-chips {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            padding-bottom: 6px;
+            margin-bottom: 12px;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+          }
+          .pos-category-chips::-webkit-scrollbar {
+            display: none;
+          }
+
+          /* Product Grids */
           .pos-product-grid-vertical {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
             gap: 10px;
-            max-height: 540px;
+            max-height: 520px;
             overflow-y: auto;
-            padding-right: 4px;
+            width: 100%;
+            padding-right: 2px;
           }
-
-          /* Horizontal Scroll Mode (Left & Right Swipe) */
           .pos-product-grid-horizontal {
             display: grid;
             grid-template-rows: repeat(2, auto);
             grid-auto-flow: column;
-            grid-auto-columns: 145px;
+            grid-auto-columns: 136px;
             gap: 10px;
+            width: 100%;
+            max-width: 100%;
             overflow-x: auto;
             padding-bottom: 10px;
             scroll-snap-type: x mandatory;
@@ -732,22 +815,119 @@ export default function PosCashierTab({
             scroll-snap-align: start;
           }
 
-          .pos-category-chips {
+          /* Product Card */
+          .pos-product-card {
             display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding-bottom: 6px;
-            scrollbar-width: none;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            padding: 10px;
+            border-radius: 14px;
+            cursor: pointer;
+            position: relative;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+            transition: transform 0.1s ease;
           }
-          .pos-category-chips::-webkit-scrollbar {
+          .pos-product-card:active {
+            transform: scale(0.97);
+          }
+          .pos-card-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: #0066FF;
+            color: #FFFFFF;
+            border-radius: 999px;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 800;
+            z-index: 2;
+          }
+          .pos-card-img {
+            width: 100%;
+            height: 72px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #F9FAFB;
+            margin-bottom: 8px;
+          }
+          .pos-card-placeholder {
+            width: 100%;
+            height: 72px;
+            border-radius: 8px;
+            background: #F3F4F6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            color: #9CA3AF;
+          }
+          .pos-card-title {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #111827;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .pos-card-usd {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0066FF;
+            margin-top: 2px;
+          }
+          .pos-card-khr {
+            font-size: 11px;
+            color: #6B7280;
+          }
+
+          /* Quick Banknote Grid */
+          .pos-banknote-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            margin-bottom: 8px;
+            width: 100%;
+          }
+          @media (min-width: 480px) {
+            .pos-banknote-grid {
+              grid-template-columns: repeat(6, minmax(0, 1fr));
+            }
+          }
+
+          /* Floating Mobile Checkout Jump Bar */
+          .pos-mobile-jump-bar {
             display: none;
           }
 
-          @media (max-width: 900px) {
+          @media (max-width: 960px) {
             .pos-grid {
-              grid-template-columns: 1fr !important;
+              grid-template-columns: minmax(0, 1fr) !important;
+            }
+            .pos-product-grid-vertical {
+              grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+              max-height: 420px;
+            }
+            .pos-mobile-jump-bar {
+              display: flex;
+              position: fixed;
+              bottom: 12px;
+              left: 12px;
+              right: 12px;
+              background: #111827;
+              color: #FFFFFF;
+              padding: 12px 16px;
+              border-radius: 14px;
+              justify-content: space-between;
+              align-items: center;
+              z-index: 900;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.25);
             }
           }
+
           @media print {
             body * { visibility: hidden; }
             #pos-printable-receipt, #pos-printable-receipt * {
@@ -767,21 +947,15 @@ export default function PosCashierTab({
       </style>
 
       {/* Top Action Bar */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: 16,
-          background: "#fff",
-          padding: "14px 18px",
-          borderRadius: 16,
-          border: "1px solid #f3f4f6",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="pos-toolbar">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            minWidth: 0,
+          }}
+        >
           <div
             style={{
               width: 40,
@@ -797,25 +971,32 @@ export default function PosCashierTab({
           >
             <FiZap size={20} />
           </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, color: "#111827" }}>
+          <div style={{ minWidth: 0 }}>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 17,
+                color: "#111827",
+                lineHeight: 1.3,
+              }}
+            >
               {L("title")}
             </h2>
-            <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                color: "#6B7280",
+                lineHeight: 1.3,
+              }}
+            >
               {L("subtitle")}
             </p>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          {/* Clean Exchange Rate Selector (4000 / 4100 + Custom without Accidental Scroll Spinners) */}
+        <div className="pos-toolbar-controls">
+          {/* Exchange Rate Selector */}
           <div
             style={{
               display: "flex",
@@ -825,11 +1006,11 @@ export default function PosCashierTab({
               padding: "5px 10px",
               borderRadius: 10,
               border: "1px solid #E5E7EB",
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 600,
             }}
           >
-            <span>{L("rate_label")}</span>
+            <span>{L("rate_label")}:</span>
             <input
               type="number"
               step="50"
@@ -837,14 +1018,14 @@ export default function PosCashierTab({
               value={exchangeRate}
               onChange={(e) => setExchangeRate(e.target.value)}
               style={{
-                width: 52,
+                width: 50,
                 border: "1px solid #DBEAFE",
                 borderRadius: 6,
-                padding: "2px 6px",
+                padding: "2px 4px",
                 background: "#fff",
                 fontWeight: 800,
                 color: "#0066FF",
-                fontSize: 13,
+                fontSize: 12,
                 outline: "none",
                 textAlign: "center",
               }}
@@ -872,8 +1053,8 @@ export default function PosCashierTab({
             ))}
           </div>
 
-          {/* Supermarket Laser Beep Toggle + Test Sound Button */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {/* Supermarket Laser Beep Toggle + Test */}
+          <div style={{ display: "flex", alignItems: "center" }}>
             <button
               type="button"
               onClick={() => {
@@ -882,7 +1063,7 @@ export default function PosCashierTab({
                 if (next) playSupermarketScannerSound("scan");
               }}
               style={{
-                padding: "8px 12px",
+                padding: "8px 10px",
                 borderRadius: "10px 0 0 10px",
                 border: "1px solid #E5E7EB",
                 background: soundEnabled ? "#ECFDF5" : "#F3F4F6",
@@ -890,18 +1071,17 @@ export default function PosCashierTab({
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                fontSize: 13,
-                fontWeight: 600,
+                gap: 5,
+                fontSize: 12,
+                fontWeight: 700,
               }}
             >
-              {soundEnabled ? <FiVolume2 size={16} /> : <FiVolumeX size={16} />}
+              {soundEnabled ? <FiVolume2 size={15} /> : <FiVolumeX size={15} />}
               {soundEnabled ? L("beep_on") : L("muted")}
             </button>
             <button
               type="button"
               onClick={() => playSupermarketScannerSound("scan")}
-              title="Test supermarket scanner beep"
               style={{
                 padding: "8px 10px",
                 borderRadius: "0 10px 10px 0",
@@ -918,41 +1098,45 @@ export default function PosCashierTab({
             </button>
           </div>
 
-          {/* Toggle Continuous Camera Button */}
+          {/* Toggle Camera Scanner Button */}
           <button
             type="button"
             onClick={scannerOpen ? stopScanner : startScanner}
             style={{
-              padding: "10px 16px",
-              borderRadius: 12,
+              padding: "9px 14px",
+              borderRadius: 10,
               border: "none",
               background: scannerOpen ? "#EF4444" : "#0066FF",
               color: "#fff",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              fontSize: 14,
+              gap: 6,
+              fontSize: 13,
               fontWeight: 700,
-              boxShadow: "0 4px 12px rgba(0, 102, 255, 0.2)",
+              boxShadow: "0 4px 10px rgba(0, 102, 255, 0.2)",
             }}
           >
             {scannerOpen ? (
               <>
-                <FiCameraOff size={18} /> {L("stop_camera")}
+                <FiCameraOff size={16} /> {L("stop_camera")}
               </>
             ) : (
               <>
-                <FiCamera size={18} /> {L("start_camera")}
+                <FiCamera size={16} /> {L("start_camera")}
               </>
             )}
           </button>
         </div>
       </div>
 
+      {/* Main 2-Column Responsive Grid */}
       <div className="pos-grid">
-        {/* LEFT COLUMN: Continuous Camera + All Products Selector (Vertical/Horizontal Switch) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* LEFT COLUMN: Camera + All Products Browser */}
+        <div
+          className="pos-col"
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+        >
           {/* Continuous Phone Camera Viewfinder */}
           {scannerOpen && (
             <div
@@ -962,16 +1146,17 @@ export default function PosCashierTab({
               }}
               style={{
                 background: "#111827",
-                borderRadius: 18,
+                borderRadius: 16,
                 overflow: "hidden",
                 position: "relative",
                 border: "2px solid #0066FF",
                 cursor: "pointer",
+                width: "100%",
               }}
             >
               <div
                 id="pos-continuous-reader"
-                style={{ width: "100%", minHeight: 220 }}
+                style={{ width: "100%", minHeight: 210 }}
               />
 
               {cameraStarting && (
@@ -984,7 +1169,7 @@ export default function PosCashierTab({
                     justifyContent: "center",
                     background: "rgba(17,24,39,0.8)",
                     color: "#fff",
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: 600,
                   }}
                 >
@@ -996,19 +1181,18 @@ export default function PosCashierTab({
                 <div
                   style={{
                     position: "absolute",
-                    bottom: 12,
-                    left: 12,
-                    right: 12,
-                    padding: "10px 14px",
-                    borderRadius: 12,
+                    bottom: 10,
+                    left: 10,
+                    right: 10,
+                    padding: "8px 12px",
+                    borderRadius: 10,
                     background: lastScannedBanner.isError
                       ? "rgba(220, 38, 38, 0.95)"
                       : "rgba(16, 185, 129, 0.95)",
                     color: "#fff",
                     fontWeight: 700,
-                    fontSize: 14,
+                    fontSize: 13,
                     textAlign: "center",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
                     zIndex: 10,
                   }}
                 >
@@ -1020,13 +1204,13 @@ export default function PosCashierTab({
                 style={{
                   background: "#1F2937",
                   color: "#D1D5DB",
-                  padding: "8px 14px",
-                  fontSize: 12,
+                  padding: "8px 12px",
+                  fontSize: 11.5,
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   flexWrap: "wrap",
-                  gap: 8,
+                  gap: 6,
                 }}
               >
                 <span>🟢 {L("continuous_mode")}</span>
@@ -1037,23 +1221,26 @@ export default function PosCashierTab({
             </div>
           )}
 
-          {/* Product Catalog Browser (All Products + Category Filter + Scroll Direction Switch) */}
+          {/* Product Browser Card */}
           <div
             style={{
-              background: "#fff",
-              borderRadius: 18,
-              padding: 18,
-              border: "1px solid #f3f4f6",
+              background: "#FFFFFF",
+              borderRadius: 16,
+              padding: 16,
+              border: "1px solid #F3F4F6",
+              width: "100%",
+              minWidth: 0,
+              overflow: "hidden",
             }}
           >
             {/* Search Input */}
             <div style={{ position: "relative", marginBottom: 12 }}>
               <FiSearch
-                size={18}
+                size={17}
                 color="#9CA3AF"
                 style={{
                   position: "absolute",
-                  left: 14,
+                  left: 12,
                   top: "50%",
                   transform: "translateY(-50%)",
                 }}
@@ -1066,12 +1253,11 @@ export default function PosCashierTab({
                 placeholder={L("search_placeholder")}
                 style={{
                   width: "100%",
-                  padding: "12px 14px 12px 42px",
+                  padding: "11px 65px 11px 38px",
                   borderRadius: 12,
                   border: "1px solid #E5E7EB",
-                  fontSize: 14,
+                  fontSize: 13.5,
                   outline: "none",
-                  boxSizing: "border-box",
                   background: "#F9FAFB",
                 }}
               />
@@ -1081,7 +1267,7 @@ export default function PosCashierTab({
                   onClick={() => setSearchQuery("")}
                   style={{
                     position: "absolute",
-                    right: 10,
+                    right: 8,
                     top: "50%",
                     transform: "translateY(-50%)",
                     border: "none",
@@ -1090,7 +1276,7 @@ export default function PosCashierTab({
                     padding: "4px 8px",
                     fontSize: 11,
                     cursor: "pointer",
-                    fontWeight: 600,
+                    fontWeight: 700,
                   }}
                 >
                   {L("clear")}
@@ -1098,8 +1284,8 @@ export default function PosCashierTab({
               )}
             </div>
 
-            {/* Category Pills + No-Barcode Filter */}
-            <div className="pos-category-chips" style={{ marginBottom: 12 }}>
+            {/* Horizontal Scrollable Category Pills */}
+            <div className="pos-category-chips">
               <button
                 type="button"
                 onClick={() => setSelectedCategory("all")}
@@ -1172,7 +1358,7 @@ export default function PosCashierTab({
               ))}
             </div>
 
-            {/* Product Count + Scroll Direction Switcher (Up/Down vs Left/Right) */}
+            {/* Count + Scroll Direction Switcher */}
             <div
               style={{
                 display: "flex",
@@ -1186,8 +1372,9 @@ export default function PosCashierTab({
               <span
                 style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}
               >
-                {L("showing_count")} <strong>{filteredProducts.length}</strong>{" "}
-                {L("products_unit")}
+                {L("showing_count")}{" "}
+                <strong>{displayedProducts.length}</strong> {L("of_total")}{" "}
+                <strong>{filteredProducts.length}</strong> {L("products_unit")}
               </span>
 
               <div
@@ -1205,8 +1392,8 @@ export default function PosCashierTab({
                   style={{
                     border: "none",
                     borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
+                    padding: "5px 9px",
+                    fontSize: 11.5,
                     fontWeight: 700,
                     cursor: "pointer",
                     display: "flex",
@@ -1218,11 +1405,11 @@ export default function PosCashierTab({
                       scrollDirection === "vertical" ? "#0066FF" : "#6B7280",
                     boxShadow:
                       scrollDirection === "vertical"
-                        ? "0 1px 3px rgba(0,0,0,0.1)"
+                        ? "0 1px 2px rgba(0,0,0,0.08)"
                         : "none",
                   }}
                 >
-                  <FiArrowDown size={13} /> {L("scroll_vertical")}
+                  <FiArrowDown size={12} /> {L("scroll_vertical")}
                 </button>
                 <button
                   type="button"
@@ -1230,8 +1417,8 @@ export default function PosCashierTab({
                   style={{
                     border: "none",
                     borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 12,
+                    padding: "5px 9px",
+                    fontSize: 11.5,
                     fontWeight: 700,
                     cursor: "pointer",
                     display: "flex",
@@ -1243,153 +1430,90 @@ export default function PosCashierTab({
                       scrollDirection === "horizontal" ? "#0066FF" : "#6B7280",
                     boxShadow:
                       scrollDirection === "horizontal"
-                        ? "0 1px 3px rgba(0,0,0,0.1)"
+                        ? "0 1px 2px rgba(0,0,0,0.08)"
                         : "none",
                   }}
                 >
-                  <FiArrowRight size={13} /> {L("scroll_horizontal")}
+                  <FiArrowRight size={12} /> {L("scroll_horizontal")}
                 </button>
               </div>
             </div>
 
-            {/* All Products Grid (Vertical or Horizontal) */}
+            {/* Fast Memoized Product Grid */}
             <div
-              ref={productScrollRef}
               className={
                 scrollDirection === "horizontal"
                   ? "pos-product-grid-horizontal"
                   : "pos-product-grid-vertical"
               }
             >
-              {filteredProducts.map((product) => {
-                const price = Number(product.price ?? product.price_usd ?? 0);
-                const inBill = cart.find((c) => c.id === product.id);
-                return (
-                  <button
-                    key={product.id}
-                    type="button"
-                    onClick={() => addItemToBill(product)}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
-                      textAlign: "left",
-                      padding: 10,
-                      borderRadius: 14,
-                      border: inBill
-                        ? "2px solid #0066FF"
-                        : "1px solid #F3F4F6",
-                      background: inBill ? "#EFF6FF" : "#fff",
-                      cursor: "pointer",
-                      position: "relative",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {inBill && (
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: 8,
-                          right: 8,
-                          background: "#0066FF",
-                          color: "#fff",
-                          borderRadius: 999,
-                          padding: "2px 8px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
-                        ×{inBill.qty}
-                      </span>
-                    )}
-                    {product.image_url || product.image ? (
-                      <img
-                        src={product.image_url || product.image}
-                        alt={product.name}
-                        loading="lazy"
-                        decoding="async"
-                        style={{
-                          width: "100%",
-                          height: 76,
-                          objectFit: "contain",
-                          borderRadius: 8,
-                          background: "#F9FAFB",
-                          marginBottom: 8,
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: "100%",
-                          height: 76,
-                          borderRadius: 8,
-                          background: "#F3F4F6",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginBottom: 8,
-                          color: "#9CA3AF",
-                        }}
-                      >
-                        <FiShoppingBag size={22} />
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#111827",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {product.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: "#0066FF",
-                        marginTop: 2,
-                      }}
-                    >
-                      {fmt(price)}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#6B7280" }}>
-                      {formatKhrWithRate(price)}
-                    </div>
-                  </button>
-                );
-              })}
+              {displayedProducts.map((product) => (
+                <PosProductCard
+                  key={product.id}
+                  product={product}
+                  qtyInBill={cartQtyMap.get(product.id) || 0}
+                  safeRate={safeRate}
+                  onSelect={addItemToBill}
+                />
+              ))}
             </div>
+
+            {/* Load More Button so 265 items never lag the browser */}
+            {filteredProducts.length > visibleLimit && (
+              <button
+                type="button"
+                onClick={() => setVisibleLimit((prev) => prev + 48)}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: "1px solid #DBEAFE",
+                  background: "#EFF6FF",
+                  color: "#0066FF",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <FiChevronDown size={16} /> {L("load_more")} (
+                {filteredProducts.length - visibleLimit})
+              </button>
+            )}
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Cashier Bill & Upgraded Dual-Currency Cash Calculator */}
+        {/* RIGHT COLUMN: Live Cashier Bill & Cash Calculator */}
         <div
+          ref={billSectionRef}
+          className="pos-col"
           style={{
-            background: "#fff",
-            borderRadius: 18,
-            padding: 20,
-            border: "1px solid #f3f4f6",
+            background: "#FFFFFF",
+            borderRadius: 16,
+            padding: 18,
+            border: "1px solid #F3F4F6",
             position: "sticky",
             top: 16,
           }}
         >
+          {/* Bill Header */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              paddingBottom: 14,
+              paddingBottom: 12,
               borderBottom: "1px solid #F3F4F6",
-              marginBottom: 14,
+              marginBottom: 12,
+              gap: 8,
             }}
           >
-            <div>
-              <h3 style={{ margin: 0, fontSize: 17, color: "#111827" }}>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: "#111827" }}>
                 🧾 {L("current_bill")}
               </h3>
               <span style={{ fontSize: 12, color: "#6B7280" }}>
@@ -1407,11 +1531,12 @@ export default function PosCashierTab({
                   padding: "6px 10px",
                   borderRadius: 8,
                   fontSize: 12,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
+                  flexShrink: 0,
                 }}
               >
                 <FiTrash2 size={13} /> {L("clear")}
@@ -1422,18 +1547,18 @@ export default function PosCashierTab({
           {/* Scanned Items List */}
           <div
             style={{
-              maxHeight: 250,
+              maxHeight: 240,
               overflowY: "auto",
-              marginBottom: 16,
+              marginBottom: 14,
               display: "flex",
               flexDirection: "column",
-              gap: 10,
+              gap: 8,
             }}
           >
             {cart.length === 0 ? (
               <div
                 style={{
-                  padding: "32px 16px",
+                  padding: "28px 14px",
                   textAlign: "center",
                   color: "#9CA3AF",
                   background: "#F9FAFB",
@@ -1444,122 +1569,128 @@ export default function PosCashierTab({
                 {L("empty_bill")}
               </div>
             ) : (
-              cart.map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
-                    background: "#F9FAFB",
-                    borderRadius: 12,
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
+              cart.map((item) => {
+                const lineKhr =
+                  Math.round((item.price * item.qty * safeRate) / 100) * 100;
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "9px 10px",
+                      background: "#F9FAFB",
+                      borderRadius: 10,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 13,
+                          color: "#111827",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.name}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#6B7280" }}>
+                        {fmt(item.price)} × {item.qty} ={" "}
+                        <strong style={{ color: "#0066FF" }}>
+                          {fmt(item.price * item.qty)}
+                        </strong>{" "}
+                        ({lineKhr.toLocaleString()} ៛)
+                      </div>
+                    </div>
+
                     <div
                       style={{
-                        fontWeight: 600,
-                        fontSize: 13,
-                        color: "#111827",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        flexShrink: 0,
                       }}
                     >
-                      {item.name}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#6B7280" }}>
-                      {fmt(item.price)} × {item.qty} ={" "}
-                      <strong style={{ color: "#0066FF" }}>
-                        {fmt(item.price * item.qty)}
-                      </strong>{" "}
-                      <span style={{ fontSize: 11 }}>
-                        ({formatKhrWithRate(item.price * item.qty)})
+                      <button
+                        type="button"
+                        onClick={() => updateQty(item.id, -1)}
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 7,
+                          border: "1px solid #D1D5DB",
+                          background: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <FiMinus size={12} />
+                      </button>
+                      <span
+                        style={{
+                          minWidth: 20,
+                          textAlign: "center",
+                          fontWeight: 700,
+                          fontSize: 13,
+                        }}
+                      >
+                        {item.qty}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => updateQty(item.id, 1)}
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 7,
+                          border: "none",
+                          background: "#0066FF",
+                          color: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <FiPlus size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        style={{
+                          width: 24,
+                          height: 26,
+                          border: "none",
+                          background: "transparent",
+                          color: "#EF4444",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <FiTrash2 size={13} />
+                      </button>
                     </div>
                   </div>
-
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => updateQty(item.id, -1)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        border: "1px solid #D1D5DB",
-                        background: "#fff",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <FiMinus size={13} />
-                    </button>
-                    <span
-                      style={{
-                        minWidth: 22,
-                        textAlign: "center",
-                        fontWeight: 700,
-                        fontSize: 14,
-                      }}
-                    >
-                      {item.qty}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateQty(item.id, 1)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        border: "none",
-                        background: "#0066FF",
-                        color: "#fff",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <FiPlus size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        border: "none",
-                        background: "transparent",
-                        color: "#EF4444",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <FiTrash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
-          {/* Dual-Currency Grand Total Box */}
+          {/* Dual-Currency Total Box */}
           <div
             style={{
               background: "#EFF6FF",
-              borderRadius: 14,
-              padding: "14px 16px",
-              marginBottom: 14,
+              borderRadius: 12,
+              padding: "12px 14px",
+              marginBottom: 12,
               border: "1px solid #BFDBFE",
             }}
           >
@@ -1567,16 +1698,17 @@ export default function PosCashierTab({
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "baseline",
+                alignItems: "center",
+                gap: 8,
               }}
             >
               <span
-                style={{ fontSize: 13, fontWeight: 700, color: "#1E40AF" }}
+                style={{ fontSize: 12.5, fontWeight: 700, color: "#1E40AF" }}
               >
                 {L("total_due_usd")}
               </span>
               <span
-                style={{ fontSize: 26, fontWeight: 800, color: "#0066FF" }}
+                style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}
               >
                 {fmt(totals.totalUsd)}
               </span>
@@ -1585,7 +1717,8 @@ export default function PosCashierTab({
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "baseline",
+                alignItems: "center",
+                gap: 8,
                 marginTop: 4,
               }}
             >
@@ -1595,27 +1728,27 @@ export default function PosCashierTab({
                 {L("total_due_khr")}
               </span>
               <span
-                style={{ fontSize: 18, fontWeight: 800, color: "#1D4ED8" }}
+                style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}
               >
                 {totals.totalKhr.toLocaleString()} ៛
               </span>
             </div>
           </div>
 
-          {/* Clean Payment Method Toggle (Cash vs ABA KHQR) */}
+          {/* Payment Method Toggle */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 10,
-              marginBottom: 14,
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+              gap: 8,
+              marginBottom: 12,
             }}
           >
             <button
               type="button"
               onClick={() => setPaymentMethod("cash")}
               style={{
-                padding: "10px",
+                padding: "9px 8px",
                 borderRadius: 10,
                 border:
                   paymentMethod === "cash"
@@ -1624,21 +1757,21 @@ export default function PosCashierTab({
                 background: paymentMethod === "cash" ? "#EFF6FF" : "#fff",
                 color: paymentMethod === "cash" ? "#0066FF" : "#374151",
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: 12.5,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 6,
+                gap: 5,
               }}
             >
-              <FiDollarSign size={16} /> {L("cash_payment")}
+              <FiDollarSign size={15} /> {L("cash_payment")}
             </button>
             <button
               type="button"
               onClick={() => setPaymentMethod("bank")}
               style={{
-                padding: "10px",
+                padding: "9px 8px",
                 borderRadius: 10,
                 border:
                   paymentMethod === "bank"
@@ -1647,27 +1780,27 @@ export default function PosCashierTab({
                 background: paymentMethod === "bank" ? "#EFF6FF" : "#fff",
                 color: paymentMethod === "bank" ? "#0066FF" : "#374151",
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: 12.5,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 6,
+                gap: 5,
               }}
             >
-              <FiSmartphone size={16} /> {L("khqr_payment")}
+              <FiSmartphone size={15} /> {L("khqr_payment")}
             </button>
           </div>
 
-          {/* Upgraded Cash Received & Dual-Currency Change Calculator */}
+          {/* Cash Received & Change Calculator */}
           {paymentMethod === "cash" && cart.length > 0 && (
             <div
               style={{
                 background: "#F9FAFB",
-                padding: 14,
-                borderRadius: 14,
+                padding: 12,
+                borderRadius: 12,
                 border: "1px solid #E5E7EB",
-                marginBottom: 16,
+                marginBottom: 14,
               }}
             >
               <div
@@ -1675,15 +1808,12 @@ export default function PosCashierTab({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 10,
+                  marginBottom: 8,
+                  gap: 6,
                 }}
               >
                 <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "#374151",
-                  }}
+                  style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}
                 >
                   💵 {L("cash_calculator_title")}
                 </span>
@@ -1698,7 +1828,7 @@ export default function PosCashierTab({
                       border: "none",
                       background: "#FEE2E2",
                       color: "#DC2626",
-                      padding: "3px 8px",
+                      padding: "2px 8px",
                       borderRadius: 6,
                       fontSize: 11,
                       fontWeight: 700,
@@ -1710,13 +1840,12 @@ export default function PosCashierTab({
                 )}
               </div>
 
-              {/* Clean USD & KHR Inputs (No Spinner Arrows + Instant Clear Button) */}
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                  marginBottom: 12,
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gap: 8,
+                  marginBottom: 10,
                 }}
               >
                 <div>
@@ -1735,12 +1864,12 @@ export default function PosCashierTab({
                     <span
                       style={{
                         position: "absolute",
-                        left: 10,
+                        left: 8,
                         top: "50%",
                         transform: "translateY(-50%)",
                         fontWeight: 800,
                         color: "#059669",
-                        fontSize: 14,
+                        fontSize: 13,
                       }}
                     >
                       $
@@ -1755,14 +1884,13 @@ export default function PosCashierTab({
                       onChange={(e) => setTenderedUsd(e.target.value)}
                       style={{
                         width: "100%",
-                        padding: "9px 28px 9px 24px",
-                        borderRadius: 10,
+                        padding: "8px 24px 8px 20px",
+                        borderRadius: 8,
                         border: tenderedUsd
                           ? "2px solid #10B981"
                           : "1px solid #D1D5DB",
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: 800,
-                        boxSizing: "border-box",
                         background: "#fff",
                         outline: "none",
                       }}
@@ -1773,22 +1901,21 @@ export default function PosCashierTab({
                         onClick={() => setTenderedUsd("")}
                         style={{
                           position: "absolute",
-                          right: 6,
+                          right: 4,
                           top: "50%",
                           transform: "translateY(-50%)",
                           border: "none",
                           background: "#F3F4F6",
                           borderRadius: "50%",
-                          width: 20,
-                          height: 20,
+                          width: 18,
+                          height: 18,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           cursor: "pointer",
-                          color: "#6B7280",
                         }}
                       >
-                        <FiX size={12} />
+                        <FiX size={11} />
                       </button>
                     )}
                   </div>
@@ -1817,68 +1944,60 @@ export default function PosCashierTab({
                       onChange={(e) => setTenderedKhr(e.target.value)}
                       style={{
                         width: "100%",
-                        padding: "9px 38px 9px 10px",
-                        borderRadius: 10,
+                        padding: "8px 24px 8px 8px",
+                        borderRadius: 8,
                         border: tenderedKhr
                           ? "2px solid #0066FF"
                           : "1px solid #D1D5DB",
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: 800,
-                        boxSizing: "border-box",
                         background: "#fff",
                         outline: "none",
                       }}
                     />
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: tenderedKhr ? 28 : 10,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        fontWeight: 800,
-                        color: "#0066FF",
-                        fontSize: 14,
-                      }}
-                    >
-                      ៛
-                    </span>
-                    {tenderedKhr && (
+                    {tenderedKhr ? (
                       <button
                         type="button"
                         onClick={() => setTenderedKhr("")}
                         style={{
                           position: "absolute",
-                          right: 6,
+                          right: 4,
                           top: "50%",
                           transform: "translateY(-50%)",
                           border: "none",
                           background: "#F3F4F6",
                           borderRadius: "50%",
-                          width: 20,
-                          height: 20,
+                          width: 18,
+                          height: 18,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           cursor: "pointer",
-                          color: "#6B7280",
                         }}
                       >
-                        <FiX size={12} />
+                        <FiX size={11} />
                       </button>
+                    ) : (
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: 8,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          fontWeight: 800,
+                          color: "#0066FF",
+                          fontSize: 13,
+                        }}
+                      >
+                        ៛
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Row 1: Exact + USD Banknote Buttons ($1, $5, $10, $20, $50, $100) */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(6, 1fr)",
-                  gap: 6,
-                  marginBottom: 6,
-                }}
-              >
+              {/* Responsive Banknote Shortcuts (3 per row on small phones, 6 per row on larger screens) */}
+              <div className="pos-banknote-grid">
                 <button
                   type="button"
                   onClick={() => {
@@ -1886,8 +2005,8 @@ export default function PosCashierTab({
                     setTenderedKhr("");
                   }}
                   style={{
-                    padding: "6px 4px",
-                    borderRadius: 8,
+                    padding: "6px 2px",
+                    borderRadius: 7,
                     border: "1px solid #0066FF",
                     background: "#EFF6FF",
                     color: "#0066FF",
@@ -1911,12 +2030,12 @@ export default function PosCashierTab({
                       )
                     }
                     style={{
-                      padding: "6px 4px",
-                      borderRadius: 8,
+                      padding: "6px 2px",
+                      borderRadius: 7,
                       border: "1px solid #A7F3D0",
                       background: "#ECFDF5",
                       color: "#065F46",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: 800,
                       cursor: "pointer",
                     }}
@@ -1926,15 +2045,7 @@ export default function PosCashierTab({
                 ))}
               </div>
 
-              {/* Row 2: Khmer Riel Banknote Buttons (1k, 5k, 10k, 20k, 50k, 100k) */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(6, 1fr)",
-                  gap: 6,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="pos-banknote-grid" style={{ marginBottom: 8 }}>
                 {[
                   { label: "+1ពាន់", val: 1000, en: "+1k៛" },
                   { label: "+5ពាន់", val: 5000, en: "+5k៛" },
@@ -1953,7 +2064,7 @@ export default function PosCashierTab({
                     }
                     style={{
                       padding: "6px 2px",
-                      borderRadius: 8,
+                      borderRadius: 7,
                       border: "1px solid #BFDBFE",
                       background: "#EFF6FF",
                       color: "#1E40AF",
@@ -1967,12 +2078,12 @@ export default function PosCashierTab({
                 ))}
               </div>
 
-              {/* Change Due Display */}
+              {/* Change Due Box */}
               {(totals.givenUsd > 0 || totals.givenKhr > 0) && (
                 <div
                   style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
+                    padding: "9px 10px",
+                    borderRadius: 9,
                     background: totals.isEnoughCash ? "#ECFDF5" : "#FEF2F2",
                     border: `1px solid ${
                       totals.isEnoughCash ? "#A7F3D0" : "#FECACA"
@@ -1986,28 +2097,31 @@ export default function PosCashierTab({
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: 4,
                           fontWeight: 800,
                           color: "#065F46",
-                          fontSize: 15,
+                          fontSize: 13.5,
                         }}
                       >
                         <span>{L("change_due")}</span>
-                        <span style={{ fontSize: 16 }}>
-                          {fmt(totals.changeUsd)} ({totals.changeKhr.toLocaleString()} ៛)
+                        <span>
+                          {fmt(totals.changeUsd)} (
+                          {totals.changeKhr.toLocaleString()} ៛)
                         </span>
                       </div>
                       {totals.wholeUsdChange > 0 &&
                         totals.remainderKhrChange > 0 && (
                           <div
                             style={{
-                              fontSize: 12,
+                              fontSize: 11.5,
                               color: "#047857",
                               marginTop: 4,
                               fontWeight: 600,
                             }}
                           >
-                            💡 {L("give_customer")}{" "}
-                            <strong>${totals.wholeUsdChange} USD</strong> +{" "}
+                            �� {L("give_customer")}{" "}
+                            <strong>${totals.wholeUsdChange}</strong> +{" "}
                             <strong>
                               {totals.remainderKhrChange.toLocaleString()} ៛
                             </strong>
@@ -2019,22 +2133,15 @@ export default function PosCashierTab({
                       style={{
                         color: "#DC2626",
                         fontWeight: 700,
-                        fontSize: 13,
+                        fontSize: 12.5,
                         display: "flex",
                         justifyContent: "space-between",
+                        flexWrap: "wrap",
                       }}
                     >
-                      <span>{L("still_short")}:</span>
+                      <span>{L("still_short")}</span>
                       <span>
-                        {fmt(totals.totalUsd - totals.totalGivenInUsd)} (
-                        {(
-                          Math.round(
-                            ((totals.totalUsd - totals.totalGivenInUsd) *
-                              safeRate) /
-                              100,
-                          ) * 100
-                        ).toLocaleString()}{" "}
-                        ៛)
+                        {fmt(totals.totalUsd - totals.totalGivenInUsd)}
                       </span>
                     </div>
                   )}
@@ -2051,8 +2158,8 @@ export default function PosCashierTab({
             }
             onClick={handleCompleteSale}
             style={{
-              padding: "14px",
-              fontSize: 16,
+              padding: "13px",
+              fontSize: 15,
               fontWeight: 800,
               borderRadius: 12,
               background: cart.length === 0 ? "#9CA3AF" : "#10B981",
@@ -2065,7 +2172,38 @@ export default function PosCashierTab({
         </div>
       </div>
 
-      {/* Instant Printable Walk-In Receipt Modal */}
+      {/* Floating Bottom Jump Bar on Mobile when Cart has Items */}
+      {cart.length > 0 && (
+        <div
+          className="pos-mobile-jump-bar"
+          onClick={() =>
+            billSectionRef.current?.scrollIntoView({ behavior: "smooth" })
+          }
+        >
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>
+              🧾 {totals.totalItems} {L("items_unit")} • {fmt(totals.totalUsd)}
+            </div>
+            <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+              {totals.totalKhr.toLocaleString()} ៛
+            </div>
+          </div>
+          <div
+            style={{
+              background: "#10B981",
+              color: "#fff",
+              padding: "8px 14px",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 12.5,
+            }}
+          >
+            {L("view_bill")} ↓
+          </div>
+        </div>
+      )}
+
+      {/* Printable Walk-In Receipt Modal */}
       {completedReceipt && (
         <div
           onClick={() => setCompletedReceipt(null)}
@@ -2088,20 +2226,18 @@ export default function PosCashierTab({
               background: "#fff",
               borderRadius: 20,
               width: "100%",
-              maxWidth: 380,
-              padding: 24,
+              maxWidth: 360,
+              padding: 22,
               boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
             }}
           >
-            <div style={{ textAlign: "center", marginBottom: 16 }}>
-              <FiCheckCircle size={36} color="#10B981" />
-              <h3 style={{ margin: "8px 0 2px", fontSize: 19 }}>
-                SOPHEA MART
-              </h3>
-              <div style={{ fontSize: 12, color: "#6B7280" }}>
+            <div style={{ textAlign: "center", marginBottom: 14 }}>
+              <FiCheckCircle size={34} color="#10B981" />
+              <h3 style={{ margin: "6px 0 2px", fontSize: 18 }}>SOPHEA MART</h3>
+              <div style={{ fontSize: 11.5, color: "#6B7280" }}>
                 #{completedReceipt.id} • {completedReceipt.date}
               </div>
-              <div style={{ fontSize: 12, color: "#6B7280" }}>
+              <div style={{ fontSize: 11.5, color: "#6B7280" }}>
                 {L("cashier_label")}: {completedReceipt.cashier}
               </div>
             </div>
@@ -2110,7 +2246,7 @@ export default function PosCashierTab({
               style={{
                 borderTop: "1px dashed #D1D5DB",
                 borderBottom: "1px dashed #D1D5DB",
-                padding: "12px 0",
+                padding: "10px 0",
                 marginBottom: 12,
                 display: "flex",
                 flexDirection: "column",
@@ -2123,7 +2259,7 @@ export default function PosCashierTab({
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    fontSize: 13,
+                    fontSize: 12.5,
                   }}
                 >
                   <span>
@@ -2134,13 +2270,13 @@ export default function PosCashierTab({
               ))}
             </div>
 
-            <div style={{ fontSize: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 13.5, marginBottom: 16 }}>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   fontWeight: 800,
-                  fontSize: 16,
+                  fontSize: 15,
                 }}
               >
                 <span>{L("total_due_usd")}:</span>
@@ -2177,13 +2313,13 @@ export default function PosCashierTab({
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="button"
                 onClick={() => window.print()}
                 style={{
                   flex: 1,
-                  padding: "11px",
+                  padding: "10px",
                   borderRadius: 10,
                   border: "1px solid #D1D5DB",
                   background: "#fff",
@@ -2193,16 +2329,17 @@ export default function PosCashierTab({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6,
+                  fontSize: 13,
                 }}
               >
-                <FiPrinter size={16} /> {L("print_receipt")}
+                <FiPrinter size={15} /> {L("print_receipt")}
               </button>
               <button
                 type="button"
                 onClick={() => setCompletedReceipt(null)}
                 style={{
                   flex: 1.4,
-                  padding: "11px",
+                  padding: "10px",
                   borderRadius: 10,
                   border: "none",
                   background: "#0066FF",
@@ -2213,9 +2350,10 @@ export default function PosCashierTab({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6,
+                  fontSize: 13,
                 }}
               >
-                <FiRefreshCw size={16} /> {L("next_customer")}
+                <FiRefreshCw size={15} /> {L("next_customer")}
               </button>
             </div>
           </div>
