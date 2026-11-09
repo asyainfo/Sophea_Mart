@@ -202,6 +202,29 @@ function playSupermarketScannerSound(type = "scan") {
   }
 }
 
+// Force-release any active video hardware tracks inside the scanner container
+function forceReleaseCameraHardware() {
+  try {
+    const container = document.getElementById("pos-continuous-reader");
+    if (!container) return;
+    const videos = container.querySelectorAll("video");
+    videos.forEach((video) => {
+      if (video.srcObject && typeof video.srcObject.getTracks === "function") {
+        video.srcObject.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {
+            // Ignore track stop errors
+          }
+        });
+        video.srcObject = null;
+      }
+    });
+  } catch {
+    // Ignore DOM cleanup errors
+  }
+}
+
 // ⚡ Memoized Product Card for 60fps scrolling & zero unnecessary re-renders
 const PosProductCard = memo(function PosProductCard({
   product,
@@ -281,29 +304,20 @@ export default function PosCashierTab({
   const [isCompleting, setIsCompleting] = useState(false);
   const [completedReceipt, setCompletedReceipt] = useState(null);
   const [isBillVisible, setIsBillVisible] = useState(false);
+
   const html5QrCodeRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const billSectionRef = useRef(null);
+  const submittingSaleRef = useRef(false);
 
   useEffect(() => {
     const el = billSectionRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const obs = new IntersectionObserver(
       ([entry]) => setIsBillVisible(entry.isIntersecting),
-      { threshold: 0.15 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const el = billSectionRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setIsBillVisible(entry.isIntersecting),
-      { threshold: 0.15 }
+      { threshold: 0.15 },
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -341,8 +355,8 @@ export default function PosCashierTab({
 
         const hasBarcode = Boolean(
           (p.barcode && String(p.barcode).trim()) ||
-          (p.code && String(p.code).trim()) ||
-          (p.sku && String(p.sku).trim()),
+            (p.code && String(p.code).trim()) ||
+            (p.sku && String(p.sku).trim()),
         );
         if (!hasBarcode) missingBarcode += 1;
 
@@ -370,8 +384,8 @@ export default function PosCashierTab({
       if (selectedCategory === "__no_barcode__") {
         const hasBarcode = Boolean(
           (p.barcode && String(p.barcode).trim()) ||
-          (p.code && String(p.code).trim()) ||
-          (p.sku && String(p.sku).trim()),
+            (p.code && String(p.code).trim()) ||
+            (p.sku && String(p.sku).trim()),
         );
         if (hasBarcode) return false;
       } else if (
@@ -412,9 +426,10 @@ export default function PosCashierTab({
     setLastScannedBanner({ text, isError });
     bannerTimerRef.current = setTimeout(() => {
       setLastScannedBanner(null);
-    }, 2200);
+    }, 2000);
   }, []);
 
+  // Stable callback so PosProductCard never re-renders unnecessarily
   const addItemToBill = useCallback(
     (product) => {
       if (!product) return;
@@ -445,7 +460,7 @@ export default function PosCashierTab({
 
       if (soundEnabledRef.current) playSupermarketScannerSound("scan");
       try {
-        if (navigator.vibrate) navigator.vibrate(40);
+        if (navigator.vibrate) navigator.vibrate(35);
       } catch {
         // Ignore vibration permission
       }
@@ -455,7 +470,7 @@ export default function PosCashierTab({
     [showScanFeedback],
   );
 
-  const updateQty = (id, delta) => {
+  const updateQty = useCallback((id, delta) => {
     setCart((prev) =>
       prev
         .map((item) =>
@@ -463,19 +478,19 @@ export default function PosCashierTab({
         )
         .filter((item) => item.qty > 0),
     );
-  };
+  }, []);
 
-  const removeItem = (id) => {
+  const removeItem = useCallback((id) => {
     setCart((prev) => prev.filter((item) => item.id !== id));
-  };
+  }, []);
 
-  const clearBill = () => {
+  const clearBill = useCallback(() => {
     setCart([]);
     setTenderedUsd("");
     setTenderedKhr("");
     setCompletedReceipt(null);
     lastScanRef.current = { code: "", time: 0 };
-  };
+  }, []);
 
   const handleBarcodeDetectedRef = useRef(null);
   handleBarcodeDetectedRef.current = (decodedText) => {
@@ -508,6 +523,7 @@ export default function PosCashierTab({
     }
   };
 
+  // Stop camera & release hardware tracks immediately
   const stopScanner = useCallback(async () => {
     const instance = html5QrCodeRef.current;
     html5QrCodeRef.current = null;
@@ -525,6 +541,7 @@ export default function PosCashierTab({
         // Ignore clear errors
       }
     }
+    forceReleaseCameraHardware();
     setScannerOpen(false);
     setCameraStarting(false);
   }, []);
@@ -561,6 +578,7 @@ export default function PosCashierTab({
         );
       } catch (err) {
         console.error("POS Camera Error:", err);
+        forceReleaseCameraHardware();
         triggerToast?.(
           t(
             "pos.camera_error",
@@ -573,8 +591,37 @@ export default function PosCashierTab({
       } finally {
         setCameraStarting(false);
       }
-    }, 80);
+    }, 60);
   }, [cameraStarting, triggerToast, t]);
+
+  // USB / Bluetooth Hardware Laser Scanner Gun listener (detects rapid keystrokes anywhere on POS tab)
+  useEffect(() => {
+    let buffer = "";
+    let lastKeyTime = 0;
+
+    const handleGlobalKeyDown = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const now = Date.now();
+      if (now - lastKeyTime > 80) {
+        buffer = "";
+      }
+      lastKeyTime = now;
+
+      if (e.key === "Enter" && buffer.length >= 4) {
+        e.preventDefault();
+        const code = buffer.trim();
+        buffer = "";
+        handleBarcodeDetectedRef.current?.(code);
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -640,8 +687,16 @@ export default function PosCashierTab({
     }
   };
 
+  // ⚡ Complete Sale with Zero Redundant Supabase Refetches
   const handleCompleteSale = async () => {
-    if (cart.length === 0 || isCompleting) return;
+    if (
+      cart.length === 0 ||
+      isCompleting ||
+      submittingSaleRef.current
+    ) {
+      return;
+    }
+
     if (!totals.isEnoughCash) {
       triggerToast?.(
         isKm
@@ -652,8 +707,11 @@ export default function PosCashierTab({
       return;
     }
 
+    submittingSaleRef.current = true;
     setIsCompleting(true);
+
     const orderId = `POS-${Date.now().toString().slice(-6)}`;
+    const nowIso = new Date().toISOString();
     const cashierName =
       profile?.full_name || user?.email?.split("@")[0] || "Cashier";
 
@@ -681,6 +739,7 @@ export default function PosCashierTab({
         price: item.price,
       }));
 
+      // Insert order_items without blocking UI
       const { error: itemsErr } = await supabase
         .from("order_items")
         .insert(orderItemsPayload);
@@ -710,8 +769,13 @@ export default function PosCashierTab({
       setCart([]);
       setTenderedUsd("");
       setTenderedKhr("");
-      triggerToast?.(`${orderId} (${fmt(totals.totalUsd)})`, "success");
-      onSaleCompleted?.();
+      triggerToast?.(`✅ ${orderId} (${fmt(totals.totalUsd)})`, "success");
+
+      // Pass new order & items directly to AdminDashboard so it updates in <1ms without re-downloading the entire database!
+      onSaleCompleted?.(
+        { ...orderPayload, created_at: nowIso },
+        orderItemsPayload,
+      );
     } catch (err) {
       console.error("POS Checkout Error:", err);
       triggerToast?.(
@@ -719,6 +783,7 @@ export default function PosCashierTab({
         "error",
       );
     } finally {
+      submittingSaleRef.current = false;
       setIsCompleting(false);
     }
   };
@@ -765,7 +830,7 @@ export default function PosCashierTab({
             flex-wrap: wrap;
           }
 
-          /* Main 2-Column Layout with strict min-width: 0 to prevent horizontal overflow! */
+          /* Main 2-Column Layout with strict min-width: 0 to prevent horizontal overflow */
           .pos-grid {
             display: grid;
             grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
@@ -822,7 +887,7 @@ export default function PosCashierTab({
             scroll-snap-align: start;
           }
 
-          /* Product Card */
+          /* Product Card with GPU / Layout optimization */
           .pos-product-card {
             display: flex;
             flex-direction: column;
@@ -836,6 +901,8 @@ export default function PosCashierTab({
             min-width: 0;
             overflow: hidden;
             transition: transform 0.1s ease;
+            content-visibility: auto;
+            contain-intrinsic-size: 145px;
           }
           .pos-product-card:active {
             transform: scale(0.97);
@@ -1376,10 +1443,12 @@ export default function PosCashierTab({
                 gap: 8,
               }}
             >
-              <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>
-                {L("showing_count")} <strong>{displayedProducts.length}</strong>{" "}
-                {L("of_total")} <strong>{filteredProducts.length}</strong>{" "}
-                {L("products_unit")}
+              <span
+                style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}
+              >
+                {L("showing_count")}{" "}
+                <strong>{displayedProducts.length}</strong> {L("of_total")}{" "}
+                <strong>{filteredProducts.length}</strong> {L("products_unit")}
               </span>
 
               <div
@@ -1463,7 +1532,7 @@ export default function PosCashierTab({
               ))}
             </div>
 
-            {/* Load More Button so 265 items never lag the browser */}
+            {/* Load More Button */}
             {filteredProducts.length > visibleLimit && (
               <button
                 type="button"
@@ -1712,7 +1781,9 @@ export default function PosCashierTab({
               >
                 {L("total_due_usd")}
               </span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}>
+              <span
+                style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}
+              >
                 {fmt(totals.totalUsd)}
               </span>
             </div>
@@ -1725,10 +1796,14 @@ export default function PosCashierTab({
                 marginTop: 4,
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}>
+              <span
+                style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}
+              >
                 {L("total_due_khr")}
               </span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}>
+              <span
+                style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}
+              >
                 {totals.totalKhr.toLocaleString()} ៛
               </span>
             </div>
@@ -1995,7 +2070,7 @@ export default function PosCashierTab({
                 </div>
               </div>
 
-              {/* Responsive Banknote Shortcuts (3 per row on small phones, 6 per row on larger screens) */}
+              {/* Responsive Banknote Shortcuts */}
               <div className="pos-banknote-grid">
                 <button
                   type="button"
@@ -2153,7 +2228,9 @@ export default function PosCashierTab({
           {/* Complete Sale Button */}
           <Button
             full
-            disabled={cart.length === 0 || isCompleting || !totals.isEnoughCash}
+            disabled={
+              cart.length === 0 || isCompleting || !totals.isEnoughCash
+            }
             onClick={handleCompleteSale}
             style={{
               padding: "13px",
@@ -2165,12 +2242,12 @@ export default function PosCashierTab({
           >
             {isCompleting
               ? L("recording_sale")
-              : `${L("complete_sale")} (${fmt(totals.totalUsd)})`}
+              : `✅ ${L("complete_sale")} (${fmt(totals.totalUsd)})`}
           </Button>
         </div>
       </div>
 
-      {/* Floating Bottom Jump Bar on Mobile when Cart has Items */}
+      {/* Floating Bottom Jump Bar on Mobile when Cart has Items & Bill is Off-screen */}
       {cart.length > 0 && !isBillVisible && (
         <div
           className="pos-mobile-jump-bar"

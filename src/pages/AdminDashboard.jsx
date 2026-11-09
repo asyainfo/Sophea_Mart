@@ -361,9 +361,16 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "Orders" },
-        () => {
+        (payload) => {
+          // Skip redundant full-database refetch for POS orders we just inserted locally
+          if (
+            payload?.eventType === "INSERT" &&
+            String(payload?.new?.id || "").startsWith("POS-")
+          ) {
+            return;
+          }
           if (refreshTimer) clearTimeout(refreshTimer);
-          refreshTimer = setTimeout(() => fetchDashboardData(), 400);
+          refreshTimer = setTimeout(() => fetchDashboardData(), 500);
         },
       )
       .subscribe();
@@ -939,8 +946,21 @@ export default function AdminDashboard() {
             user={user}
             profile={profile}
             triggerToast={triggerGlobalToast}
-            onSaleCompleted={() => {
-              fetchDashboardData();
+            onSaleCompleted={(newOrder) => {
+              if (newOrder && newOrder.id) {
+                setDbOrders((prev) =>
+                  prev.some((o) => o.id === newOrder.id)
+                    ? prev
+                    : [newOrder, ...prev]
+                );
+                setDbRevenue(
+                  (prev) =>
+                    Math.round((prev + Number(newOrder.total_usd || 0)) * 100) /
+                    100
+                );
+              } else {
+                fetchDashboardData();
+              }
             }}
           />
         )}
