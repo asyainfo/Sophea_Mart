@@ -282,12 +282,24 @@ export default function PosCashierTab({
   const [lastScannedBanner, setLastScannedBanner] = useState(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const [completedReceipt, setCompletedReceipt] = useState(null);
+  const [isBillVisible, setIsBillVisible] = useState(false);
 
   const html5QrCodeRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const billSectionRef = useRef(null);
+
+  useEffect(() => {
+    const el = billSectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setIsBillVisible(entry.isIntersecting),
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -641,7 +653,6 @@ export default function PosCashierTab({
       const orderPayload = {
         id: orderId,
         user_id: user?.id || null,
-        customer_name: `Walk-in (${cashierName})`,
         payment_method: paymentMethod,
         total_items: totals.totalItems,
         total_usd: totals.totalUsd,
@@ -652,19 +663,7 @@ export default function PosCashierTab({
         .from("Orders")
         .insert([orderPayload]);
 
-      if (orderErr) {
-        const { error: fallbackErr } = await supabase.from("Orders").insert([
-          {
-            id: orderId,
-            user_id: user?.id || null,
-            payment_method: paymentMethod,
-            total_items: totals.totalItems,
-            total_usd: totals.totalUsd,
-            status: "completed",
-          },
-        ]);
-        if (fallbackErr) throw fallbackErr;
-      }
+      if (orderErr) throw orderErr;
 
       const orderItemsPayload = cart.map((item) => ({
         order_id: orderId,
@@ -1520,7 +1519,7 @@ export default function PosCashierTab({
                 {totals.totalItems} {L("items_unit")}
               </span>
             </div>
-            {cart.length > 0 && (
+            {cart.length > 0 && !isBillVisible && (
               <button
                 type="button"
                 onClick={clearBill}
@@ -2120,8 +2119,7 @@ export default function PosCashierTab({
                               fontWeight: 600,
                             }}
                           >
-                            �� {L("give_customer")}{" "}
-                            <strong>${totals.wholeUsdChange}</strong> +{" "}
+                            ✓ {L("give_customer")} <strong>{fmt(totals.wholeUsdChange)}</strong> +{" "}
                             <strong>
                               {totals.remainderKhrChange.toLocaleString()} ៛
                             </strong>
