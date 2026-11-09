@@ -222,9 +222,7 @@ const PosProductCard = memo(function PosProductCard({
         background: qtyInBill > 0 ? "#EFF6FF" : "#FFFFFF",
       }}
     >
-      {qtyInBill > 0 && (
-        <span className="pos-card-badge">×{qtyInBill}</span>
-      )}
+      {qtyInBill > 0 && <span className="pos-card-badge">×{qtyInBill}</span>}
       {product.image_url || product.image ? (
         <img
           src={product.image_url || product.image}
@@ -283,12 +281,22 @@ export default function PosCashierTab({
   const [isCompleting, setIsCompleting] = useState(false);
   const [completedReceipt, setCompletedReceipt] = useState(null);
   const [isBillVisible, setIsBillVisible] = useState(false);
-
   const html5QrCodeRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const billSectionRef = useRef(null);
+
+  useEffect(() => {
+    const el = billSectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setIsBillVisible(entry.isIntersecting),
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     const el = billSectionRef.current;
@@ -333,8 +341,8 @@ export default function PosCashierTab({
 
         const hasBarcode = Boolean(
           (p.barcode && String(p.barcode).trim()) ||
-            (p.code && String(p.code).trim()) ||
-            (p.sku && String(p.sku).trim()),
+          (p.code && String(p.code).trim()) ||
+          (p.sku && String(p.sku).trim()),
         );
         if (!hasBarcode) missingBarcode += 1;
 
@@ -362,8 +370,8 @@ export default function PosCashierTab({
       if (selectedCategory === "__no_barcode__") {
         const hasBarcode = Boolean(
           (p.barcode && String(p.barcode).trim()) ||
-            (p.code && String(p.code).trim()) ||
-            (p.sku && String(p.sku).trim()),
+          (p.code && String(p.code).trim()) ||
+          (p.sku && String(p.sku).trim()),
         );
         if (hasBarcode) return false;
       } else if (
@@ -702,7 +710,7 @@ export default function PosCashierTab({
       setCart([]);
       setTenderedUsd("");
       setTenderedKhr("");
-      triggerToast?.(`✅ ${orderId} (${fmt(totals.totalUsd)})`, "success");
+      triggerToast?.(`${orderId} (${fmt(totals.totalUsd)})`, "success");
       onSaleCompleted?.();
     } catch (err) {
       console.error("POS Checkout Error:", err);
@@ -1368,12 +1376,10 @@ export default function PosCashierTab({
                 gap: 8,
               }}
             >
-              <span
-                style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}
-              >
-                {L("showing_count")}{" "}
-                <strong>{displayedProducts.length}</strong> {L("of_total")}{" "}
-                <strong>{filteredProducts.length}</strong> {L("products_unit")}
+              <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>
+                {L("showing_count")} <strong>{displayedProducts.length}</strong>{" "}
+                {L("of_total")} <strong>{filteredProducts.length}</strong>{" "}
+                {L("products_unit")}
               </span>
 
               <div
@@ -1519,7 +1525,7 @@ export default function PosCashierTab({
                 {totals.totalItems} {L("items_unit")}
               </span>
             </div>
-            {cart.length > 0 && !isBillVisible && (
+            {cart.length > 0 && (
               <button
                 type="button"
                 onClick={clearBill}
@@ -1706,9 +1712,7 @@ export default function PosCashierTab({
               >
                 {L("total_due_usd")}
               </span>
-              <span
-                style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}
-              >
+              <span style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}>
                 {fmt(totals.totalUsd)}
               </span>
             </div>
@@ -1721,14 +1725,10 @@ export default function PosCashierTab({
                 marginTop: 4,
               }}
             >
-              <span
-                style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}
-              >
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}>
                 {L("total_due_khr")}
               </span>
-              <span
-                style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}
-              >
+              <span style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}>
                 {totals.totalKhr.toLocaleString()} ៛
               </span>
             </div>
@@ -2023,8 +2023,9 @@ export default function PosCashierTab({
                     onClick={() =>
                       setTenderedUsd((prev) =>
                         String(
-                          Math.round(((parseFloat(prev) || 0) + usdBill) * 100) /
-                            100,
+                          Math.round(
+                            ((parseFloat(prev) || 0) + usdBill) * 100,
+                          ) / 100,
                         ),
                       )
                     }
@@ -2119,7 +2120,8 @@ export default function PosCashierTab({
                               fontWeight: 600,
                             }}
                           >
-                            ✓ {L("give_customer")} <strong>{fmt(totals.wholeUsdChange)}</strong> +{" "}
+                            ✓ {L("give_customer")}{" "}
+                            <strong>{fmt(totals.wholeUsdChange)}</strong> +{" "}
                             <strong>
                               {totals.remainderKhrChange.toLocaleString()} ៛
                             </strong>
@@ -2151,9 +2153,7 @@ export default function PosCashierTab({
           {/* Complete Sale Button */}
           <Button
             full
-            disabled={
-              cart.length === 0 || isCompleting || !totals.isEnoughCash
-            }
+            disabled={cart.length === 0 || isCompleting || !totals.isEnoughCash}
             onClick={handleCompleteSale}
             style={{
               padding: "13px",
@@ -2165,13 +2165,13 @@ export default function PosCashierTab({
           >
             {isCompleting
               ? L("recording_sale")
-              : `✅ ${L("complete_sale")} (${fmt(totals.totalUsd)})`}
+              : `${L("complete_sale")} (${fmt(totals.totalUsd)})`}
           </Button>
         </div>
       </div>
 
       {/* Floating Bottom Jump Bar on Mobile when Cart has Items */}
-      {cart.length > 0 && (
+      {cart.length > 0 && !isBillVisible && (
         <div
           className="pos-mobile-jump-bar"
           onClick={() =>
