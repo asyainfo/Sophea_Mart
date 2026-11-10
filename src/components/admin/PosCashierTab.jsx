@@ -27,174 +27,79 @@ import { fmt } from "../../utils/currency";
 import Button from "../ui/Button";
 import { useTranslation } from "react-i18next";
 
-const DEFAULT_EXCHANGE_RATE = 4000;
-const SAME_BARCODE_COOLDOWN_MS = 1200;
-const INITIAL_VISIBLE_COUNT = 36;
+const DEFAULT_RATE = 4000;
+const MIN_RATE = 1000;
+const MAX_RATE = 10000;
+const MAX_QTY = 999;
+const MAX_CASH_USD = 100000;
+const MAX_CASH_KHR = 400000000;
+const SCAN_COOLDOWN_MS = 1200;
+const PAGE_SIZE = 36;
 
-const POS_DICT = {
-  en: {
-    title: "Fast POS Counter Scanner",
-    subtitle: "Scan barcodes continuously by phone or tap products below",
-    rate_label: "Rate",
-    beep_on: "Beep ON",
-    muted: "Muted",
-    test_sound: "Test",
-    start_camera: "Scan with Camera",
-    stop_camera: "Close Camera",
-    continuous_mode: "Continuous Scan (Camera stays open)",
-    tap_rescan: "Tap camera to rescan same item",
-    ready_scan: "Ready! Hold barcode in front of camera",
-    starting_camera: "Starting back-camera scanner...",
-    barcode_not_found: "Barcode not found",
-    search_placeholder: "Search product name or barcode...",
-    clear: "Clear",
-    all_categories: "All Products",
-    no_barcode_filter: "No Barcode",
-    showing_count: "Showing",
-    of_total: "of",
-    products_unit: "products",
-    load_more: "Show More Products",
-    scroll_vertical: "Grid",
-    scroll_horizontal: "Swipe",
-    current_bill: "Current Counter Bill",
-    items_unit: "items",
-    empty_bill: "Scan a barcode or tap any product to start a bill.",
-    total_due_usd: "TOTAL DUE (USD)",
-    total_due_khr: "TOTAL DUE (KHR)",
-    cash_payment: "Cash",
-    khqr_payment: "ABA KHQR",
-    cash_calculator_title: "Cash Received & Change",
-    reset_cash: "Reset",
-    received_usd: "Received USD ($)",
-    received_khr: "Received Riel (៛)",
-    exact_amount: "Exact",
-    change_due: "CHANGE DUE:",
-    give_customer: "Give customer:",
-    still_short: "Still short:",
-    complete_sale: "Complete Sale",
-    recording_sale: "Recording...",
-    print_receipt: "Print",
-    next_customer: "Next Customer",
-    cashier_label: "Cashier",
-    view_bill: "View Bill / Pay",
-  },
-  km: {
-    title: "ម៉ាស៊ីនគិតលុយរហ័ស (POS)",
-    subtitle: "ស្កេនបាកូដទំនិញជាប់ៗគ្នាដោយទូរស័ព្ទ ឬចុចជ្រើសរើសទំនិញខាងក្រោម",
-    rate_label: "អត្រា",
-    beep_on: "សំឡេងស្កេន",
-    muted: "បិទសំឡេង",
-    test_sound: "សាកសំឡេង",
-    start_camera: "បើកកាមេរ៉ាស្កេន",
-    stop_camera: "បិទកាមេរ៉ា",
-    continuous_mode: "ស្កេនជាប់ៗគ្នា (កាមេរ៉ាបើកជានិច្ច)",
-    tap_rescan: "ចុចលើកាមេរ៉ាដើម្បីស្កេនម្តងទៀត",
-    ready_scan: "រួចរាល់! សូមដាក់បាកូដនៅមុខកាមេរ៉ា",
-    starting_camera: "កំពុងបើកកាមេរ៉ាស្កេនបាកូដ...",
-    barcode_not_found: "រកមិនឃើញបាកូដនេះទេ",
-    search_placeholder: "ស្វែងរកឈ្មោះទំនិញ ឬវាយលេខបាកូដ...",
-    clear: "សម្អាត",
-    all_categories: "ទំនិញទាំងអស់",
-    no_barcode_filter: "គ្មានបាកូដ",
-    showing_count: "បង្ហាញ",
-    of_total: "ក្នុងចំណោម",
-    products_unit: "មុខទំនិញ",
-    load_more: "បង្ហាញទំនិញបន្ថែមទៀត",
-    scroll_vertical: "អូសលើ-ក្រោម",
-    scroll_horizontal: "អូសឆ្វេង-ស្តាំ",
-    current_bill: "វិក្កយបត្រគិតលុយបច្ចុប្បន្ន",
-    items_unit: "មុខ",
-    empty_bill: "សូមស្កេនបាកូដទំនិញ ឬចុចជ្រើសរើសទំនិញដើម្បីគិតលុយ។",
-    total_due_usd: "សរុបជាប្រាក់ដុល្លារ (USD)",
-    total_due_khr: "សរុបជាប្រាក់រៀល (KHR)",
-    cash_payment: "សាច់ប្រាក់សុទ្ធ",
-    khqr_payment: "ABA KHQR",
-    cash_calculator_title: "គណនាប្រាក់ទទួល និងប្រាក់អាប់",
-    reset_cash: "កំណត់ឡើងវិញ",
-    received_usd: "ប្រាក់ទទួលជាដុល្លារ ($)",
-    received_khr: "ប្រាក់ទទួលជារៀល (៛)",
-    exact_amount: "គ្រប់ចំនួន",
-    change_due: "ប្រាក់ត្រូវអាប់:",
-    give_customer: "ណែនាំរបៀបអាប់:",
-    still_short: "ខ្វះទឹកប្រាក់:",
-    complete_sale: "បញ្ចប់ការលក់",
-    recording_sale: "កំពុងរក្សាទុក...",
-    print_receipt: "បោះពុម្ព",
-    next_customer: "អតិថិជនបន្ទាប់",
-    cashier_label: "អ្នកគិតលុយ",
-    view_bill: "មើលវិក្កយបត្រ / គិតលុយ",
-  },
-};
-
-// 🔊 Authentic Supermarket Laser Barcode Scanner Sound (Zebra/Honeywell 2650Hz Harmonic Pulse)
+// 🔊 Web Audio API Supermarket Laser Beep
 let sharedAudioCtx = null;
-function playSupermarketScannerSound(type = "scan") {
+function playScannerSound(type = "scan") {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
       sharedAudioCtx = new AudioCtx();
     }
-    if (sharedAudioCtx.state === "suspended") {
-      sharedAudioCtx.resume();
-    }
+    if (sharedAudioCtx.state === "suspended") sharedAudioCtx.resume();
 
     const now = sharedAudioCtx.currentTime;
-
     if (type === "scan") {
-      const osc1 = sharedAudioCtx.createOscillator();
-      const osc2 = sharedAudioCtx.createOscillator();
-      const gain = sharedAudioCtx.createGain();
+      const o1 = sharedAudioCtx.createOscillator();
+      const o2 = sharedAudioCtx.createOscillator();
+      const g = sharedAudioCtx.createGain();
+      const g2 = sharedAudioCtx.createGain();
 
-      osc1.type = "triangle";
-      osc2.type = "square";
-      osc1.frequency.setValueAtTime(2650, now);
-      osc2.frequency.setValueAtTime(5300, now);
+      o1.type = "triangle";
+      o2.type = "square";
+      o1.frequency.setValueAtTime(2650, now);
+      o2.frequency.setValueAtTime(5300, now);
+      g2.gain.setValueAtTime(0.18, now);
 
-      const osc2Gain = sharedAudioCtx.createGain();
-      osc2Gain.gain.setValueAtTime(0.18, now);
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(0.32, now + 0.005);
+      g.gain.setValueAtTime(0.32, now + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
 
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.32, now + 0.005);
-      gain.gain.setValueAtTime(0.32, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
-
-      osc1.connect(gain);
-      osc2.connect(osc2Gain);
-      osc2Gain.connect(gain);
-      gain.connect(sharedAudioCtx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 0.075);
-      osc2.stop(now + 0.075);
+      o1.connect(g);
+      o2.connect(g2);
+      g2.connect(g);
+      g.connect(sharedAudioCtx.destination);
+      o1.start(now);
+      o2.start(now);
+      o1.stop(now + 0.075);
+      o2.stop(now + 0.075);
     } else if (type === "complete") {
-      [2100, 2800].forEach((freq, idx) => {
-        const osc = sharedAudioCtx.createOscillator();
-        const gain = sharedAudioCtx.createGain();
-        const start = now + idx * 0.085;
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(freq, start);
-        gain.gain.setValueAtTime(0.28, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.075);
-        osc.connect(gain);
-        gain.connect(sharedAudioCtx.destination);
-        osc.start(start);
-        osc.stop(start + 0.08);
+      [2100, 2800].forEach((freq, i) => {
+        const o = sharedAudioCtx.createOscillator();
+        const g = sharedAudioCtx.createGain();
+        const s = now + i * 0.085;
+        o.type = "triangle";
+        o.frequency.setValueAtTime(freq, s);
+        g.gain.setValueAtTime(0.28, s);
+        g.gain.exponentialRampToValueAtTime(0.001, s + 0.075);
+        o.connect(g);
+        g.connect(sharedAudioCtx.destination);
+        o.start(s);
+        o.stop(s + 0.08);
       });
     } else {
       [0, 0.12].forEach((offset) => {
-        const osc = sharedAudioCtx.createOscillator();
-        const gain = sharedAudioCtx.createGain();
-        const start = now + offset;
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(240, start);
-        gain.gain.setValueAtTime(0.22, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.09);
-        osc.connect(gain);
-        gain.connect(sharedAudioCtx.destination);
-        osc.start(start);
-        osc.stop(start + 0.095);
+        const o = sharedAudioCtx.createOscillator();
+        const g = sharedAudioCtx.createGain();
+        const s = now + offset;
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(240, s);
+        g.gain.setValueAtTime(0.22, s);
+        g.gain.exponentialRampToValueAtTime(0.001, s + 0.09);
+        o.connect(g);
+        g.connect(sharedAudioCtx.destination);
+        o.start(s);
+        o.stop(s + 0.095);
       });
     }
   } catch {
@@ -202,53 +107,46 @@ function playSupermarketScannerSound(type = "scan") {
   }
 }
 
-// Force-release any active video hardware tracks inside the scanner container
-function forceReleaseCameraHardware() {
+function releaseCameraHardware() {
   try {
-    const container = document.getElementById("pos-continuous-reader");
-    if (!container) return;
-    const videos = container.querySelectorAll("video");
-    videos.forEach((video) => {
-      if (video.srcObject && typeof video.srcObject.getTracks === "function") {
-        video.srcObject.getTracks().forEach((track) => {
-          try {
-            track.stop();
-          } catch {
-            // Ignore track stop errors
-          }
-        });
-        video.srcObject = null;
-      }
+    const el = document.getElementById("pos-continuous-reader");
+    if (!el) return;
+    el.querySelectorAll("video").forEach((v) => {
+      v.srcObject?.getTracks?.().forEach((t) => t.stop());
+      v.srcObject = null;
     });
   } catch {
-    // Ignore DOM cleanup errors
+    // Ignore cleanup errors
   }
 }
 
-// ⚡ Memoized Product Card for 60fps scrolling & zero unnecessary re-renders
+// Collision-resistant POS Order ID
+function createPosOrderId() {
+  const timePart = Date.now().toString().slice(-5);
+  const randPart = Math.floor(10 + Math.random() * 90);
+  return `POS-${timePart}${randPart}`;
+}
+
 const PosProductCard = memo(function PosProductCard({
   product,
   qtyInBill,
   safeRate,
   onSelect,
 }) {
-  const price = Number(product.price ?? product.price_usd ?? 0);
+  const price = Math.max(0, Number(product.price ?? product.price_usd ?? 0));
   const khr = Math.round((price * safeRate) / 100) * 100;
+  const imgSrc = product.image_url || product.image;
 
   return (
     <button
       type="button"
       onClick={() => onSelect(product)}
-      className="pos-product-card"
-      style={{
-        border: qtyInBill > 0 ? "2px solid #0066FF" : "1px solid #E5E7EB",
-        background: qtyInBill > 0 ? "#EFF6FF" : "#FFFFFF",
-      }}
+      className={`pos-product-card ${qtyInBill > 0 ? "active" : ""}`}
     >
       {qtyInBill > 0 && <span className="pos-card-badge">×{qtyInBill}</span>}
-      {product.image_url || product.image ? (
+      {imgSrc ? (
         <img
-          src={product.image_url || product.image}
+          src={imgSrc}
           alt={product.name}
           loading="lazy"
           decoding="async"
@@ -275,28 +173,18 @@ export default function PosCashierTab({
 }) {
   const { t, i18n } = useTranslation();
   const isKm = (i18n.language || "").toLowerCase().startsWith("km");
-  const L = useCallback(
-    (key) => {
-      const dict = isKm ? POS_DICT.km : POS_DICT.en;
-      return dict[key] || POS_DICT.en[key] || key;
-    },
-    [isKm],
-  );
+  const isStaff = profile?.role === "admin" || profile?.role === "cashier";
 
-  // POS Cart & Browsing State
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [scrollDirection, setScrollDirection] = useState("vertical");
-  const [visibleLimit, setVisibleLimit] = useState(INITIAL_VISIBLE_COUNT);
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [exchangeRate, setExchangeRate] = useState(DEFAULT_EXCHANGE_RATE);
-
-  // Cash Tendered State
+  const [exchangeRate, setExchangeRate] = useState(DEFAULT_RATE);
   const [tenderedUsd, setTenderedUsd] = useState("");
   const [tenderedKhr, setTenderedKhr] = useState("");
 
-  // Continuous Camera Scanner State
   const [scannerOpen, setScannerOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -310,7 +198,15 @@ export default function PosCashierTab({
   const bannerTimerRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const billSectionRef = useRef(null);
-  const submittingSaleRef = useRef(false);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    setVisibleLimit(PAGE_SIZE);
+  }, [searchQuery, selectedCategory]);
 
   useEffect(() => {
     const el = billSectionRef.current;
@@ -323,49 +219,35 @@ export default function PosCashierTab({
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
-  }, [soundEnabled]);
-
-  // Reset pagination limit when filter or search changes
-  useEffect(() => {
-    setVisibleLimit(INITIAL_VISIBLE_COUNT);
-  }, [searchQuery, selectedCategory]);
-
+  // Clamped exchange rate for safe currency math
   const safeRate = useMemo(() => {
-    const num = Number(exchangeRate);
-    return num >= 100 ? num : DEFAULT_EXCHANGE_RATE;
+    const n = Number(exchangeRate);
+    if (!Number.isFinite(n) || n < MIN_RATE) return DEFAULT_RATE;
+    return Math.min(MAX_RATE, Math.round(n));
   }, [exchangeRate]);
 
-  // Fast O(1) barcode lookup map + ALL active products + category list
+  // O(1) barcode map & active catalog
   const { barcodeMap, activeProducts, categories, noBarcodeCount } =
     useMemo(() => {
       const map = new Map();
       const active = [];
       const catSet = new Set();
-      let missingBarcode = 0;
+      let missing = 0;
 
       (products || []).forEach((p) => {
-        if (p.in_stock === false) return;
+        if (!p || p.in_stock === false) return;
         active.push(p);
 
-        if (p.category && String(p.category).trim()) {
-          catSet.add(String(p.category).trim());
-        }
+        const cat = String(p.category || "").trim();
+        if (cat) catSet.add(cat);
 
-        const hasBarcode = Boolean(
-          (p.barcode && String(p.barcode).trim()) ||
-            (p.code && String(p.code).trim()) ||
-            (p.sku && String(p.sku).trim()),
-        );
-        if (!hasBarcode) missingBarcode += 1;
-
-        const rawCodes = [p.barcode, p.code, p.sku, String(p.id)]
+        const codes = [p.barcode, p.code, p.sku]
           .filter(Boolean)
           .map((c) => String(c).trim().toLowerCase());
 
-        rawCodes.forEach((code) => {
-          if (code) map.set(code, p);
+        if (codes.length === 0) missing += 1;
+        [...codes, String(p.id).toLowerCase()].forEach((c) => {
+          if (c) map.set(c, p);
         });
       });
 
@@ -373,28 +255,21 @@ export default function PosCashierTab({
         barcodeMap: map,
         activeProducts: active,
         categories: Array.from(catSet),
-        noBarcodeCount: missingBarcode,
+        noBarcodeCount: missing,
       };
     }, [products]);
 
-  // Filter across all 265 products instantaneously
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return activeProducts.filter((p) => {
       if (selectedCategory === "__no_barcode__") {
-        const hasBarcode = Boolean(
-          (p.barcode && String(p.barcode).trim()) ||
-            (p.code && String(p.code).trim()) ||
-            (p.sku && String(p.sku).trim()),
-        );
-        if (hasBarcode) return false;
+        if (p.barcode || p.code || p.sku) return false;
       } else if (
         selectedCategory !== "all" &&
         String(p.category || "").trim() !== selectedCategory
       ) {
         return false;
       }
-
       if (!q) return true;
       return (
         (p.name || "").toLowerCase().includes(q) ||
@@ -408,63 +283,56 @@ export default function PosCashierTab({
     });
   }, [activeProducts, searchQuery, selectedCategory]);
 
-  // Slice for blazing-fast DOM rendering while allowing instant "Show More"
   const displayedProducts = useMemo(
     () => filteredProducts.slice(0, visibleLimit),
     [filteredProducts, visibleLimit],
   );
 
-  // Fast O(1) map of product quantities currently in bill
   const cartQtyMap = useMemo(() => {
     const map = new Map();
-    cart.forEach((item) => map.set(item.id, item.qty));
+    cart.forEach((i) => map.set(i.id, i.qty));
     return map;
   }, [cart]);
 
   const showScanFeedback = useCallback((text, isError = false) => {
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     setLastScannedBanner({ text, isError });
-    bannerTimerRef.current = setTimeout(() => {
-      setLastScannedBanner(null);
-    }, 2000);
+    bannerTimerRef.current = setTimeout(() => setLastScannedBanner(null), 2000);
   }, []);
 
-  // Stable callback so PosProductCard never re-renders unnecessarily
   const addItemToBill = useCallback(
     (product) => {
-      if (!product) return;
-      const unitPrice = Number(product.price ?? product.price_usd ?? 0);
+      if (!product?.id) return;
+      const unitPrice = Math.max(
+        0,
+        Number(product.price ?? product.price_usd ?? 0),
+      );
 
       setCart((prev) => {
-        const existingIndex = prev.findIndex((item) => item.id === product.id);
-        if (existingIndex > -1) {
-          const updated = [...prev];
-          updated[existingIndex] = {
-            ...updated[existingIndex],
-            qty: updated[existingIndex].qty + 1,
-          };
-          return updated;
+        const idx = prev.findIndex((i) => i.id === product.id);
+        if (idx > -1) {
+          if (prev[idx].qty >= MAX_QTY) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
+          return next;
         }
         return [
           {
             id: product.id,
-            name: product.name || "Product",
+            name: String(product.name || "Product").slice(0, 120),
             price: unitPrice,
-            image_url: product.image_url || product.image || "",
-            barcode: product.barcode || "",
             qty: 1,
           },
           ...prev,
         ];
       });
 
-      if (soundEnabledRef.current) playSupermarketScannerSound("scan");
+      if (soundEnabledRef.current) playScannerSound("scan");
       try {
-        if (navigator.vibrate) navigator.vibrate(35);
+        navigator.vibrate?.(35);
       } catch {
-        // Ignore vibration permission
+        // Ignore
       }
-
       showScanFeedback(`+1 ${product.name} (${fmt(unitPrice)})`, false);
     },
     [showScanFeedback],
@@ -473,15 +341,15 @@ export default function PosCashierTab({
   const updateQty = useCallback((id, delta) => {
     setCart((prev) =>
       prev
-        .map((item) =>
-          item.id === id ? { ...item, qty: item.qty + delta } : item,
+        .map((i) =>
+          i.id === id ? { ...i, qty: Math.min(MAX_QTY, i.qty + delta) } : i,
         )
-        .filter((item) => item.qty > 0),
+        .filter((i) => i.qty > 0),
     );
   }, []);
 
   const removeItem = useCallback((id) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+    setCart((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
   const clearBill = useCallback(() => {
@@ -493,55 +361,57 @@ export default function PosCashierTab({
   }, []);
 
   const handleBarcodeDetectedRef = useRef(null);
-  handleBarcodeDetectedRef.current = (decodedText) => {
-    const cleanCode = String(decodedText || "").trim();
+  handleBarcodeDetectedRef.current = (rawText) => {
+    const cleanCode = String(rawText || "")
+      .trim()
+      .slice(0, 64);
     if (!cleanCode) return;
 
     const now = Date.now();
     if (
       lastScanRef.current.code === cleanCode &&
-      now - lastScanRef.current.time < SAME_BARCODE_COOLDOWN_MS
+      now - lastScanRef.current.time < SCAN_COOLDOWN_MS
     ) {
       return;
     }
 
     lastScanRef.current = { code: cleanCode, time: now };
-    const matchedProduct = barcodeMap.get(cleanCode.toLowerCase());
+    const match = barcodeMap.get(cleanCode.toLowerCase());
 
-    if (matchedProduct) {
-      addItemToBill(matchedProduct);
+    if (match) {
+      addItemToBill(match);
     } else {
-      if (soundEnabledRef.current) playSupermarketScannerSound("error");
+      if (soundEnabledRef.current) playScannerSound("error");
       try {
-        if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
+        navigator.vibrate?.([80, 50, 80]);
       } catch {
         // Ignore
       }
-      showScanFeedback(`${L("barcode_not_found")}: ${cleanCode}`, true);
+      showScanFeedback(
+        `${t("pos.barcode_not_found", "Barcode not found")}: ${cleanCode}`,
+        true,
+      );
       setSelectedCategory("all");
       setSearchQuery(cleanCode);
     }
   };
 
-  // Stop camera & release hardware tracks immediately
   const stopScanner = useCallback(async () => {
     const instance = html5QrCodeRef.current;
     html5QrCodeRef.current = null;
     if (instance) {
       try {
-        if (instance.isScanning) {
-          await instance.stop();
-        }
+        if (instance.isScanning) await instance.stop();
       } catch {
-        // Ignore stop errors
+        // Ignore
       }
       try {
         instance.clear();
       } catch {
-        // Ignore clear errors
+        // Ignore
       }
     }
-    forceReleaseCameraHardware();
+    releaseCameraHardware();
     setScannerOpen(false);
     setCameraStarting(false);
   }, []);
@@ -553,36 +423,25 @@ export default function PosCashierTab({
 
     setTimeout(async () => {
       try {
-        const readerElement = document.getElementById("pos-continuous-reader");
-        if (!readerElement) {
+        if (!document.getElementById("pos-continuous-reader")) {
           setCameraStarting(false);
           return;
         }
-
         const qr = new Html5Qrcode("pos-continuous-reader");
         html5QrCodeRef.current = qr;
 
         await qr.start(
           { facingMode: "environment" },
-          {
-            fps: 18,
-            qrbox: { width: 240, height: 115 },
-            aspectRatio: 1.777,
-          },
-          (decodedText) => {
-            if (handleBarcodeDetectedRef.current) {
-              handleBarcodeDetectedRef.current(decodedText);
-            }
-          },
+          { fps: 18, qrbox: { width: 240, height: 115 }, aspectRatio: 1.777 },
+          (decoded) => handleBarcodeDetectedRef.current?.(decoded),
           () => {},
         );
-      } catch (err) {
-        console.error("POS Camera Error:", err);
-        forceReleaseCameraHardware();
+      } catch {
+        releaseCameraHardware();
         triggerToast?.(
           t(
             "pos.camera_error",
-            "Could not access back camera. Please check camera permissions.",
+            "Could not access back camera. Please check permissions.",
           ),
           "error",
         );
@@ -594,33 +453,30 @@ export default function PosCashierTab({
     }, 60);
   }, [cameraStarting, triggerToast, t]);
 
-  // USB / Bluetooth Hardware Laser Scanner Gun listener (detects rapid keystrokes anywhere on POS tab)
+  // Hardware USB/Bluetooth scanner listener
   useEffect(() => {
-    let buffer = "";
-    let lastKeyTime = 0;
+    let buf = "";
+    let lastTime = 0;
 
-    const handleGlobalKeyDown = (e) => {
+    const onKeyDown = (e) => {
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-
       const now = Date.now();
-      if (now - lastKeyTime > 80) {
-        buffer = "";
-      }
-      lastKeyTime = now;
+      if (now - lastTime > 80) buf = "";
+      lastTime = now;
 
-      if (e.key === "Enter" && buffer.length >= 4) {
+      if (e.key === "Enter" && buf.length >= 4) {
         e.preventDefault();
-        const code = buffer.trim();
-        buffer = "";
+        const code = buf.trim();
+        buf = "";
         handleBarcodeDetectedRef.current?.(code);
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        buffer += e.key;
+        buf = (buf + e.key).slice(0, 64);
       }
     };
 
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -630,23 +486,35 @@ export default function PosCashierTab({
     };
   }, [stopScanner]);
 
+  // Sanitized cash input handlers
+  const handleUsdInput = (val) => {
+    if (val === "") return setTenderedUsd("");
+    const num = parseFloat(val);
+    if (!Number.isFinite(num) || num < 0) return;
+    if (num <= MAX_CASH_USD) setTenderedUsd(val);
+  };
+
+  const handleKhrInput = (val) => {
+    if (val === "") return setTenderedKhr("");
+    const num = parseFloat(val);
+    if (!Number.isFinite(num) || num < 0) return;
+    if (num <= MAX_CASH_KHR) setTenderedKhr(val);
+  };
+
   const totals = useMemo(() => {
-    const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
+    const totalItems = cart.reduce((s, i) => s + i.qty, 0);
     const totalUsd =
-      Math.round(cart.reduce((sum, i) => sum + i.price * i.qty, 0) * 100) / 100;
+      Math.round(cart.reduce((s, i) => s + i.price * i.qty, 0) * 100) / 100;
     const totalKhr = Math.round((totalUsd * safeRate) / 100) * 100;
 
-    const givenUsd = parseFloat(tenderedUsd) || 0;
-    const givenKhr = parseFloat(tenderedKhr) || 0;
+    const givenUsd = Math.max(0, parseFloat(tenderedUsd) || 0);
+    const givenKhr = Math.max(0, parseFloat(tenderedKhr) || 0);
     const totalGivenInUsd = givenUsd + givenKhr / safeRate;
 
-    const changeUsdRaw = totalGivenInUsd - totalUsd;
-    const changeUsd =
-      changeUsdRaw > 0.004 ? Math.round(changeUsdRaw * 100) / 100 : 0;
+    const diff = totalGivenInUsd - totalUsd;
+    const changeUsd = diff > 0.004 ? Math.round(diff * 100) / 100 : 0;
     const changeKhr =
-      changeUsdRaw > 0.004
-        ? Math.round((changeUsdRaw * safeRate) / 100) * 100
-        : 0;
+      diff > 0.004 ? Math.round((diff * safeRate) / 100) * 100 : 0;
 
     const wholeUsdChange = Math.floor(changeUsd + 0.001);
     const remainderKhrChange =
@@ -671,47 +539,50 @@ export default function PosCashierTab({
   }, [cart, safeRate, tenderedUsd, tenderedKhr, paymentMethod]);
 
   const handleSearchKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const q = searchQuery.trim().toLowerCase();
-      if (!q) return;
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return;
 
-      const exactMatch = barcodeMap.get(q);
-      if (exactMatch) {
-        addItemToBill(exactMatch);
-        setSearchQuery("");
-      } else if (filteredProducts.length === 1) {
-        addItemToBill(filteredProducts[0]);
-        setSearchQuery("");
-      }
+    const exact = barcodeMap.get(q);
+    if (exact) {
+      addItemToBill(exact);
+      setSearchQuery("");
+    } else if (filteredProducts.length === 1) {
+      addItemToBill(filteredProducts[0]);
+      setSearchQuery("");
     }
   };
 
-  // ⚡ Complete Sale with Zero Redundant Supabase Refetches
   const handleCompleteSale = async () => {
     if (
+      !isStaff ||
       cart.length === 0 ||
       isCompleting ||
-      submittingSaleRef.current
+      submittingRef.current
     ) {
       return;
     }
 
     if (!totals.isEnoughCash) {
       triggerToast?.(
-        isKm
-          ? "ប្រាក់ទទួលតិចជាងទឹកប្រាក់សរុប!"
-          : "Cash received is less than the bill total!",
+        t(
+          "pos.insufficient_cash",
+          isKm
+            ? "ប្រាក់ទទួលតិចជាងទឹកប្រាក់សរុប!"
+            : "Cash received is less than the bill total!",
+        ),
         "error",
       );
       return;
     }
 
-    submittingSaleRef.current = true;
+    submittingRef.current = true;
     setIsCompleting(true);
 
-    const orderId = `POS-${Date.now().toString().slice(-6)}`;
+    const orderId = createPosOrderId();
     const nowIso = new Date().toISOString();
+    const safePayment = paymentMethod === "bank" ? "bank" : "cash";
     const cashierName =
       profile?.full_name || user?.email?.split("@")[0] || "Cashier";
 
@@ -719,7 +590,7 @@ export default function PosCashierTab({
       const orderPayload = {
         id: orderId,
         user_id: user?.id || null,
-        payment_method: paymentMethod,
+        payment_method: safePayment,
         total_items: totals.totalItems,
         total_usd: totals.totalUsd,
         status: "completed",
@@ -728,27 +599,22 @@ export default function PosCashierTab({
       const { error: orderErr } = await supabase
         .from("Orders")
         .insert([orderPayload]);
-
       if (orderErr) throw orderErr;
 
-      const orderItemsPayload = cart.map((item) => ({
+      const orderItemsPayload = cart.map((i) => ({
         order_id: orderId,
-        product_id: item.id,
-        product_name: item.name,
-        quantity: item.qty,
-        price: item.price,
+        product_id: i.id,
+        product_name: i.name,
+        quantity: i.qty,
+        price: i.price,
       }));
 
-      // Insert order_items without blocking UI
       const { error: itemsErr } = await supabase
         .from("order_items")
         .insert(orderItemsPayload);
+      if (itemsErr) console.warn("POS order_items warning:", itemsErr.message);
 
-      if (itemsErr) {
-        console.warn("Note inserting POS order_items:", itemsErr.message);
-      }
-
-      if (soundEnabledRef.current) playSupermarketScannerSound("complete");
+      if (soundEnabledRef.current) playScannerSound("complete");
 
       setCompletedReceipt({
         id: orderId,
@@ -757,11 +623,8 @@ export default function PosCashierTab({
         }),
         cashier: cashierName,
         items: [...cart],
-        paymentMethod,
         totalUsd: totals.totalUsd,
         totalKhr: totals.totalKhr,
-        givenUsd: totals.givenUsd,
-        givenKhr: totals.givenKhr,
         changeUsd: totals.changeUsd,
         changeKhr: totals.changeKhr,
       });
@@ -770,8 +633,6 @@ export default function PosCashierTab({
       setTenderedUsd("");
       setTenderedKhr("");
       triggerToast?.(`✅ ${orderId} (${fmt(totals.totalUsd)})`, "success");
-
-      // Pass new order & items directly to AdminDashboard so it updates in <1ms without re-downloading the entire database!
       onSaleCompleted?.(
         { ...orderPayload, created_at: nowIso },
         orderItemsPayload,
@@ -783,7 +644,7 @@ export default function PosCashierTab({
         "error",
       );
     } finally {
-      submittingSaleRef.current = false;
+      submittingRef.current = false;
       setIsCompleting(false);
     }
   };
@@ -792,229 +653,121 @@ export default function PosCashierTab({
     <div className="pos-wrapper">
       <style>
         {`
-          .pos-wrapper, .pos-wrapper * {
-            box-sizing: border-box;
-          }
-          .pos-wrapper {
-            width: 100%;
-            max-width: 100%;
-            overflow-x: hidden;
-          }
+          .pos-wrapper, .pos-wrapper * { box-sizing: border-box; }
+          .pos-wrapper { width: 100%; max-width: 100%; overflow-x: hidden; }
           .pos-no-spin::-webkit-outer-spin-button,
-          .pos-no-spin::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-          }
-          .pos-no-spin {
-            -moz-appearance: textfield;
-          }
+          .pos-no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+          .pos-no-spin { -moz-appearance: textfield; }
 
-          /* Top Toolbar */
           .pos-toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-bottom: 16px;
-            background: #FFFFFF;
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid #F3F4F6;
-            width: 100%;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: #fff;
+            padding: 14px 16px; border-radius: 16px; border: 1px solid #F3F4F6;
           }
-          .pos-toolbar-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-          }
-
-          /* Main 2-Column Layout with strict min-width: 0 to prevent horizontal overflow */
+          .pos-toolbar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
           .pos-grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-            gap: 18px;
-            align-items: start;
-            width: 100%;
+            display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+            gap: 18px; align-items: start; width: 100%;
           }
-          .pos-col {
-            min-width: 0;
-            width: 100%;
-            max-width: 100%;
+          .pos-col { min-width: 0; width: 100%; max-width: 100%; }
+          .pos-panel {
+            background: #fff; border-radius: 16px; padding: 16px;
+            border: 1px solid #F3F4F6; width: 100%; min-width: 0; overflow: hidden;
           }
-
-          /* Category Chips Scroll Row */
           .pos-category-chips {
-            display: flex;
-            gap: 8px;
-            width: 100%;
-            max-width: 100%;
-            overflow-x: auto;
-            padding-bottom: 6px;
-            margin-bottom: 12px;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
+            display: flex; gap: 8px; width: 100%; overflow-x: auto;
+            padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none;
           }
-          .pos-category-chips::-webkit-scrollbar {
-            display: none;
+          .pos-category-chips::-webkit-scrollbar { display: none; }
+          .pos-chip {
+            padding: 6px 12px; border-radius: 999px; border: none;
+            background: #F3F4F6; color: #374151; font-size: 12px;
+            font-weight: 700; cursor: pointer; flex-shrink: 0;
+            display: flex; align-items: center; gap: 4px;
           }
+          .pos-chip.active { background: #0066FF; color: #fff; }
+          .pos-chip.warn { background: #FEF3C7; color: #B45309; }
+          .pos-chip.warn.active { background: #F59E0B; color: #fff; }
 
-          /* Product Grids */
           .pos-product-grid-vertical {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-            gap: 10px;
-            max-height: 520px;
-            overflow-y: auto;
-            width: 100%;
-            padding-right: 2px;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+            gap: 10px; max-height: 520px; overflow-y: auto; padding-right: 2px;
           }
           .pos-product-grid-horizontal {
-            display: grid;
-            grid-template-rows: repeat(2, auto);
-            grid-auto-flow: column;
-            grid-auto-columns: 136px;
-            gap: 10px;
-            width: 100%;
-            max-width: 100%;
-            overflow-x: auto;
-            padding-bottom: 10px;
-            scroll-snap-type: x mandatory;
-            -webkit-overflow-scrolling: touch;
+            display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column;
+            grid-auto-columns: 136px; gap: 10px; overflow-x: auto;
+            padding-bottom: 10px; scroll-snap-type: x mandatory;
           }
-          .pos-product-grid-horizontal > button {
-            scroll-snap-align: start;
-          }
+          .pos-product-grid-horizontal > button { scroll-snap-align: start; }
 
-          /* Product Card with GPU / Layout optimization */
           .pos-product-card {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            text-align: left;
-            padding: 10px;
-            border-radius: 14px;
-            cursor: pointer;
-            position: relative;
-            width: 100%;
-            min-width: 0;
-            overflow: hidden;
-            transition: transform 0.1s ease;
-            content-visibility: auto;
-            contain-intrinsic-size: 145px;
+            display: flex; flex-direction: column; align-items: flex-start;
+            text-align: left; padding: 10px; border-radius: 14px;
+            border: 1px solid #E5E7EB; background: #fff; cursor: pointer;
+            position: relative; width: 100%; min-width: 0; overflow: hidden;
+            transition: transform 0.1s ease; content-visibility: auto; contain-intrinsic-size: 145px;
           }
-          .pos-product-card:active {
-            transform: scale(0.97);
-          }
+          .pos-product-card.active { border: 2px solid #0066FF; background: #EFF6FF; }
+          .pos-product-card:active { transform: scale(0.97); }
           .pos-card-badge {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            background: #0066FF;
-            color: #FFFFFF;
-            border-radius: 999px;
-            padding: 2px 7px;
-            font-size: 11px;
-            font-weight: 800;
-            z-index: 2;
+            position: absolute; top: 6px; right: 6px; background: #0066FF; color: #fff;
+            border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 800; z-index: 2;
           }
           .pos-card-img {
-            width: 100%;
-            height: 72px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #F9FAFB;
-            margin-bottom: 8px;
+            width: 100%; height: 72px; object-fit: contain; border-radius: 8px;
+            background: #F9FAFB; margin-bottom: 8px;
           }
           .pos-card-placeholder {
-            width: 100%;
-            height: 72px;
-            border-radius: 8px;
-            background: #F3F4F6;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 8px;
-            color: #9CA3AF;
+            width: 100%; height: 72px; border-radius: 8px; background: #F3F4F6;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 8px; color: #9CA3AF;
           }
           .pos-card-title {
-            font-size: 12.5px;
-            font-weight: 600;
-            color: #111827;
-            width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: 12.5px; font-weight: 600; color: #111827; width: 100%;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
-          .pos-card-usd {
-            font-size: 13px;
-            font-weight: 800;
-            color: #0066FF;
-            margin-top: 2px;
-          }
-          .pos-card-khr {
-            font-size: 11px;
-            color: #6B7280;
-          }
+          .pos-card-usd { font-size: 13px; font-weight: 800; color: #0066FF; margin-top: 2px; }
+          .pos-card-khr { font-size: 11px; color: #6B7280; }
 
-          /* Quick Banknote Grid */
+          .pos-qty-btn {
+            width: 26px; height: 26px; border-radius: 7px; border: 1px solid #D1D5DB;
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+          }
+          .pos-qty-btn.plus { border: none; background: #0066FF; color: #fff; }
+
           .pos-banknote-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 6px;
-            margin-bottom: 8px;
-            width: 100%;
+            display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px; margin-bottom: 8px; width: 100%;
+          }
+          .pos-note-btn {
+            padding: 6px 2px; border-radius: 7px; font-size: 11px;
+            font-weight: 800; cursor: pointer;
           }
           @media (min-width: 480px) {
-            .pos-banknote-grid {
-              grid-template-columns: repeat(6, minmax(0, 1fr));
-            }
+            .pos-banknote-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
           }
 
-          /* Floating Mobile Checkout Jump Bar */
-          .pos-mobile-jump-bar {
-            display: none;
-          }
-
+          .pos-mobile-jump-bar { display: none; }
           @media (max-width: 960px) {
-            .pos-grid {
-              grid-template-columns: minmax(0, 1fr) !important;
-            }
+            .pos-grid { grid-template-columns: minmax(0, 1fr) !important; }
             .pos-product-grid-vertical {
               grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
               max-height: 420px;
             }
             .pos-mobile-jump-bar {
-              display: flex;
-              position: fixed;
-              bottom: 12px;
-              left: 12px;
-              right: 12px;
-              background: #111827;
-              color: #FFFFFF;
-              padding: 12px 16px;
-              border-radius: 14px;
-              justify-content: space-between;
-              align-items: center;
-              z-index: 900;
-              box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+              display: flex; position: fixed; bottom: 12px; left: 12px; right: 12px;
+              background: #111827; color: #fff; padding: 12px 16px; border-radius: 14px;
+              justify-content: space-between; align-items: center; z-index: 900;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.25); cursor: pointer;
             }
           }
 
           @media print {
             body * { visibility: hidden; }
-            #pos-printable-receipt, #pos-printable-receipt * {
-              visibility: visible;
-            }
+            #pos-printable-receipt, #pos-printable-receipt * { visibility: visible; }
             #pos-printable-receipt {
-              position: fixed;
-              left: 0;
-              top: 0;
-              width: 80mm;
-              padding: 10px;
-              background: #fff;
-              box-shadow: none !important;
+              position: fixed; left: 0; top: 0; width: 80mm; padding: 10px;
+              background: #fff; box-shadow: none !important;
             }
           }
         `}
@@ -1054,7 +807,7 @@ export default function PosCashierTab({
                 lineHeight: 1.3,
               }}
             >
-              {L("title")}
+              {t("pos.title", "Fast POS Counter Scanner")}
             </h2>
             <p
               style={{
@@ -1064,13 +817,15 @@ export default function PosCashierTab({
                 lineHeight: 1.3,
               }}
             >
-              {L("subtitle")}
+              {t(
+                "pos.subtitle",
+                "Scan barcodes continuously by phone or tap products below",
+              )}
             </p>
           </div>
         </div>
 
         <div className="pos-toolbar-controls">
-          {/* Exchange Rate Selector */}
           <div
             style={{
               display: "flex",
@@ -1084,13 +839,16 @@ export default function PosCashierTab({
               fontWeight: 600,
             }}
           >
-            <span>{L("rate_label")}:</span>
+            <span>{t("pos.rate_label", "Rate")}:</span>
             <input
               type="number"
+              min={MIN_RATE}
+              max={MAX_RATE}
               step="50"
               className="pos-no-spin"
               value={exchangeRate}
               onChange={(e) => setExchangeRate(e.target.value)}
+              onBlur={() => setExchangeRate(safeRate)}
               style={{
                 width: 50,
                 border: "1px solid #DBEAFE",
@@ -1117,9 +875,8 @@ export default function PosCashierTab({
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: "pointer",
-                  background:
-                    Number(exchangeRate) === preset ? "#0066FF" : "#E5E7EB",
-                  color: Number(exchangeRate) === preset ? "#fff" : "#374151",
+                  background: safeRate === preset ? "#0066FF" : "#E5E7EB",
+                  color: safeRate === preset ? "#fff" : "#374151",
                 }}
               >
                 {preset}
@@ -1127,14 +884,13 @@ export default function PosCashierTab({
             ))}
           </div>
 
-          {/* Supermarket Laser Beep Toggle + Test */}
           <div style={{ display: "flex", alignItems: "center" }}>
             <button
               type="button"
               onClick={() => {
                 const next = !soundEnabled;
                 setSoundEnabled(next);
-                if (next) playSupermarketScannerSound("scan");
+                if (next) playScannerSound("scan");
               }}
               style={{
                 padding: "8px 10px",
@@ -1151,11 +907,13 @@ export default function PosCashierTab({
               }}
             >
               {soundEnabled ? <FiVolume2 size={15} /> : <FiVolumeX size={15} />}
-              {soundEnabled ? L("beep_on") : L("muted")}
+              {soundEnabled
+                ? t("pos.beep_on", "Beep ON")
+                : t("pos.muted", "Muted")}
             </button>
             <button
               type="button"
-              onClick={() => playSupermarketScannerSound("scan")}
+              onClick={() => playScannerSound("scan")}
               style={{
                 padding: "8px 10px",
                 borderRadius: "0 10px 10px 0",
@@ -1168,11 +926,10 @@ export default function PosCashierTab({
                 fontWeight: 700,
               }}
             >
-              🔊 {L("test_sound")}
+              🔊 {t("pos.test_sound", "Test")}
             </button>
           </div>
 
-          {/* Toggle Camera Scanner Button */}
           <button
             type="button"
             onClick={scannerOpen ? stopScanner : startScanner}
@@ -1193,30 +950,34 @@ export default function PosCashierTab({
           >
             {scannerOpen ? (
               <>
-                <FiCameraOff size={16} /> {L("stop_camera")}
+                <FiCameraOff size={16} />{" "}
+                {t("pos.stop_camera", "Close Camera")}
               </>
             ) : (
               <>
-                <FiCamera size={16} /> {L("start_camera")}
+                <FiCamera size={16} />{" "}
+                {t("pos.start_camera", "Scan with Camera")}
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Main 2-Column Responsive Grid */}
+      {/* Main 2-Column Grid */}
       <div className="pos-grid">
-        {/* LEFT COLUMN: Camera + All Products Browser */}
+        {/* LEFT COLUMN */}
         <div
           className="pos-col"
           style={{ display: "flex", flexDirection: "column", gap: 16 }}
         >
-          {/* Continuous Phone Camera Viewfinder */}
           {scannerOpen && (
             <div
               onClick={() => {
                 lastScanRef.current = { code: "", time: 0 };
-                showScanFeedback(L("ready_scan"), false);
+                showScanFeedback(
+                  t("pos.ready_scan", "Ready! Hold barcode in front of camera"),
+                  false,
+                );
               }}
               style={{
                 background: "#111827",
@@ -1225,14 +986,12 @@ export default function PosCashierTab({
                 position: "relative",
                 border: "2px solid #0066FF",
                 cursor: "pointer",
-                width: "100%",
               }}
             >
               <div
                 id="pos-continuous-reader"
                 style={{ width: "100%", minHeight: 210 }}
               />
-
               {cameraStarting && (
                 <div
                   style={{
@@ -1247,10 +1006,9 @@ export default function PosCashierTab({
                     fontWeight: 600,
                   }}
                 >
-                  {L("starting_camera")}
+                  {t("pos.starting_camera", "Starting back-camera scanner...")}
                 </div>
               )}
-
               {lastScannedBanner && (
                 <div
                   style={{
@@ -1273,7 +1031,6 @@ export default function PosCashierTab({
                   {lastScannedBanner.text}
                 </div>
               )}
-
               <div
                 style={{
                   background: "#1F2937",
@@ -1287,27 +1044,21 @@ export default function PosCashierTab({
                   gap: 6,
                 }}
               >
-                <span>🟢 {L("continuous_mode")}</span>
+                <span>
+                  🟢{" "}
+                  {t(
+                    "pos.continuous_mode",
+                    "Continuous Scan (Camera stays open)",
+                  )}
+                </span>
                 <span style={{ color: "#60A5FA", fontWeight: 600 }}>
-                  {L("tap_rescan")}
+                  {t("pos.tap_rescan", "Tap camera to rescan same item")}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Product Browser Card */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              borderRadius: 16,
-              padding: 16,
-              border: "1px solid #F3F4F6",
-              width: "100%",
-              minWidth: 0,
-              overflow: "hidden",
-            }}
-          >
-            {/* Search Input */}
+          <div className="pos-panel">
             <div style={{ position: "relative", marginBottom: 12 }}>
               <FiSearch
                 size={17}
@@ -1321,10 +1072,14 @@ export default function PosCashierTab({
               />
               <input
                 type="text"
+                maxLength={64}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder={L("search_placeholder")}
+                placeholder={t(
+                  "pos.search_placeholder",
+                  "Search product name or barcode...",
+                )}
                 style={{
                   width: "100%",
                   padding: "11px 65px 11px 38px",
@@ -1353,86 +1108,42 @@ export default function PosCashierTab({
                     fontWeight: 700,
                   }}
                 >
-                  {L("clear")}
+                  {t("pos.clear", "Clear")}
                 </button>
               )}
             </div>
 
-            {/* Horizontal Scrollable Category Pills */}
             <div className="pos-category-chips">
               <button
                 type="button"
                 onClick={() => setSelectedCategory("all")}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  border: "none",
-                  background:
-                    selectedCategory === "all" ? "#0066FF" : "#F3F4F6",
-                  color: selectedCategory === "all" ? "#fff" : "#374151",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
+                className={`pos-chip ${selectedCategory === "all" ? "active" : ""}`}
               >
-                {L("all_categories")} ({activeProducts.length})
+                {t("pos.all_categories", "All Products")} (
+                {activeProducts.length})
               </button>
-
               {noBarcodeCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setSelectedCategory("__no_barcode__")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    border: "none",
-                    background:
-                      selectedCategory === "__no_barcode__"
-                        ? "#F59E0B"
-                        : "#FEF3C7",
-                    color:
-                      selectedCategory === "__no_barcode__"
-                        ? "#fff"
-                        : "#B45309",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
+                  className={`pos-chip warn ${selectedCategory === "__no_barcode__" ? "active" : ""}`}
                 >
-                  <FiTag size={12} /> {L("no_barcode_filter")} ({noBarcodeCount}
-                  )
+                  <FiTag size={12} />{" "}
+                  {t("pos.no_barcode_filter", "No Barcode")} ({noBarcodeCount})
                 </button>
               )}
-
               {categories.map((cat) => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    border: "none",
-                    background:
-                      selectedCategory === cat ? "#0066FF" : "#F3F4F6",
-                    color: selectedCategory === cat ? "#fff" : "#374151",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
+                  className={`pos-chip ${selectedCategory === cat ? "active" : ""}`}
                 >
                   {cat}
                 </button>
               ))}
             </div>
 
-            {/* Count + Scroll Direction Switcher */}
             <div
               style={{
                 display: "flex",
@@ -1446,9 +1157,10 @@ export default function PosCashierTab({
               <span
                 style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}
               >
-                {L("showing_count")}{" "}
-                <strong>{displayedProducts.length}</strong> {L("of_total")}{" "}
-                <strong>{filteredProducts.length}</strong> {L("products_unit")}
+                {t("pos.showing_count", "Showing")}{" "}
+                <strong>{displayedProducts.length}</strong> /{" "}
+                <strong>{filteredProducts.length}</strong>{" "}
+                {t("pos.products_unit", "products")}
               </span>
 
               <div
@@ -1460,60 +1172,43 @@ export default function PosCashierTab({
                   gap: 4,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => setScrollDirection("vertical")}
-                  style={{
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "5px 9px",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background:
-                      scrollDirection === "vertical" ? "#fff" : "transparent",
-                    color:
-                      scrollDirection === "vertical" ? "#0066FF" : "#6B7280",
-                    boxShadow:
-                      scrollDirection === "vertical"
-                        ? "0 1px 2px rgba(0,0,0,0.08)"
-                        : "none",
-                  }}
-                >
-                  <FiArrowDown size={12} /> {L("scroll_vertical")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScrollDirection("horizontal")}
-                  style={{
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "5px 9px",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    background:
-                      scrollDirection === "horizontal" ? "#fff" : "transparent",
-                    color:
-                      scrollDirection === "horizontal" ? "#0066FF" : "#6B7280",
-                    boxShadow:
-                      scrollDirection === "horizontal"
-                        ? "0 1px 2px rgba(0,0,0,0.08)"
-                        : "none",
-                  }}
-                >
-                  <FiArrowRight size={12} /> {L("scroll_horizontal")}
-                </button>
+                {[
+                  {
+                    id: "vertical",
+                    icon: <FiArrowDown size={12} />,
+                    label: t("pos.scroll_vertical", "Up / Down"),
+                  },
+                  {
+                    id: "horizontal",
+                    icon: <FiArrowRight size={12} />,
+                    label: t("pos.scroll_horizontal", "Left / Right"),
+                  },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setScrollDirection(m.id)}
+                    style={{
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "5px 9px",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      background:
+                        scrollDirection === m.id ? "#fff" : "transparent",
+                      color: scrollDirection === m.id ? "#0066FF" : "#6B7280",
+                    }}
+                  >
+                    {m.icon} {m.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Fast Memoized Product Grid */}
             <div
               className={
                 scrollDirection === "horizontal"
@@ -1521,18 +1216,17 @@ export default function PosCashierTab({
                   : "pos-product-grid-vertical"
               }
             >
-              {displayedProducts.map((product) => (
+              {displayedProducts.map((p) => (
                 <PosProductCard
-                  key={product.id}
-                  product={product}
-                  qtyInBill={cartQtyMap.get(product.id) || 0}
+                  key={p.id}
+                  product={p}
+                  qtyInBill={cartQtyMap.get(p.id) || 0}
                   safeRate={safeRate}
                   onSelect={addItemToBill}
                 />
               ))}
             </div>
 
-            {/* Load More Button */}
             {filteredProducts.length > visibleLimit && (
               <button
                 type="button"
@@ -1554,27 +1248,23 @@ export default function PosCashierTab({
                   gap: 6,
                 }}
               >
-                <FiChevronDown size={16} /> {L("load_more")} (
-                {filteredProducts.length - visibleLimit})
+                <FiChevronDown size={16} />{" "}
+                {t(
+                  "pos.load_more",
+                  isKm ? "បង្ហាញទំនិញបន្ថែមទៀត" : "Show More Products",
+                )}{" "}
+                ({filteredProducts.length - visibleLimit})
               </button>
             )}
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Cashier Bill & Cash Calculator */}
+        {/* RIGHT COLUMN */}
         <div
           ref={billSectionRef}
-          className="pos-col"
-          style={{
-            background: "#FFFFFF",
-            borderRadius: 16,
-            padding: 18,
-            border: "1px solid #F3F4F6",
-            position: "sticky",
-            top: 16,
-          }}
+          className="pos-col pos-panel"
+          style={{ position: "sticky", top: 16 }}
         >
-          {/* Bill Header */}
           <div
             style={{
               display: "flex",
@@ -1586,12 +1276,12 @@ export default function PosCashierTab({
               gap: 8,
             }}
           >
-            <div style={{ minWidth: 0 }}>
+            <div>
               <h3 style={{ margin: 0, fontSize: 16, color: "#111827" }}>
-                🧾 {L("current_bill")}
+                🧾 {t("pos.current_bill", "Current Counter Bill")}
               </h3>
               <span style={{ fontSize: 12, color: "#6B7280" }}>
-                {totals.totalItems} {L("items_unit")}
+                {totals.totalItems} {t("pos.items_unit", "items")}
               </span>
             </div>
             {cart.length > 0 && (
@@ -1610,15 +1300,13 @@ export default function PosCashierTab({
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
-                  flexShrink: 0,
                 }}
               >
-                <FiTrash2 size={13} /> {L("clear")}
+                <FiTrash2 size={13} /> {t("pos.clear", "Clear")}
               </button>
             )}
           </div>
 
-          {/* Scanned Items List */}
           <div
             style={{
               maxHeight: 240,
@@ -1640,7 +1328,10 @@ export default function PosCashierTab({
                   fontSize: 13,
                 }}
               >
-                {L("empty_bill")}
+                {t(
+                  "pos.empty_bill",
+                  "Scan a barcode or tap any product to start a bill.",
+                )}
               </div>
             ) : (
               cart.map((item) => {
@@ -1680,7 +1371,6 @@ export default function PosCashierTab({
                         ({lineKhr.toLocaleString()} ៛)
                       </div>
                     </div>
-
                     <div
                       style={{
                         display: "flex",
@@ -1692,17 +1382,7 @@ export default function PosCashierTab({
                       <button
                         type="button"
                         onClick={() => updateQty(item.id, -1)}
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 7,
-                          border: "1px solid #D1D5DB",
-                          background: "#fff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
+                        className="pos-qty-btn"
                       >
                         <FiMinus size={12} />
                       </button>
@@ -1719,18 +1399,7 @@ export default function PosCashierTab({
                       <button
                         type="button"
                         onClick={() => updateQty(item.id, 1)}
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 7,
-                          border: "none",
-                          background: "#0066FF",
-                          color: "#fff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
+                        className="pos-qty-btn plus"
                       >
                         <FiPlus size={12} />
                       </button>
@@ -1744,9 +1413,6 @@ export default function PosCashierTab({
                           background: "transparent",
                           color: "#EF4444",
                           cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
                         }}
                       >
                         <FiTrash2 size={13} />
@@ -1758,7 +1424,6 @@ export default function PosCashierTab({
             )}
           </div>
 
-          {/* Dual-Currency Total Box */}
           <div
             style={{
               background: "#EFF6FF",
@@ -1773,13 +1438,12 @@ export default function PosCashierTab({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                gap: 8,
               }}
             >
               <span
                 style={{ fontSize: 12.5, fontWeight: 700, color: "#1E40AF" }}
               >
-                {L("total_due_usd")}
+                {t("pos.total_due_usd", "TOTAL DUE (USD)")}
               </span>
               <span
                 style={{ fontSize: 22, fontWeight: 800, color: "#0066FF" }}
@@ -1792,14 +1456,13 @@ export default function PosCashierTab({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                gap: 8,
                 marginTop: 4,
               }}
             >
               <span
                 style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF" }}
               >
-                {L("total_due_khr")}
+                {t("pos.total_due_khr", "TOTAL DUE (KHR)")}
               </span>
               <span
                 style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}
@@ -1809,64 +1472,53 @@ export default function PosCashierTab({
             </div>
           </div>
 
-          {/* Payment Method Toggle */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+              gridTemplateColumns: "1fr 1fr",
               gap: 8,
               marginBottom: 12,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("cash")}
-              style={{
-                padding: "9px 8px",
-                borderRadius: 10,
-                border:
-                  paymentMethod === "cash"
-                    ? "2px solid #0066FF"
-                    : "1px solid #E5E7EB",
-                background: paymentMethod === "cash" ? "#EFF6FF" : "#fff",
-                color: paymentMethod === "cash" ? "#0066FF" : "#374151",
-                fontWeight: 700,
-                fontSize: 12.5,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-              }}
-            >
-              <FiDollarSign size={15} /> {L("cash_payment")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("bank")}
-              style={{
-                padding: "9px 8px",
-                borderRadius: 10,
-                border:
-                  paymentMethod === "bank"
-                    ? "2px solid #0066FF"
-                    : "1px solid #E5E7EB",
-                background: paymentMethod === "bank" ? "#EFF6FF" : "#fff",
-                color: paymentMethod === "bank" ? "#0066FF" : "#374151",
-                fontWeight: 700,
-                fontSize: 12.5,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-              }}
-            >
-              <FiSmartphone size={15} /> {L("khqr_payment")}
-            </button>
+            {[
+              {
+                id: "cash",
+                icon: <FiDollarSign size={15} />,
+                label: t("pos.cash_payment", "Cash"),
+              },
+              {
+                id: "bank",
+                icon: <FiSmartphone size={15} />,
+                label: t("pos.khqr_payment", "ABA KHQR"),
+              },
+            ].map((pm) => (
+              <button
+                key={pm.id}
+                type="button"
+                onClick={() => setPaymentMethod(pm.id)}
+                style={{
+                  padding: "9px 8px",
+                  borderRadius: 10,
+                  border:
+                    paymentMethod === pm.id
+                      ? "2px solid #0066FF"
+                      : "1px solid #E5E7EB",
+                  background: paymentMethod === pm.id ? "#EFF6FF" : "#fff",
+                  color: paymentMethod === pm.id ? "#0066FF" : "#374151",
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
+              >
+                {pm.icon} {pm.label}
+              </button>
+            ))}
           </div>
 
-          {/* Cash Received & Change Calculator */}
           {paymentMethod === "cash" && cart.length > 0 && (
             <div
               style={{
@@ -1883,13 +1535,16 @@ export default function PosCashierTab({
                   justifyContent: "space-between",
                   alignItems: "center",
                   marginBottom: 8,
-                  gap: 6,
                 }}
               >
                 <span
                   style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}
                 >
-                  💵 {L("cash_calculator_title")}
+                  💵{" "}
+                  {t(
+                    "pos.cash_calculator_title",
+                    "Cash Received & Change Calculator",
+                  )}
                 </span>
                 {(tenderedUsd || tenderedKhr) && (
                   <button
@@ -1909,7 +1564,7 @@ export default function PosCashierTab({
                       cursor: "pointer",
                     }}
                   >
-                    {L("reset_cash")}
+                    {t("pos.reset_cash", "Reset")}
                   </button>
                 )}
               </div>
@@ -1932,7 +1587,7 @@ export default function PosCashierTab({
                       marginBottom: 4,
                     }}
                   >
-                    {L("received_usd")}
+                    {t("pos.received_usd", "Received USD ($)")}
                   </label>
                   <div style={{ position: "relative" }}>
                     <span
@@ -1951,11 +1606,12 @@ export default function PosCashierTab({
                     <input
                       type="number"
                       inputMode="decimal"
+                      min="0"
                       step="any"
                       className="pos-no-spin"
                       placeholder="0.00"
                       value={tenderedUsd}
-                      onChange={(e) => setTenderedUsd(e.target.value)}
+                      onChange={(e) => handleUsdInput(e.target.value)}
                       style={{
                         width: "100%",
                         padding: "8px 24px 8px 20px",
@@ -2005,17 +1661,18 @@ export default function PosCashierTab({
                       marginBottom: 4,
                     }}
                   >
-                    {L("received_khr")}
+                    {t("pos.received_khr", "Received Riel (៛)")}
                   </label>
                   <div style={{ position: "relative" }}>
                     <input
                       type="number"
                       inputMode="numeric"
+                      min="0"
                       step="100"
                       className="pos-no-spin"
                       placeholder="0"
                       value={tenderedKhr}
-                      onChange={(e) => setTenderedKhr(e.target.value)}
+                      onChange={(e) => handleKhrInput(e.target.value)}
                       style={{
                         width: "100%",
                         padding: "8px 24px 8px 8px",
@@ -2070,7 +1727,6 @@ export default function PosCashierTab({
                 </div>
               </div>
 
-              {/* Responsive Banknote Shortcuts */}
               <div className="pos-banknote-grid">
                 <button
                   type="button"
@@ -2078,91 +1734,75 @@ export default function PosCashierTab({
                     setTenderedUsd(String(totals.totalUsd));
                     setTenderedKhr("");
                   }}
+                  className="pos-note-btn"
                   style={{
-                    padding: "6px 2px",
-                    borderRadius: 7,
                     border: "1px solid #0066FF",
                     background: "#EFF6FF",
                     color: "#0066FF",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: "pointer",
                   }}
                 >
-                  {L("exact_amount")}
+                  {t("pos.exact_amount", "Exact")}
                 </button>
-                {[1, 5, 10, 20, 50].map((usdBill) => (
+                {[1, 5, 10, 20, 50].map((b) => (
                   <button
-                    key={usdBill}
+                    key={b}
                     type="button"
                     onClick={() =>
-                      setTenderedUsd((prev) =>
+                      handleUsdInput(
                         String(
-                          Math.round(
-                            ((parseFloat(prev) || 0) + usdBill) * 100,
-                          ) / 100,
+                          Math.round(((parseFloat(tenderedUsd) || 0) + b) * 100) /
+                            100,
                         ),
                       )
                     }
+                    className="pos-note-btn"
                     style={{
-                      padding: "6px 2px",
-                      borderRadius: 7,
                       border: "1px solid #A7F3D0",
                       background: "#ECFDF5",
                       color: "#065F46",
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      cursor: "pointer",
                     }}
                   >
-                    +${usdBill}
+                    +${b}
                   </button>
                 ))}
               </div>
 
               <div className="pos-banknote-grid" style={{ marginBottom: 8 }}>
                 {[
-                  { label: "+1ពាន់", val: 1000, en: "+1k៛" },
-                  { label: "+5ពាន់", val: 5000, en: "+5k៛" },
-                  { label: "+1ម៉ឺន", val: 10000, en: "+10k៛" },
-                  { label: "+2ម៉ឺន", val: 20000, en: "+20k៛" },
-                  { label: "+5ម៉ឺន", val: 50000, en: "+50k៛" },
-                  { label: "+10ម៉ឺន", val: 100000, en: "+100k៛" },
-                ].map((khrBill) => (
+                  { km: "+1ពាន់", en: "+1k៛", v: 1000 },
+                  { km: "+5ពាន់", en: "+5k៛", v: 5000 },
+                  { km: "+1ម៉ឺន", en: "+10k៛", v: 10000 },
+                  { km: "+2ម៉ឺន", en: "+20k៛", v: 20000 },
+                  { km: "+5ម៉ឺន", en: "+50k៛", v: 50000 },
+                  { km: "+10ម៉ឺន", en: "+100k៛", v: 100000 },
+                ].map((b) => (
                   <button
-                    key={khrBill.val}
+                    key={b.v}
                     type="button"
                     onClick={() =>
-                      setTenderedKhr((prev) =>
-                        String((parseFloat(prev) || 0) + khrBill.val),
+                      handleKhrInput(
+                        String((parseFloat(tenderedKhr) || 0) + b.v),
                       )
                     }
+                    className="pos-note-btn"
                     style={{
-                      padding: "6px 2px",
-                      borderRadius: 7,
                       border: "1px solid #BFDBFE",
                       background: "#EFF6FF",
                       color: "#1E40AF",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: "pointer",
                     }}
                   >
-                    {isKm ? khrBill.label : khrBill.en}
+                    {isKm ? b.km : b.en}
                   </button>
                 ))}
               </div>
 
-              {/* Change Due Box */}
               {(totals.givenUsd > 0 || totals.givenKhr > 0) && (
                 <div
                   style={{
                     padding: "9px 10px",
                     borderRadius: 9,
                     background: totals.isEnoughCash ? "#ECFDF5" : "#FEF2F2",
-                    border: `1px solid ${
-                      totals.isEnoughCash ? "#A7F3D0" : "#FECACA"
-                    }`,
+                    border: `1px solid ${totals.isEnoughCash ? "#A7F3D0" : "#FECACA"}`,
                   }}
                 >
                   {totals.isEnoughCash ? (
@@ -2179,7 +1819,7 @@ export default function PosCashierTab({
                           fontSize: 13.5,
                         }}
                       >
-                        <span>{L("change_due")}</span>
+                        <span>{t("pos.change_due", "CHANGE DUE")}:</span>
                         <span>
                           {fmt(totals.changeUsd)} (
                           {totals.changeKhr.toLocaleString()} ៛)
@@ -2195,7 +1835,7 @@ export default function PosCashierTab({
                               fontWeight: 600,
                             }}
                           >
-                            ✓ {L("give_customer")}{" "}
+                            ✓ {t("pos.give_customer", "Give customer")}:{" "}
                             <strong>{fmt(totals.wholeUsdChange)}</strong> +{" "}
                             <strong>
                               {totals.remainderKhrChange.toLocaleString()} ៛
@@ -2211,10 +1851,9 @@ export default function PosCashierTab({
                         fontSize: 12.5,
                         display: "flex",
                         justifyContent: "space-between",
-                        flexWrap: "wrap",
                       }}
                     >
-                      <span>{L("still_short")}</span>
+                      <span>{t("pos.still_short", "Still short by")}:</span>
                       <span>
                         {fmt(totals.totalUsd - totals.totalGivenInUsd)}
                       </span>
@@ -2225,7 +1864,6 @@ export default function PosCashierTab({
             </div>
           )}
 
-          {/* Complete Sale Button */}
           <Button
             full
             disabled={
@@ -2241,13 +1879,13 @@ export default function PosCashierTab({
             }}
           >
             {isCompleting
-              ? L("recording_sale")
-              : `✅ ${L("complete_sale")} (${fmt(totals.totalUsd)})`}
+              ? t("pos.recording_sale", "Recording Sale...")
+              : `✅ ${t("pos.complete_sale", "Complete Sale")} (${fmt(totals.totalUsd)})`}
           </Button>
         </div>
       </div>
 
-      {/* Floating Bottom Jump Bar on Mobile when Cart has Items & Bill is Off-screen */}
+      {/* Auto-Hiding Mobile Jump Bar */}
       {cart.length > 0 && !isBillVisible && (
         <div
           className="pos-mobile-jump-bar"
@@ -2257,7 +1895,8 @@ export default function PosCashierTab({
         >
           <div>
             <div style={{ fontWeight: 800, fontSize: 14 }}>
-              🧾 {totals.totalItems} {L("items_unit")} • {fmt(totals.totalUsd)}
+              🧾 {totals.totalItems} {t("pos.items_unit", "items")} •{" "}
+              {fmt(totals.totalUsd)}
             </div>
             <div style={{ fontSize: 11, color: "#9CA3AF" }}>
               {totals.totalKhr.toLocaleString()} ៛
@@ -2273,12 +1912,12 @@ export default function PosCashierTab({
               fontSize: 12.5,
             }}
           >
-            {L("view_bill")} ↓
+            {isKm ? "មើលវិក្កយបត្រ / គិតលុយ ↓" : "View Bill / Pay ↓"}
           </div>
         </div>
       )}
 
-      {/* Printable Walk-In Receipt Modal */}
+      {/* Printable Receipt Modal */}
       {completedReceipt && (
         <div
           onClick={() => setCompletedReceipt(null)}
@@ -2313,7 +1952,7 @@ export default function PosCashierTab({
                 #{completedReceipt.id} • {completedReceipt.date}
               </div>
               <div style={{ fontSize: 11.5, color: "#6B7280" }}>
-                {L("cashier_label")}: {completedReceipt.cashier}
+                {t("pos.cashier_label", "Cashier")}: {completedReceipt.cashier}
               </div>
             </div>
 
@@ -2354,7 +1993,7 @@ export default function PosCashierTab({
                   fontSize: 15,
                 }}
               >
-                <span>{L("total_due_usd")}:</span>
+                <span>{t("pos.total_due_usd", "TOTAL DUE (USD)")}:</span>
                 <span>{fmt(completedReceipt.totalUsd)}</span>
               </div>
               <div
@@ -2366,7 +2005,7 @@ export default function PosCashierTab({
                   marginTop: 2,
                 }}
               >
-                <span>{L("total_due_khr")}:</span>
+                <span>{t("pos.total_due_khr", "TOTAL DUE (KHR)")}:</span>
                 <span>{completedReceipt.totalKhr.toLocaleString()} ៛</span>
               </div>
               {completedReceipt.changeUsd > 0 && (
@@ -2379,7 +2018,7 @@ export default function PosCashierTab({
                     marginTop: 6,
                   }}
                 >
-                  <span>{L("change_due")}</span>
+                  <span>{t("pos.change_due", "CHANGE DUE")}:</span>
                   <span>
                     {fmt(completedReceipt.changeUsd)} (
                     {completedReceipt.changeKhr.toLocaleString()} ៛)
@@ -2407,7 +2046,7 @@ export default function PosCashierTab({
                   fontSize: 13,
                 }}
               >
-                <FiPrinter size={15} /> {L("print_receipt")}
+                <FiPrinter size={15} /> {t("pos.print_receipt", "Print")}
               </button>
               <button
                 type="button"
@@ -2428,7 +2067,8 @@ export default function PosCashierTab({
                   fontSize: 13,
                 }}
               >
-                <FiRefreshCw size={15} /> {L("next_customer")}
+                <FiRefreshCw size={15} />{" "}
+                {t("pos.next_customer", "Next Customer")}
               </button>
             </div>
           </div>

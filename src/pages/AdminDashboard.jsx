@@ -947,17 +947,22 @@ export default function AdminDashboard() {
             profile={profile}
             triggerToast={triggerGlobalToast}
             onSaleCompleted={(newOrder) => {
-              if (newOrder && newOrder.id) {
+              if (newOrder?.id) {
+                const saleUsd = Number(newOrder.total_usd || 0);
                 setDbOrders((prev) =>
-                  prev.some((o) => o.id === newOrder.id)
-                    ? prev
-                    : [newOrder, ...prev]
+                  prev.some((o) => o.id === newOrder.id) ? prev : [newOrder, ...prev]
                 );
-                setDbRevenue(
-                  (prev) =>
-                    Math.round((prev + Number(newOrder.total_usd || 0)) * 100) /
-                    100
-                );
+                setDbRevenue((prev) => Math.round((prev + saleUsd) * 100) / 100);
+                setChartData((prev) => {
+                  if (!prev.length) return prev;
+                  const next = [...prev];
+                  const lastIdx = next.length - 1;
+                  next[lastIdx] = {
+                    ...next[lastIdx],
+                    Revenue: Math.round(((next[lastIdx].Revenue || 0) + saleUsd) * 100) / 100,
+                  };
+                  return next;
+                });
               } else {
                 fetchDashboardData();
               }
