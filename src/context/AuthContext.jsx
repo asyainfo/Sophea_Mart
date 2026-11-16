@@ -10,7 +10,6 @@ import { supabase } from "../services/supabase";
 
 export const AuthContext = createContext(null);
 
-// 🔒 Capture recovery intent immediately at module load BEFORE Supabase strips the URL hash!
 const initialUrlHasRecovery =
   typeof window !== "undefined" &&
   (window.location.hash.includes("type=recovery") ||
@@ -21,11 +20,11 @@ const initialUrlHasRecovery =
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
     initialUrlHasRecovery,
   );
 
-  // Track which user ID is currently loaded or in-flight to prevent duplicate fetches
   const loadedUserIdRef = useRef(null);
   const inFlightUserIdRef = useRef(null);
   const isRegisteringRef = useRef(false);
@@ -72,7 +71,6 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
-    // If URL had recovery token or old /update-password path, force browser to /reset-password
     if (
       typeof window !== "undefined" &&
       initialUrlHasRecovery &&
@@ -111,12 +109,11 @@ export function AuthProvider({ children }) {
       }
     };
 
-    // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       syncSession(session?.user ?? null, false);
+      if (isMounted) setLoading(false);
     });
 
-    // 2. Subscribe to auth events
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -137,6 +134,7 @@ export function AuthProvider({ children }) {
       } else {
         syncSession(session?.user ?? null, false);
       }
+      if (isMounted) setLoading(false);
     });
 
     return () => {
@@ -198,7 +196,6 @@ export function AuthProvider({ children }) {
     setProfile(null);
   }, []);
 
-  // 🏆 Always send reset link to /reset-password
   const sendPasswordReset = useCallback(async (email) => {
     const cleanEmail = (email || "").trim().toLowerCase();
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
@@ -236,6 +233,7 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       profile,
+      loading,
       isPasswordRecovery,
       clearPasswordRecovery,
       refreshProfile,
@@ -248,6 +246,7 @@ export function AuthProvider({ children }) {
     [
       user,
       profile,
+      loading,
       isPasswordRecovery,
       clearPasswordRecovery,
       refreshProfile,

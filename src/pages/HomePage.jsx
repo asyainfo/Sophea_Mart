@@ -50,7 +50,7 @@ const styles = {
 
 export default function HomePage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { products = [] } = useStore();
   const { dispatch, cart } = useCart();
   const { show: toast } = useToast();
@@ -64,12 +64,21 @@ export default function HomePage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [pendingCartProduct, setPendingCartProduct] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
 
   const pendingFavsRef = useRef(new Set());
   const loadMoreRef = useRef(null);
 
-  // 1. Background Performance: 200ms debounce so typing in search is smooth
+  // Keep live auth state in refs so memoized ProductCards never execute stale closures
+  const userRef = useRef(user);
+  const authLoadingRef = useRef(authLoading);
+  useEffect(() => {
+    userRef.current = user;
+    authLoadingRef.current = authLoading;
+  }, [user, authLoading]);
+
+  // 1. Debounced search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search.trim().toLowerCase());
@@ -83,7 +92,7 @@ export default function HomePage() {
     setVisibleCount(INITIAL_BATCH_SIZE);
   }, [category]);
 
-  // 2. Background Performance: Only fetch favorites when user.id actually changes
+  // 2. Fetch user favorites when user.id changes
   const fetchFavorites = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -106,7 +115,7 @@ export default function HomePage() {
     }
   }, [user?.id, fetchFavorites]);
 
-  // 3. Background Performance: Instant O(1) Cart Lookup Map
+  // 3. O(1) Cart Quantity Lookup Map
   const cartQuantityMap = useMemo(() => {
     const map = new Map();
     if (Array.isArray(cart)) {
@@ -117,7 +126,12 @@ export default function HomePage() {
     return map;
   }, [cart]);
 
-  // 4. Memoized Filtering (Supports Name, Description, and Barcode)
+  const cartQuantityMapRef = useRef(cartQuantityMap);
+  useEffect(() => {
+    cartQuantityMapRef.current = cartQuantityMap;
+  }, [cartQuantityMap]);
+
+  // 4. Memoized Filtering (Name, Description, Barcode)
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
     return products.filter((product) => {
@@ -125,15 +139,15 @@ export default function HomePage() {
       if (!categoryMatch) return false;
       if (!debouncedSearch) return true;
 
-      const searchMatch =
+      return (
         product.name?.toLowerCase().includes(debouncedSearch) ||
         product.description?.toLowerCase().includes(debouncedSearch) ||
-        product.barcode?.toLowerCase().includes(debouncedSearch);
-      return searchMatch;
+        product.barcode?.toLowerCase().includes(debouncedSearch)
+      );
     });
   }, [products, debouncedSearch, category]);
 
-  // 5. Progressive DOM Rendering: Automatically load next batch as user scrolls
+  // 5. Progressive DOM Rendering via IntersectionObserver
   useEffect(() => {
     const sentinel = loadMoreRef.current;
     if (!sentinel || visibleCount >= filteredProducts.length) return;
@@ -158,17 +172,8 @@ export default function HomePage() {
     [filteredProducts, visibleCount],
   );
 
-  const handleAddToCart = useCallback(
+  const commitAddToCart = useCallback(
     (product) => {
-      if (!user) {
-        toast(
-          t("store.sign_in_cart", "Sign in to add items to cart."),
-          "error",
-        );
-        setLoginOpen(true);
-        return;
-      }
-
       const maxStock = Number(product.stock ?? 0);
       if (product.in_stock === false || maxStock <= 0) {
         toast(
@@ -181,7 +186,7 @@ export default function HomePage() {
         return;
       }
 
-      const currentQty = cartQuantityMap.get(product.id) || 0;
+      const currentQty = cartQuantityMapRef.current.get(product.id) || 0;
       if (currentQty >= maxStock) {
         toast(
           t("store.max_stock_reached", `Only ${maxStock} available in stock!`),
@@ -193,8 +198,35 @@ export default function HomePage() {
       dispatch({ type: "ADD", product });
       toast(`${product.name} ${t("store.added_to_cart", "added to cart!")}`);
     },
-    [user, cartQuantityMap, dispatch, toast, t],
+    [dispatch, toast, t],
   );
+
+  const handleAddToCart = useCallback(
+    (product) => {
+      if (authLoadingRef.current) return;
+
+      if (!userRef.current) {
+        setPendingCartProduct(product);
+        toast(
+          t("store.sign_in_cart", "Sign in to add items to cart."),
+          "error",
+        );
+        setLoginOpen(true);
+        return;
+      }
+
+      commitAddToCart(product);
+    },
+    [commitAddToCart, toast, t],
+  );
+
+  // Automatically add the remembered item right after the user signs in
+  useEffect(() => {
+    if (user && pendingCartProduct) {
+      commitAddToCart(pendingCartProduct);
+      setPendingCartProduct(null);
+    }
+  }, [user, pendingCartProduct, commitAddToCart]);
 
   const handleRemoveFromCart = useCallback(
     (product) => {
@@ -205,7 +237,10 @@ export default function HomePage() {
 
   const handleToggleFavorite = useCallback(
     async (product) => {
-      if (!user) {
+      if (authLoadingRef.current) return;
+
+      const currentUser = userRef.current;
+      if (!currentUser) {
         toast(
           t("store.sign_in_favorite", "Please sign in to save favorites!"),
           "error",
@@ -214,42 +249,45 @@ export default function HomePage() {
         return;
       }
 
-      // Prevent duplicate requests from rapid clicks
       if (pendingFavsRef.current.has(product.id)) return;
       pendingFavsRef.current.add(product.id);
 
-      const isCurrentlyFavorited = favoriteIds.has(product.id);
-
+      let wasFavorited = false;
       setFavoriteIds((prev) => {
-        const newFavs = new Set(prev);
-        if (isCurrentlyFavorited) newFavs.delete(product.id);
-        else newFavs.add(product.id);
-        return newFavs;
+        wasFavorited = prev.has(product.id);
+        const next = new Set(prev);
+        if (wasFavorited) next.delete(product.id);
+        else next.add(product.id);
+        return next;
       });
 
       try {
-        if (isCurrentlyFavorited) {
+        if (wasFavorited) {
           const { error } = await supabase
             .from("favorites")
             .delete()
-            .match({ user_id: user.id, product_id: product.id });
+            .match({ user_id: currentUser.id, product_id: product.id });
           if (error) throw error;
         } else {
           const { error } = await supabase
             .from("favorites")
-            .insert([{ user_id: user.id, product_id: product.id }]);
+            .insert([{ user_id: currentUser.id, product_id: product.id }]);
           if (error) throw error;
         }
       } catch (error) {
         console.error("Error updating favorite:", error.message);
-        fetchFavorites(user.id);
+        fetchFavorites(currentUser.id);
         toast(t("store.fav_failed", "Failed to update favorite."), "error");
       } finally {
         pendingFavsRef.current.delete(product.id);
       }
     },
-    [user, favoriteIds, fetchFavorites, toast, t],
+    [fetchFavorites, toast, t],
   );
+
+  const handleQuickView = useCallback((product) => {
+    setSelectedProduct(product);
+  }, []);
 
   const clearFilters = () => {
     setSearch("");
@@ -326,13 +364,12 @@ export default function HomePage() {
                     onRemoveFromCart={handleRemoveFromCart}
                     isFavorite={favoriteIds.has(product.id)}
                     onToggleFavorite={handleToggleFavorite}
-                    onQuickView={() => setSelectedProduct(product)}
+                    onQuickView={handleQuickView}
                   />
                 );
               })}
             </div>
 
-            {/* Invisible scroll trigger to smoothly render remaining products */}
             {visibleCount < filteredProducts.length && (
               <div ref={loadMoreRef} style={{ height: 20, width: "100%" }} />
             )}
@@ -367,11 +404,12 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* --- MODALS & OVERLAYS --- */}
-
       <LoginModal
         open={loginOpen}
-        onClose={() => setLoginOpen(false)}
+        onClose={() => {
+          setLoginOpen(false);
+          setPendingCartProduct(null);
+        }}
         onSwitchRegister={() => {
           setLoginOpen(false);
           setRegisterOpen(true);
@@ -385,7 +423,10 @@ export default function HomePage() {
 
       <RegisterModal
         open={registerOpen}
-        onClose={() => setRegisterOpen(false)}
+        onClose={() => {
+          setRegisterOpen(false);
+          setPendingCartProduct(null);
+        }}
         onSwitchLogin={() => {
           setRegisterOpen(false);
           setLoginOpen(true);

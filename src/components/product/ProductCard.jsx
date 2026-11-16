@@ -18,12 +18,10 @@ function ProductCard({
   const timerRef = useRef(null);
   const prevQtyRef = useRef(product.quantityInCart || 0);
 
-  // Reset image error state if product.image changes
   useEffect(() => {
     setImgError(false);
   }, [product?.image]);
 
-  // Only trigger the green checkmark when quantityInCart actually increases from 0 -> 1
   useEffect(() => {
     const currentQty = product.quantityInCart || 0;
     if (prevQtyRef.current === 0 && currentQty > 0) {
@@ -34,20 +32,17 @@ function ProductCard({
     prevQtyRef.current = currentQty;
   }, [product.quantityInCart]);
 
-  // Clean up timer on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  // --- LOGIC CHECKS ---
   const qtyInCart = Number(product.quantityInCart || 0);
   const stockCount = Number(product.stock ?? 0);
   const isInCart = qtyInCart > 0;
   const isOutOfStock = stockCount <= 0 || product.in_stock === false;
 
-  // Normalize image URL safely so empty strings "" are never passed to <img src>
   const rawImage =
     typeof product.image === "string" ? product.image.trim() : "";
   const validImageSrc =
@@ -57,7 +52,6 @@ function ProductCard({
         ? rawImage
         : `/${rawImage}`;
 
-  // --- ACTIONS ---
   const handleAddToCart = (e) => {
     e.stopPropagation();
     if (isOutOfStock) return;
@@ -82,7 +76,6 @@ function ProductCard({
     }
   };
 
-  // --- COMPUTED STYLES ---
   const getStockStatus = () => {
     if (stockCount > 10)
       return {
@@ -126,7 +119,6 @@ function ProductCard({
       onMouseLeave={() => setHovered(false)}
       style={cardStyle}
     >
-      {/* --- IMAGE HEADER --- */}
       <div
         onClick={handleQuickView}
         style={{
@@ -140,7 +132,6 @@ function ProductCard({
           cursor: "pointer",
         }}
       >
-        {/* Favorite Heart Button */}
         <button
           type="button"
           onClick={handleHeartClick}
@@ -168,7 +159,6 @@ function ProductCard({
           <FiHeart size={16} fill={isFavorite ? "#EF4444" : "none"} />
         </button>
 
-        {/* ⚡ SAFE IMAGE RENDERING: Never passes src="" and prevents alt-text overlap */}
         {validImageSrc ? (
           <img
             src={validImageSrc}
@@ -199,7 +189,6 @@ function ProductCard({
           </div>
         )}
 
-        {/* Sold Out Overlay */}
         {isOutOfStock && (
           <div
             style={{
@@ -228,7 +217,6 @@ function ProductCard({
           </div>
         )}
 
-        {/* Stock Badge (Top Right) */}
         {!isOutOfStock && (
           <span
             style={{
@@ -248,7 +236,6 @@ function ProductCard({
         )}
       </div>
 
-      {/* --- CONTENT AREA --- */}
       <div
         style={{
           padding: 16,
@@ -290,7 +277,6 @@ function ProductCard({
           <div style={{ height: 12 }} />
         )}
 
-        {/* Variants */}
         <div
           style={{
             display: "flex",
@@ -330,7 +316,6 @@ function ProductCard({
           )}
         </div>
 
-        {/* Price & Cart Actions */}
         <div
           style={{
             display: "flex",
@@ -347,7 +332,6 @@ function ProductCard({
             </div>
           </div>
 
-          {/* Cart Buttons */}
           {isJustAdded ? (
             <button
               type="button"
@@ -458,12 +442,15 @@ function ProductCard({
   );
 }
 
-// Custom deep-value check so inline props in HomePage don't cause all 271 cards to re-render
 function arePropsEqual(prev, next) {
   const p1 = prev.product;
   const p2 = next.product;
   return (
     prev.isFavorite === next.isFavorite &&
+    prev.onAddToCart === next.onAddToCart &&
+    prev.onRemoveFromCart === next.onRemoveFromCart &&
+    prev.onToggleFavorite === next.onToggleFavorite &&
+    prev.onQuickView === next.onQuickView &&
     p1.id === p2.id &&
     p1.quantityInCart === p2.quantityInCart &&
     p1.stock === p2.stock &&
@@ -472,6 +459,7 @@ function arePropsEqual(prev, next) {
     p1.name === p2.name &&
     p1.image === p2.image &&
     p1.sizes === p2.sizes &&
+    p1.variants === p2.variants &&
     p1.description === p2.description
   );
 }
